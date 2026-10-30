@@ -1,7 +1,7 @@
 import { task } from "hardhat/config";
 import type { EIP1193Provider } from "viem";
 
-import { LIFECYCLE_STEPS, runLifecycle } from "../scripts/lifecycle";
+import { HAND_LISTED, LIFECYCLE_STEPS, runLifecycle } from "../scripts/lifecycle";
 
 task(
   "simulate-lifecycle",
@@ -14,6 +14,13 @@ task(
     log: (line) => console.log(line),
   });
   const passed = results.filter((r) => r.ok).length;
+  const handListed = results.filter((r) => r.name.startsWith(HAND_LISTED)).length;
+  console.log(
+    "%d/%d steps passed; %d of them check hand-written guest and check-in lists, not a Luma or check-in CSV",
+    passed,
+    LIFECYCLE_STEPS,
+    handListed,
+  );
   if (passed !== LIFECYCLE_STEPS) {
     process.exitCode = 1;
     throw new Error(`simulate-lifecycle: ${passed}/${LIFECYCLE_STEPS} steps passed`);

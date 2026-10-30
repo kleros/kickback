@@ -49,6 +49,9 @@ const errorStringAbi = parseAbi(["error Error(string)"]);
 export type LifecycleMode = "local" | "fork";
 export type StepResult = { scenario: string; name: string; ok: boolean; detail?: string; error?: string };
 export const LIFECYCLE_STEPS = 31;
+/** Steps whose guest and check-in lists are written into this file, not computed from a Luma or check-in CSV. */
+export const HAND_LISTED = "hand-listed: ";
+export const HAND_LISTED_STEPS = 3;
 
 class StepFailed extends Error {}
 
@@ -333,7 +336,7 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         },
       );
 
-      // stands in for verify-deposits.mjs on the Luma CSV (kickback-core checkGuests is not in this package)
+      // what kickback-core checkGuests would derive from the Luma CSV for these deposits
       const newStakers = [g1, g2, g3, g4, g5, g6, g7];
       const refunds = [g8];
       const returns: [Address, bigint][] = [
@@ -342,7 +345,7 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
       ];
       const unmatched: [Address, bigint][] = [[gStray, DEP]];
       await step(
-        "Deposited logs back the Luma check's lists: 7 to register, 1 to decline, 2 returns, 1 stray",
+        `${HAND_LISTED}Deposited logs match the lists: 7 to register, 1 to decline, 2 returns, 1 stray`,
         async () => {
           const logs = await pub.getContractEvents({
             address: K,
@@ -415,21 +418,23 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         equal(await pub.getBalance({ address: K }), DEP * 7n, "contract balance");
         equal(await kick().read.spare(), 0n, "spare");
       });
-      // stands in for the verify-deposits.mjs re-run
-      await step("nothing left to register, refund or return", async () => {
-        const c = kick();
-        for (const a of newStakers) equal(await c.read.status([a]), 1, `status(${a})`);
-        equal(await c.read.status([g8]), 3, "status(g8)");
-        const refundedTo = (
-          await pub.getContractEvents({ address: K, abi: kickbackAbi, eventName: "Refunded", fromBlock: deployBlock })
-        ).map((l) => [getAddress(l.args.to!), l.args.amount]);
-        equal(
-          JSON.stringify(refundedTo, (_k, v) => (typeof v === "bigint" ? String(v) : v)),
-          JSON.stringify([...returns, ...unmatched], (_k, v) => (typeof v === "bigint" ? String(v) : v)),
-          "Refunded events",
-        );
-        equal(await c.read.spare(), 0n, "spare");
-      });
+      await step(
+        `${HAND_LISTED}chain state matches the lists: nothing left to register, refund or return`,
+        async () => {
+          const c = kick();
+          for (const a of newStakers) equal(await c.read.status([a]), 1, `status(${a})`);
+          equal(await c.read.status([g8]), 3, "status(g8)");
+          const refundedTo = (
+            await pub.getContractEvents({ address: K, abi: kickbackAbi, eventName: "Refunded", fromBlock: deployBlock })
+          ).map((l) => [getAddress(l.args.to!), l.args.amount]);
+          equal(
+            JSON.stringify(refundedTo, (_k, v) => (typeof v === "bigint" ? String(v) : v)),
+            JSON.stringify([...returns, ...unmatched], (_k, v) => (typeof v === "bigint" ? String(v) : v)),
+            "Refunded events",
+          );
+          equal(await c.read.spare(), 0n, "spare");
+        },
+      );
       S1 = await test.snapshot();
 
       await step("postAttendance refused before eventStart (TooEarly)", async () => {
@@ -446,13 +451,18 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         assert(t >= EVENT_START, "chain time before eventStart");
         return `chain time ${new Date(Number(t) * 1000).toISOString()}`;
       });
-      // stands in for build-payout.mjs on the check-in export (kickback-core buildPayout is not in this package)
-      await step("payout plan: Ana, Ben, Cai, Dev checked in; share = previewShare(4) = pool / 4", async () => {
-        plan.share = await kick().read.previewShare([BigInt(plan.attendees.length)]);
-        equal(plan.share, (DEP * plan.stakers) / 4n, "share");
-        equal(await kick().read.stakerCount(), plan.stakers, "stakers");
-        return `share ${formatEther(plan.share)} ETH, no-shows 3`;
-      });
+      await step(
+        `${HAND_LISTED}payout plan: Ana, Ben, Cai, Dev checked in; share = previewShare(4) = pool / 4`,
+        async () => {
+          plan.share = await kick().read.previewShare([BigInt(plan.attendees.length)]);
+          equal(plan.share, (DEP * plan.stakers) / 4n, "share");
+          const stakers = await kick().read.stakerCount();
+          equal(stakers, plan.stakers, "stakers");
+          const noShows = newStakers.filter((a) => !plan.attendees.includes(a));
+          equal(BigInt(noShows.length), stakers - BigInt(plan.attendees.length), "no-shows");
+          return `share ${formatEther(plan.share)} ETH, no-shows ${noShows.length}`;
+        },
+      );
       await step("postAttendance with A, B, C (Eve, Fay, Gus) left off", async () => {
         await send(
           "postAttendance",

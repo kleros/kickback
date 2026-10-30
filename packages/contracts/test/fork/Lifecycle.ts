@@ -2,7 +2,7 @@ import { expect } from "chai";
 import hre from "hardhat";
 import type { EIP1193Provider } from "viem";
 
-import { LIFECYCLE_STEPS, runLifecycle } from "../../scripts/lifecycle";
+import { HAND_LISTED, HAND_LISTED_STEPS, LIFECYCLE_STEPS, runLifecycle } from "../../scripts/lifecycle";
 import { skipUnlessForked } from "./forked";
 
 describe("event lifecycle on a mainnet fork with Kleros's Dispute Resolver and KlerosLiquid", function () {
@@ -25,5 +25,6 @@ describe("event lifecycle on a mainnet fork with Kleros's Dispute Resolver and K
       lines.join("\n"),
     ).to.deep.equal([]);
     expect(results.length).to.equal(LIFECYCLE_STEPS);
+    expect(results.filter((r) => r.name.startsWith(HAND_LISTED))).to.have.length(HAND_LISTED_STEPS);
   });
 });
