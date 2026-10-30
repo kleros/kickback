@@ -35,14 +35,14 @@ describe("event details presentation", () => {
     expect(document.querySelector(".ed-cover")).toHaveAttribute("src", "blob:verified");
   });
 
-  it("does not create a map iframe until Show map is pressed", async () => {
+  it("shows the venue map on load, sandboxed and lazy", () => {
     render(<EventDetailsView {...props} />);
-    expect(document.querySelector("iframe")).toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Show map" }));
+    expect(screen.queryByRole("button", { name: "Show map" })).toBeNull();
     const map = screen.getByTitle("Map of Café & Hall #2");
     expect(map).toHaveAttribute("src", "https://www.google.com/maps?q=Caf%C3%A9%20%26%20Hall%20%232&output=embed");
     expect(map).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
     expect(map).toHaveAttribute("referrerpolicy", "no-referrer");
+    expect(map).toHaveAttribute("loading", "lazy");
   });
 
   it("hides empty parts and uses a plain link when a preview is unavailable", () => {
@@ -50,7 +50,7 @@ describe("event details presentation", () => {
       <EventDetailsView {...props} details={{ ...props.details, where: null, hosts: [] }} description="" links={[]} />,
     );
     expect(screen.getByRole("link", { name: /Open registration/ })).toHaveTextContent("luma.com");
-    expect(screen.queryByRole("button", { name: "Show map" })).toBeNull();
+    expect(document.querySelector("iframe")).toBeNull();
     expect(screen.queryByLabelText("Hosts")).toBeNull();
     expect(screen.queryByLabelText("Extra links")).toBeNull();
     expect(document.querySelector("img")).toBeNull();

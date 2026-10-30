@@ -14,7 +14,7 @@ const json = serializeEventInfo(
 );
 const infoPath = `/ipfs/${ipfsCidV0(json)}`;
 
-test("phone: verified poster, disclosure, preview and consent-only map", async ({ page }) => {
+test("phone: verified poster, disclosure, preview and map open on load", async ({ page }) => {
   const event = await deployOrganiserEvent("Poster dinner", 3600, {
     eventInfo: infoPath,
     details: { eventTitle: "Poster dinner", eventWhere: "Café & Hall #2", hosts: "Friends, Neighbours" },
@@ -43,9 +43,7 @@ test("phone: verified poster, disclosure, preview and consent-only map", async (
   await expect(details.getByText("Neighbours")).toBeVisible();
   await details.getByRole("button", { name: "Read more" }).click();
   await expect(details.getByRole("button", { name: "Read more" })).toHaveAttribute("aria-expanded", "true");
-  expect(mapRequests).toBe(0);
-  await expect(details.locator("iframe")).toHaveCount(0);
-  await details.getByRole("button", { name: "Show map" }).click();
+  await details.locator("iframe").scrollIntoViewIfNeeded();
   await expect(details.locator("iframe")).toHaveAttribute("sandbox", "allow-scripts allow-same-origin allow-popups");
   await expect(details.locator("iframe")).toHaveAttribute("referrerpolicy", "no-referrer");
   await expect.poll(() => mapRequests).toBe(1);

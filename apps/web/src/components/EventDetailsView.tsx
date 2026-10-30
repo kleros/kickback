@@ -1,10 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useState, type CSSProperties } from "react";
+import type { CSSProperties } from "react";
 
 import type { CaseEventDetails, EventInfoLink } from "@kickback/core";
-import { Button } from "react-aria-components";
 
 import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -21,21 +20,16 @@ export interface EventDetailsProps {
 }
 
 function Venue({ where }: { where: string }) {
-  const [show, setShow] = useState(false);
   const url = venueMap(where);
   return (
     <GlassCard as="section" className="ed-venue">
       <h3>Venue</h3>
       <p>{where}</p>
-      {url && !show && (
-        <Button className="kb-btn is-quiet" onPress={() => setShow(true)}>
-          Show map
-        </Button>
-      )}
-      {show && url && (
+      {url && (
         <iframe
           title={`Map of ${where}`}
           src={url}
+          loading="lazy"
           sandbox="allow-scripts allow-same-origin allow-popups"
           referrerPolicy="no-referrer"
         />
