@@ -36,3 +36,4 @@ coverage/
 # hardhat
 packages/contracts/artifacts/
 packages/contracts/cache/
+.claude/worktrees/
