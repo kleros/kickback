@@ -3,8 +3,7 @@
 import { forwardRef, type CSSProperties, type HTMLAttributes, type PointerEvent } from "react";
 
 import { cn } from "@/utils/cn";
-
-import { hasFinePointer } from "@/hooks/useReducedMotion";
+import { hasFinePointer } from "@/utils/media";
 
 export interface GlassCardProps extends HTMLAttributes<HTMLElement> {
   as?: "section" | "div" | "article";

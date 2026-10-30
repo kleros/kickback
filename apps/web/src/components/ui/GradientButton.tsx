@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import { Button, Link, type ButtonProps } from "react-aria-components";
+import { Button, type ButtonProps } from "react-aria-components";
 
 import { cn } from "@/utils/cn";
 
@@ -11,7 +11,7 @@ import { TextSwap } from "./TextSwap";
 
 export type ButtonGlyph = "ring" | "arc" | "success";
 
-interface CommonProps {
+export interface GradientButtonProps extends Omit<ButtonProps, "children" | "className"> {
   /** The label, which stays visible in every state and swaps in place when it changes. */
   children: string;
   wide?: boolean;
@@ -38,8 +38,6 @@ function Glyph({ glyph }: { glyph?: ButtonGlyph }) {
   );
 }
 
-export interface GradientButtonProps extends CommonProps, Omit<ButtonProps, "children" | "className"> {}
-
 /** The primary action: gradient fill, press scale, label swap, a spinner beside the label while busy. */
 export function GradientButton({ children, wide, className, glyph, icon, isPending, ...props }: GradientButtonProps) {
   return (
@@ -48,25 +46,5 @@ export function GradientButton({ children, wide, className, glyph, icon, isPendi
       <TextSwap>{children}</TextSwap>
       {icon}
     </Button>
-  );
-}
-
-export interface GradientLinkProps extends CommonProps {
-  href: string;
-  external?: boolean;
-}
-
-/** The primary action as a link, styled as the gradient button. */
-export function GradientLink({ children, wide, className, glyph, icon, href, external }: GradientLinkProps) {
-  return (
-    <Link
-      href={href}
-      className={cn("kb-btn", wide && "is-wide", className)}
-      {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-    >
-      <Glyph glyph={glyph} />
-      <TextSwap>{children}</TextSwap>
-      {icon}
-    </Link>
   );
 }

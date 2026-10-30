@@ -21,7 +21,4 @@ export const paths = {
   organise: {
     getHref: () => "/organise",
   },
-  devDepositStates: {
-    getHref: (state?: string) => `/dev/deposit-states${state ? `?state=${state}` : ""}`,
-  },
 } as const;

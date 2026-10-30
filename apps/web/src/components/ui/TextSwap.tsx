@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { prefersReducedMotion } from "@/hooks/useReducedMotion";
+import { prefersReducedMotion } from "@/utils/media";
 
 const EXIT_MS = 150;
 
