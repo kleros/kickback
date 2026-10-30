@@ -41,7 +41,7 @@ export function useVerifiedCover(cover: EventCover | undefined) {
   return loaded?.path === path ? loaded : undefined;
 }
 
-export function useEventDetails(event: KickbackEvent) {
+export function useEventInfo(event: KickbackEvent) {
   const details = useMemo(
     () => eventDetailsFromCase(renderCase(event.metaEvidenceTemplate, zeroAddress, event.contract)),
     [event.metaEvidenceTemplate, event.contract],
@@ -53,7 +53,12 @@ export function useEventDetails(event: KickbackEvent) {
     staleTime: Infinity,
     retry: false,
   });
-  const cover = useVerifiedCover(info.data?.cover);
+  return { details, info: info.data };
+}
+
+export function useEventDetails(event: KickbackEvent) {
+  const { details, info } = useEventInfo(event);
+  const cover = useVerifiedCover(info?.cover);
   const link = visibleLink(details.link);
   const preview = useQuery({
     queryKey: ["registration-preview", link?.href],
@@ -72,8 +77,8 @@ export function useEventDetails(event: KickbackEvent) {
   }, [tint]);
   return {
     details,
-    description: info.data?.description ?? "",
-    links: info.data?.links ?? [],
+    description: info?.description ?? "",
+    links: info?.links ?? [],
     coverUrl: cover?.url,
     preview: preview.data,
     tint,

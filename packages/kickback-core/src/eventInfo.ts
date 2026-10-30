@@ -1,3 +1,4 @@
+import { validateShare } from "./share";
 import { ipfsCidV0 } from "./caseText";
 import { KLEROS_IPFS_GATEWAY } from "./constants";
 
@@ -16,6 +17,7 @@ export interface EventInfoLink {
 export interface EventInfoDocument {
   version: 1;
   description: string;
+  share?: string;
   cover?: EventCover;
   links: EventInfoLink[];
 }
@@ -53,9 +55,10 @@ export function eventInfoLinkUrl(value: unknown): string {
   return raw;
 }
 export function validateEventInfo(input: unknown): EventInfoDocument {
-  const doc = record(input, ["version", "description", "cover", "links"]);
+  const doc = record(input, ["version", "description", "cover", "links", "share"]);
   if (doc.version !== 1) throw new Error("Unsupported event info version.");
   const description = plain(doc.description, 1200, true);
+  const share = doc.share === undefined ? undefined : validateShare(doc.share);
   if (!Array.isArray(doc.links) || doc.links.length > 3) throw new Error("Use at most 3 links.");
   const links = doc.links.map((item) => {
     const link = record(item, ["label", "url"]);
@@ -77,15 +80,17 @@ export function validateEventInfo(input: unknown): EventInfoDocument {
       throw new Error("Invalid cover path, image type or size (maximum 2 MB).");
     cover = { path: c.path, mime: c.mime as EventCover["mime"], bytes: c.bytes };
   }
-  return { version: 1, description, ...(cover ? { cover } : {}), links };
+  return { version: 1, description, ...(share ? { share } : {}), ...(cover ? { cover } : {}), links };
 }
 export function buildEventInfo(input: {
   description?: string;
+  share?: string;
   cover?: EventCover;
   links?: EventInfoLink[];
 }): EventInfoDocument {
   return validateEventInfo({
     version: 1,
+    ...(input.share ? { share: input.share.normalize("NFC").trim() } : {}),
     description: (input.description ?? "").normalize("NFC").trim(),
     ...(input.cover ? { cover: input.cover } : {}),
     links: (input.links ?? []).map((l) => ({ label: l.label.normalize("NFC").trim(), url: l.url.trim() })),
@@ -97,6 +102,7 @@ export function serializeEventInfo(input: EventInfoDocument): string {
     ...(d.cover ? { cover: { bytes: d.cover.bytes, mime: d.cover.mime, path: d.cover.path } } : {}),
     description: d.description,
     links: d.links.map((l) => ({ label: l.label, url: l.url })),
+    ...(d.share ? { share: d.share } : {}),
     version: d.version,
   });
 }

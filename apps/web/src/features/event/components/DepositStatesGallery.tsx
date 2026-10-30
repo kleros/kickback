@@ -1,6 +1,7 @@
 "use client";
 
 import { EventHead } from "./EventHead";
+import { ReceiptExtras } from "./ReceiptExtras";
 import { TicketCard, type TicketActions } from "./TicketCard";
 import { depositState } from "../model/depositState";
 import { GALLERY_STATES, galleryInput, type GalleryState } from "../model/fixtures";
@@ -18,14 +19,25 @@ const EVENT_START = 1_793_802_600;
 const IST = { offset: 330, zone: "IST" };
 
 function Card({ state }: { state: GalleryState }) {
+  const view = depositState(galleryInput(state));
   return (
-    <TicketCard
-      view={depositState(galleryInput(state))}
-      amount="0.01"
-      actions={ACTIONS}
-      verified={VERIFIED}
-      lumaUrl="https://luma.com/truth-pays"
-    />
+    <>
+      <TicketCard
+        view={view}
+        amount="0.01"
+        actions={ACTIONS}
+        verified={VERIFIED}
+        lumaUrl="https://luma.com/truth-pays"
+      />
+      <ReceiptExtras
+        view={view}
+        name="Truth Pays"
+        amount="0.01"
+        text="Join Truth Pays https://luma.com/truth-pays"
+        luma="https://luma.com/truth-pays"
+        guestLink={`/event/${VERIFIED.contract}`}
+      />
+    </>
   );
 }
 

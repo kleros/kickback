@@ -159,3 +159,27 @@ it("tints the aurora with the verified cover's dominant colour", async () => {
   await waitFor(() => expect(result.current.tint).toBe("rgb(220 50 40)"));
   expect(document.documentElement.style.getPropertyValue("--kb-route-tint")).toBe("rgb(220 50 40)");
 });
+
+it("uses the verified organiser template in the receipt with the guest URL and form details", async () => {
+  const { useReceiptShare } = await import("./useReceiptShare");
+  const json = serializeEventInfo(buildEventInfo({ share: "At {event} {venue} {date}: {luma} {guestLink}" }));
+  const path = `/ipfs/${ipfsCidV0(json)}`;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => new Response(json)),
+  );
+  const event = { ...fixture(path), lumaUrl: "https://luma.com/dinner" };
+  const { result } = renderHook(() => useReceiptShare(event, "42"), { wrapper: wrapper() });
+  await waitFor(() => expect(result.current.text).toMatch(/^At Dinner/));
+  expect(result.current.text).toContain("https://luma.com/dinner");
+  expect(result.current.guestLink).toBe(`${window.location.origin}/event/${event.contract}?from=42`);
+  expect(result.current.text).toContain(result.current.guestLink);
+});
+
+it("uses the default share text when old events have no info document", async () => {
+  const { useReceiptShare } = await import("./useReceiptShare");
+  const { result } = renderHook(() => useReceiptShare(fixture(null)), { wrapper: wrapper() });
+  expect(result.current.text).toContain("I just locked my spot at Dinner");
+  expect(result.current.text).toContain("https://luma.com/dinner");
+  expect(fetch).not.toHaveBeenCalled();
+});

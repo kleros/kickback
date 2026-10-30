@@ -12,11 +12,13 @@ import { HOW_IT_WORKS_ID } from "@/config/paths";
 import { EventDetails } from "./EventDetails";
 import { EventHead } from "./EventHead";
 import { HowItWorks } from "./HowItWorks";
+import { ReceiptExtras } from "./ReceiptExtras";
 import { Refusal } from "./Refusal";
 import { TicketCard } from "./TicketCard";
 import { TicketSkeleton } from "./TicketSkeleton";
 import { EventRefused, usePreviewShare, useEvent, type KickbackEvent } from "../api/useEvent";
 import { useDepositState } from "../hooks/useDepositState";
+import { useReceiptShare } from "../hooks/useReceiptShare";
 import { ethText } from "../model/depositState";
 import { shareExample } from "../model/share";
 
@@ -24,6 +26,7 @@ const COURT = courtName(DEFAULT_CHAIN_ID);
 
 function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const ticket = useRef<HTMLElement>(null);
+  const share = useReceiptShare(event, from);
   const controller = useDepositState(event, fromBlockFor(event.contract, from));
   const amount = ethText(event.depositAmount);
   const example0 = shareExample(event.depositAmount, event.stakerCount);
@@ -62,6 +65,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
             court: COURT,
           }}
         />
+        <ReceiptExtras view={controller.view} name={event.eventName} amount={amount} {...share} />
       </div>
       <EventDetails key={event.contract} event={event} />
       <HowItWorks

@@ -20,6 +20,7 @@ vi.mock("../../api/useEvent", () => ({
   }),
   usePreviewShare: () => ({}),
 }));
+vi.mock("../../hooks/useReceiptShare", () => ({ useReceiptShare: () => ({ text: "", luma: "", guestLink: "" }) }));
 vi.mock("../../hooks/useDepositState", () => ({ useDepositState: () => ({ view: { key: "ready" } }) }));
 vi.mock("../EventHead", () => ({ EventHead: () => null }));
 vi.mock("../TicketCard", () => ({

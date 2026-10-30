@@ -10,3 +10,4 @@ export * from "./lists";
 export * from "./errorText";
 export * from "./eventInfo";
 export * from "./eventDetails";
+export * from "./share";

@@ -125,3 +125,14 @@ describe("event info pin transport", () => {
     }
   });
 });
+
+it("pins a share-only document and refuses an unpinned share before deployment", async () => {
+  const input = { ...form, share: "Join {event}: {luma}" };
+  const pin = vi.fn(async (bytes: Uint8Array) => `/ipfs/${ipfsCidV0(bytes)}`);
+  const info = await pinEventInfo(input, { pin });
+  expect(pin).toHaveBeenCalledOnce();
+  expect(info?.document.share).toBe(input.share);
+  expect(info?.json).toContain('"share":"Join {event}: {luma}"');
+  expect(() => createDeployment(input, { chainId: 1 }, owner, policyURI, 0)).toThrow("Pin");
+  await expect(pinEventInfo({ ...input, share: "{wallet}" }, { pin })).rejects.toThrow();
+});

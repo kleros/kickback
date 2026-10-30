@@ -67,7 +67,10 @@ const withRpc = <T extends Chain>(chain: T, url: string): T => ({
 
 export const LOCAL_CHAIN = withRpc(hardhat, LOCAL_RPC_URL);
 
-export const MAINNET_CHAIN = withRpc(mainnet, MAINNET_RPC_URL);
+export const MAINNET_CHAIN = {
+  ...withRpc(mainnet, MAINNET_RPC_URL),
+  blockExplorers: isDevWalletOnly ? undefined : mainnet.blockExplorers,
+};
 
 export const SEPOLIA_CHAIN = withRpc(sepolia, SEPOLIA_RPC_URL);
 

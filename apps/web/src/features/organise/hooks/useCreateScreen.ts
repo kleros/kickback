@@ -42,6 +42,7 @@ export function initialForm(now = new Date()): CreateFormValues {
   const end = new Date(start);
   end.setHours(22);
   return {
+    share: "",
     description: "",
     links: "",
     title: "",
@@ -82,6 +83,11 @@ export function formErrors(form: CreateFormValues, cover?: File): Record<string,
   for (const issue of parsed.issues) {
     const key = issue.path?.[0]?.key;
     if (typeof key !== "string") {
+      try {
+        buildEventInfo({ share: form.share });
+      } catch {
+        errors.share = "Use up to 280 plain-text characters and only {event}, {date}, {venue}, {luma}, {guestLink}.";
+      }
       try {
         buildEventInfo({ description: form.description });
       } catch {

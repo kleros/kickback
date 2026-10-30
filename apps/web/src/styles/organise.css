@@ -334,6 +334,12 @@
 .og-link-row:last-child {
   border-bottom: 0;
 }
+.og-create > * {
+  min-width: 0;
+}
+.og-link-row .kb-icon-btn {
+  flex-shrink: 0;
+}
 .og-link-row .og-mono {
   min-width: 0;
   overflow: hidden;
@@ -636,6 +642,7 @@
 /* ---------- create: form beside the preview from 1024 ---------- */
 .og-create {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
 }
 @media (min-width: 1024px) {

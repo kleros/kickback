@@ -26,7 +26,7 @@ export function eventInfoTransport(fetcher: typeof fetch = globalThis.fetch) {
 }
 export async function pinEventInfo(input: unknown, transport = eventInfoTransport()) {
   const form = parseCreateForm(input);
-  if (!form.description && !form.links.length && !form.cover) return null;
+  if (!form.description && !form.links.length && !form.cover && !form.share) return null;
   let cover: EventCover | undefined;
   if (form.cover) {
     const bytes = new Uint8Array(await form.cover.arrayBuffer());
@@ -41,7 +41,7 @@ export async function pinEventInfo(input: unknown, transport = eventInfoTranspor
       throw new Error("The cover is not the selected image type.");
     cover = { path: await transport.pin(bytes, mime, "cover"), mime, bytes: bytes.length };
   }
-  const document = buildEventInfo({ description: form.description, links: form.links, cover });
+  const document = buildEventInfo({ description: form.description, links: form.links, share: form.share, cover });
   const json = serializeEventInfo(document);
   const path = await transport.pin(new TextEncoder().encode(json), "application/json", "event-info.json");
   return { path, document, json };

@@ -90,6 +90,10 @@ test.describe("organiser", () => {
     await expect(page.getByTestId("deployed")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("browser-events")).toContainText("Rehearsal");
     await shoot(page, "create-deployed");
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await expect(page.getByRole("button", { name: "Copy guest link" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy organiser link" })).toBeVisible();
 
     const guestLink = (await page.getByTestId("guest-link").textContent())!;
     const address = /\/event\/(0x[0-9a-fA-F]{40})/.exec(guestLink)![1]!;

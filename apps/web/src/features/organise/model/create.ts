@@ -23,6 +23,20 @@ import { GENERIC_POLICY_TEXT } from "./policy";
 const text = (max: number) => v.pipe(v.string(), v.trim(), v.minLength(1, "Please fill this in."), v.maxLength(max));
 export const createEventSchema = v.pipe(
   v.object({
+    share: v.optional(
+      v.pipe(
+        v.string(),
+        v.check((share) => {
+          try {
+            buildEventInfo({ share });
+            return true;
+          } catch {
+            return false;
+          }
+        }, "Use up to 280 plain-text characters and only {event}, {date}, {venue}, {luma}, {guestLink}."),
+      ),
+      "",
+    ),
     description: v.optional(v.string(), ""),
     links: v.optional(v.array(v.object({ label: v.string(), url: v.string() })), []),
     cover: v.optional(
@@ -53,7 +67,7 @@ export const createEventSchema = v.pipe(
   }),
   v.check((form) => {
     try {
-      buildEventInfo({ description: form.description, links: form.links });
+      buildEventInfo({ description: form.description, links: form.links, share: form.share });
       return true;
     } catch {
       return false;
@@ -63,8 +77,8 @@ export const createEventSchema = v.pipe(
 export type CreateEventForm = v.InferOutput<typeof createEventSchema>;
 export function parseCreateForm(input: unknown): CreateEventForm {
   const form = v.parse(createEventSchema, input);
-  const info = buildEventInfo({ description: form.description, links: form.links });
-  return { ...form, description: info.description, links: info.links };
+  const info = buildEventInfo({ description: form.description, links: form.links, share: form.share });
+  return { ...form, description: info.description, links: info.links, share: info.share ?? "" };
 }
 const SAMPLE_OWNER: Address = "0x1111111111111111111111111111111111111111";
 const SAMPLE_WALLET: Address = "0x2222222222222222222222222222222222222222";
@@ -129,7 +143,7 @@ export function createDeployment(
   infoPath: string | null = null,
 ) {
   const form = parseCreateForm(input);
-  if ((form.description || form.links.length || form.cover) && !infoPath)
+  if ((form.description || form.links.length || form.cover || form.share) && !infoPath)
     throw new Error("Pin the event details before deploying.");
   const config = createConfig(input, { ...network, kleros: { ...network.kleros, policyURI } }, owner, infoPath);
   if (config.eventStartTs! <= now) throw new Error("The event must start in the future.");

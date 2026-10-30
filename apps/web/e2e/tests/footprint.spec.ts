@@ -19,6 +19,16 @@ for (const width of [375, 1280] as const)
     const first = heights[0]![1];
     for (const [state, height] of heights) expect.soft(height, `${state}`).toBeCloseTo(first, 1);
 
+    for (const state of ["done", "already"]) {
+      const receipt = page.locator(`[data-gallery-state="${state}"]`);
+      await expect(receipt.getByTestId("share-row")).toBeVisible();
+      await expect(receipt.getByTestId("qr-stub")).toBeVisible();
+      const ticket = await receipt.getByTestId("ticket").boundingBox();
+      const extras = await receipt.getByTestId("receipt-extras").boundingBox();
+      expect(extras!.y).toBeGreaterThanOrEqual(ticket!.y + ticket!.height);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+
     // no status line is cut off at this width
     const clipped = await page
       .locator(".tk-slot p, .tk-foot, .tk-rcpt .v")

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 
 import { EventScreen } from "@/features/event";
+import { eventCardMetadata } from "@/features/event/operations/openGraph";
+import { serverEventCard } from "@/features/event/operations/serverEventCard";
 
-export const metadata: Metadata = {
-  title: "Event | Kickback",
-};
+export async function generateMetadata({ params }: { params: { contract: string } }): Promise<Metadata> {
+  return eventCardMetadata(await serverEventCard(params.contract), params.contract);
+}
 
 export default function EventPage({
   params,

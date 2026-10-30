@@ -160,3 +160,15 @@ it("opens the recorded Sepolia sample event and its deployment block", async () 
   });
   expect(fromBlockFor(DEFAULT_EVENT.contract, undefined)).toBe(testnets.sepolia.sampleEvent.deployBlock);
 });
+
+it.each([
+  ["mainnet", "https://etherscan.io"],
+  ["sepolia", "https://sepolia.etherscan.io"],
+  ["hardhat", undefined],
+  ["mainnet-fork", undefined],
+])("uses only a real explorer for %s receipts", async (mode, explorer) => {
+  vi.stubEnv("NEXT_PUBLIC_CHAIN", mode);
+  vi.stubEnv("NEXT_PUBLIC_MAINNET_RPC", "");
+  const { DEFAULT_CHAIN } = await import("../chains");
+  expect(DEFAULT_CHAIN.blockExplorers?.default.url).toBe(explorer);
+});

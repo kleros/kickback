@@ -14,6 +14,7 @@ import { paths } from "@/config/paths";
 import { BrowserEvents } from "./BrowserEvents";
 import { ConfirmDialog, ErrorLine, Primary } from "./parts";
 import { useCreateScreen, type CreateFormValues, type CreateScreenModel } from "../hooks/useCreateScreen";
+import { createSharePreview } from "../model/sharePreview";
 import { caseView, shortHex } from "../model/view";
 
 export interface FieldSpec {
@@ -42,6 +43,13 @@ export const CREATE_FIELDS: readonly FieldSpec[] = [
     type: "textarea",
     full: true,
     hint: "Up to 3 lines: Label | https://example.com",
+  },
+  {
+    name: "share",
+    label: "Share template",
+    type: "textarea",
+    full: true,
+    hint: "Optional. Up to 280 characters after filling. Use {event}, {date}, {venue}, {luma}, {guestLink}.",
   },
   { name: "shortName", label: "Short name", hint: "Shown to guests and in the contract" },
   { name: "venue", label: "Venue" },
@@ -114,6 +122,18 @@ export function CreateForm({
                 inputMode={field.inputMode}
                 onChange={(event) => onChange(field.name, event.currentTarget.value)}
               />
+            )}
+            {field.name === "share" && (
+              <div
+                className="og-note"
+                aria-live="polite"
+                data-testid="share-preview"
+                style={{ overflowWrap: "anywhere" }}
+              >
+                <strong>Share preview</strong>
+                <p>{createSharePreview(values)}</p>
+                <p>The guest link is available after deployment.</p>
+              </div>
             )}
             {(error || field.hint) && (
               <span id={`${id}-note`} className={error ? "og-err" : "og-note"}>
