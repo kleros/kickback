@@ -7,9 +7,10 @@ import { getChainId } from "viem/actions";
 import { useAccount } from "wagmi";
 import { useStore } from "zustand";
 
+import { MOCK_CONNECTOR_ID } from "@/lib/web3/mock-account";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
-import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { DEFAULT_CHAIN_ID, isDevWalletOnly } from "@/config/chains";
 
 import { sendLock } from "./lock";
 import { sendTx, type SendArgs, type SendDeps, type SendWallet } from "./send";
@@ -35,6 +36,7 @@ const publicClient = () => {
 
 const wagmiWallet: SendWallet = {
   getAddress: () => getAccount(wagmiConfig).address,
+  isDevWallet: () => getAccount(wagmiConfig).connector?.id === MOCK_CONNECTOR_ID,
   getChainId: async () => getChainId(await getConnectorClient(wagmiConfig)),
   sendTransaction: (request) => sendTransaction(wagmiConfig, request),
 };
@@ -59,6 +61,7 @@ export function useSend({ errorText, gasLimitFor, record = false, onSuccess }: U
           errorText: errorText ?? stub.errorText,
           gasLimitFor: gasLimitFor ?? stub.gasLimitFor,
           sent: record ? sentTxStore : undefined,
+          devWalletOnly: isDevWalletOnly,
         },
         args,
       ),

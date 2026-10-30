@@ -10,9 +10,14 @@ const ALICE: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 const BOB: Address = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 const EVENT: Address = "0xd5c6A73c05FA431c748781DaBAA99Fe2590d677D";
 const HASH: Hash = `0x${"ab".repeat(32)}`;
+const REPLACEMENT: Hash = `0x${"ef".repeat(32)}`;
 const DEPOSIT = { to: EVENT, data: "0xd0e30db0", value: 10n ** 16n } as const;
 
-const receipt = (status: "success" | "reverted") => ({ status, transactionHash: HASH }) as TransactionReceipt;
+const receipt = (status: "success" | "reverted", transactionHash: Hash = HASH) =>
+  ({ status, transactionHash }) as TransactionReceipt;
+
+type ReplacedReason = "cancelled" | "replaced" | "repriced";
+type WaitArgs = { hash: Hash; timeout?: number; onReplaced?: (replacement: { reason: ReplacedReason }) => void };
 
 function memoryStorage() {
   const map = new Map<string, string>();
@@ -25,7 +30,9 @@ function memoryStorage() {
 }
 
 /** A fake chain and wallet that log every call, in order. */
-function setup(overrides: { estimate?: bigint; walletChain?: number; status?: "success" | "reverted" } = {}) {
+function setup(
+  overrides: { estimate?: bigint; walletChain?: number; status?: "success" | "reverted"; devWallet?: boolean } = {},
+) {
   const calls: string[] = [];
   let account: Address | undefined = ALICE;
   const client = {
@@ -37,18 +44,19 @@ function setup(overrides: { estimate?: bigint; walletChain?: number; status?: "s
       calls.push("estimateGas");
       return overrides.estimate ?? 100_000n;
     }),
-    getTransactionCount: vi.fn(async () => {
+    getTransactionCount: vi.fn(async (_args: { address: Address; blockTag: string }) => {
       calls.push("getTransactionCount");
       return 3;
     }),
-    getTransaction: vi.fn(async () => ({ nonce: 3 })),
-    waitForTransactionReceipt: vi.fn(async () => {
+    getTransaction: vi.fn(async (_args: { hash: Hash }) => ({ nonce: 3 })),
+    waitForTransactionReceipt: vi.fn(async (_args: WaitArgs) => {
       calls.push("waitForTransactionReceipt");
       return receipt(overrides.status ?? "success");
     }),
   };
   const wallet = {
     getAddress: vi.fn(() => account),
+    isDevWallet: vi.fn(() => overrides.devWallet ?? false),
     getChainId: vi.fn(async () => {
       calls.push("getChainId");
       return overrides.walletChain ?? 1;
@@ -116,17 +124,26 @@ describe("gas", () => {
     expect(gasLimitFor(100_000n)).toBe(130_000n);
   });
 
-  it("never exceeds 2^24 (EIP-7825), however large the estimate", async () => {
+  it("an estimate whose +30% passes 2^24 (EIP-7825) is refused, not sent with a clamped limit", async () => {
     expect(TX_GAS_CAP).toBe(2n ** 24n);
     const { deps, prepare, wallet } = setup({ estimate: 15_000_000n });
-    await sendTx(deps, { prepare });
-    expect(wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: 16_777_216n }));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "refused",
+      message: expect.stringMatching(/about 15,000,000 gas.*16,777,216/),
+    });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
 
-  it("is exactly the cap at the largest estimate the 30% margin fits under it", () => {
-    const fits = (TX_GAS_CAP * 10n) / 13n;
+  it("the largest estimate the 30% margin fits under 2^24 is sent, at or below the cap", async () => {
+    // largest e with floor(e * 13 / 10) <= 2^24
+    const fits = ((TX_GAS_CAP + 1n) * 10n - 1n) / 13n;
+    const { deps, prepare, wallet } = setup({ estimate: fits });
+    await sendTx(deps, { prepare });
+    expect(wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: gasLimitFor(fits) }));
     expect(gasLimitFor(fits)).toBeLessThanOrEqual(TX_GAS_CAP);
-    expect(gasLimitFor(fits + 1_000n)).toBe(TX_GAS_CAP);
+
+    const over = setup({ estimate: fits + 1n });
+    await expect(sendTx(over.deps, { prepare: over.prepare })).rejects.toMatchObject({ kind: "refused" });
   });
 });
 
@@ -145,6 +162,35 @@ describe("refusals before the wallet prompt", () => {
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it("an estimate that fails is put in plain words and nothing is sent", async () => {
+    const { client, deps, prepare, wallet } = setup();
+    client.estimateGas.mockRejectedValueOnce(new Error("out of gas"));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "refused",
+      message: "This would fail, so nothing was sent: plain words for out of gas",
+    });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("only the dev wallet may send when the chain is a local fork answering as mainnet", async () => {
+    const real = setup();
+    await expect(sendTx({ ...real.deps, devWalletOnly: true }, { prepare: real.prepare })).rejects.toMatchObject({
+      kind: "wrong-chain",
+    });
+    expect(real.wallet.sendTransaction).not.toHaveBeenCalled();
+
+    const dev = setup({ devWallet: true });
+    await expect(sendTx({ ...dev.deps, devWalletOnly: true }, { prepare: dev.prepare })).resolves.toMatchObject({
+      status: "success",
+    });
+  });
+
+  it("a real wallet sends when the chain is not a fork", async () => {
+    const { deps, prepare, wallet } = setup();
+    await sendTx(deps, { prepare });
+    expect(wallet.sendTransaction).toHaveBeenCalled();
+  });
+
   it("a wallet on another chain is refused after the dry run, right before the prompt", async () => {
     const { deps, prepare, wallet } = setup({ walletChain: 31337 });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "wrong-chain" });
@@ -159,8 +205,25 @@ describe("refusals before the wallet prompt", () => {
       return DEPOSIT;
     });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "account-changed" });
+    expect(setupResult.client.call).not.toHaveBeenCalled();
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
+
+  it.each(["call", "estimateGas", "getChainId"] as const)(
+    "an account switched during %s is refused right before the prompt",
+    async (step) => {
+      const setupResult = setup();
+      const { client, deps, prepare, wallet } = setupResult;
+      const mocked = step === "getChainId" ? wallet.getChainId : client[step];
+      const original = mocked.getMockImplementation()!;
+      mocked.mockImplementationOnce(async (...args: never[]) => {
+        setupResult.switchTo(BOB);
+        return (original as (...a: never[]) => Promise<never>)(...args);
+      });
+      await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "account-changed" });
+      expect(wallet.sendTransaction).not.toHaveBeenCalled();
+    },
+  );
 
   it("no connected account: refused before anything is read", async () => {
     const { deps, prepare, switchTo } = setup();
@@ -255,5 +318,102 @@ describe("the pending record", () => {
     await sendTx({ ...deps, sent: undefined }, { prepare });
     expect(storage.map.size).toBe(0);
     expect(client.getTransactionCount).not.toHaveBeenCalled();
+  });
+});
+
+describe("the receipt", () => {
+  it("is waited for with the caller's timeout, or five minutes", async () => {
+    const own = setup();
+    await sendTx({ ...own.deps, receiptTimeoutMs: 42 }, { prepare: own.prepare });
+    expect(own.client.waitForTransactionReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ hash: HASH, timeout: 42 }),
+    );
+
+    const fallback = setup();
+    await sendTx(fallback.deps, { prepare: fallback.prepare });
+    expect(fallback.client.waitForTransactionReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ hash: HASH, timeout: 300_000 }),
+    );
+  });
+
+  it.each(["cancelled", "replaced"] as const)(
+    "a transaction the wallet %s is not reported sent, and its record is forgotten",
+    async (reason) => {
+      const { client, deps, prepare, storage } = setup();
+      client.waitForTransactionReceipt.mockImplementationOnce(async (args: WaitArgs) => {
+        args.onReplaced?.({ reason });
+        return receipt("success", REPLACEMENT);
+      });
+      await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "replaced", hash: HASH });
+      expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+    },
+  );
+
+  it("a receipt for another hash, with no reason given, is not reported sent", async () => {
+    const { client, deps, prepare } = setup();
+    client.waitForTransactionReceipt.mockResolvedValueOnce(receipt("success", REPLACEMENT));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "replaced" });
+  });
+
+  it("a sped-up copy (same call, higher fee) is the same action: its receipt is returned and recorded", async () => {
+    const { client, deps, prepare, storage } = setup();
+    client.waitForTransactionReceipt.mockImplementationOnce(async (args: WaitArgs) => {
+      args.onReplaced?.({ reason: "repriced" });
+      return receipt("success", REPLACEMENT);
+    });
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ transactionHash: REPLACEMENT });
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toMatchObject({ hash: REPLACEMENT });
+  });
+
+  it("a sped-up copy that reverts is reported failed under its own hash", async () => {
+    const { client, deps, prepare, storage } = setup();
+    client.waitForTransactionReceipt.mockImplementationOnce(async (args: WaitArgs) => {
+      args.onReplaced?.({ reason: "repriced" });
+      return receipt("reverted", REPLACEMENT);
+    });
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "reverted", hash: REPLACEMENT });
+    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+  });
+});
+
+describe("the recorded nonce", () => {
+  const storedNonce = (storage: ReturnType<typeof memoryStorage>) =>
+    (JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null") as { nonce: number | null } | null)?.nonce;
+
+  it("is the account's next nonce counting its queued transactions", async () => {
+    const { client, deps, prepare } = setup();
+    await sendTx(deps, { prepare });
+    expect(client.getTransactionCount).toHaveBeenCalledWith({ address: ALICE, blockTag: "pending" });
+  });
+
+  it("is corrected to the transaction's own nonce once the network knows it", async () => {
+    const { client, deps, prepare, storage } = setup();
+    client.getTransaction.mockResolvedValueOnce({ nonce: 5 });
+    await sendTx(deps, { prepare });
+    await vi.waitFor(() => expect(storedNonce(storage)).toBe(5));
+  });
+
+  it("a late answer about this send leaves a newer send's record alone", async () => {
+    const { client, deps, prepare, sent, storage } = setup();
+    let answer!: (value: { nonce: number }) => void;
+    client.getTransaction.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
+    await sendTx(deps, { prepare });
+    const newer = { hash: REPLACEMENT, account: ALICE, contract: EVENT, chainId: 1, at: 2_000, nonce: 4 };
+    sent.save(newer);
+    answer({ nonce: 9 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toEqual(newer);
+  });
+
+  it("a nonce that cannot be read leaves it unknown and the send goes ahead", async () => {
+    const { client, deps, prepare, storage } = setup();
+    client.getTransactionCount.mockRejectedValueOnce(new Error("429"));
+    let seen: number | null | undefined;
+    client.waitForTransactionReceipt.mockImplementationOnce(async () => {
+      seen = storedNonce(storage);
+      return receipt("success");
+    });
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
+    expect(seen).toBeNull();
   });
 });

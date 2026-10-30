@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 beforeEach(() => {
   vi.resetModules();
@@ -29,6 +29,7 @@ describe("chain per mode", () => {
     t.expect(chains.DEFAULT_CHAIN_ID).toBe(31337);
     t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["http://127.0.0.1:8555"]);
     t.expect(chains.isDevWalletEnabled).toBe(true);
+    t.expect(chains.isDevWalletOnly).toBe(false);
   });
 
   it("mainnet: chainId 1 on MEV Blocker unless overridden, no dev wallet", async (t) => {
@@ -37,7 +38,27 @@ describe("chain per mode", () => {
     t.expect(chains.DEFAULT_CHAIN_ID).toBe(1);
     t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["https://rpc.mevblocker.io"]);
     t.expect(chains.isDevWalletEnabled).toBe(false);
+    t.expect(chains.isDevWalletOnly).toBe(false);
   });
+
+  it("mainnet: an empty env RPC, as .env.example ships it, keeps the default", async (t) => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet");
+    vi.stubEnv("NEXT_PUBLIC_MAINNET_RPC", "");
+    const chains = await import("../chains");
+    t.expect(chains.MAINNET_RPC_URL).toBe("https://rpc.mevblocker.io");
+    t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["https://rpc.mevblocker.io"]);
+  });
+
+  it.each(["https://localhost.example.com", "https://rpc.example.org/127.0.0.1"])(
+    "mainnet on %s, a remote host that names a local one, gets no dev wallet",
+    async (url) => {
+      vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet");
+      vi.stubEnv("NEXT_PUBLIC_MAINNET_RPC", url);
+      const chains = await import("../chains");
+      expect(chains.MAINNET_RPC_URL).toBe(url);
+      expect(chains.isDevWalletEnabled).toBe(false);
+    },
+  );
 
   it("mainnet: the env RPC replaces the default", async (t) => {
     vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet");
@@ -52,6 +73,7 @@ describe("chain per mode", () => {
     t.expect(chains.DEFAULT_CHAIN_ID).toBe(1);
     t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["http://127.0.0.1:8545"]);
     t.expect(chains.isDevWalletEnabled).toBe(true);
+    t.expect(chains.isDevWalletOnly).toBe(true);
   });
 });
 
@@ -64,5 +86,16 @@ describe("rpcTimeoutMs", () => {
   it("keeps the client's own timeout on a public endpoint", async (t) => {
     const { rpcTimeoutMs } = await import("../chains");
     t.expect(rpcTimeoutMs("https://rpc.mevblocker.io")).toBeUndefined();
+  });
+
+  it("keeps it on a remote host whose name or path merely contains a local one", async (t) => {
+    const { rpcTimeoutMs } = await import("../chains");
+    for (const url of [
+      "https://localhost.example.com",
+      "https://rpc.example.org/127.0.0.1",
+      "http://127.0.0.1.nip.io",
+    ]) {
+      t.expect(rpcTimeoutMs(url)).toBeUndefined();
+    }
   });
 });

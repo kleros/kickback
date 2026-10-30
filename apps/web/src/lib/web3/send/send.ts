@@ -1,7 +1,16 @@
-import { isAddressEqual, type Address, type Hash, type Hex, type PublicClient, type TransactionReceipt } from "viem";
+import {
+  isAddressEqual,
+  type Address,
+  type Hash,
+  type Hex,
+  type PublicClient,
+  type ReplacementReason,
+  type TransactionReceipt,
+} from "viem";
 
 import { acquireSendLock, releaseSendLock } from "./lock";
 import type { SentTxStore } from "./sentTx";
+import { TX_GAS_CAP } from "./stubs";
 
 export interface TxRequest {
   to: Address;
@@ -19,6 +28,8 @@ export interface PinnedTxRequest extends Required<TxRequest> {
 export interface SendWallet {
   /** The account connected right now, or undefined. */
   getAddress(): Address | undefined;
+  /** Whether this is the app's dev wallet, which signs through the app's own RPC. */
+  isDevWallet(): boolean;
   /** The chain the wallet is on, asked of the wallet itself. */
   getChainId(): Promise<number>;
   sendTransaction(request: PinnedTxRequest): Promise<Hash>;
@@ -41,6 +52,11 @@ export interface SendDeps {
   now?: () => number;
   /** How long to wait for the receipt before reporting it unconfirmed. Ethereum: about 25 blocks. */
   receiptTimeoutMs?: number;
+  /**
+   * Refuse every wallet but the dev wallet: on a local fork answering as chainId 1, any other wallet passes
+   * the chain check and broadcasts to the real Ethereum.
+   */
+  devWalletOnly?: boolean;
 }
 
 export interface SendArgs {
@@ -49,7 +65,15 @@ export interface SendArgs {
 }
 
 export type SendErrorKind =
-  "busy" | "no-account" | "account-changed" | "refused" | "wrong-chain" | "wallet" | "reverted" | "unconfirmed";
+  | "busy"
+  | "no-account"
+  | "account-changed"
+  | "refused"
+  | "wrong-chain"
+  | "wallet"
+  | "reverted"
+  | "replaced"
+  | "unconfirmed";
 
 export class SendError extends Error {
   override name = "SendError";
@@ -112,12 +136,22 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
       cause: error,
     });
   }
+  if ((estimate * 13n) / 10n > TX_GAS_CAP) {
+    throw new SendError(
+      "refused",
+      `This would need about ${estimate.toLocaleString("en")} gas, too close to the ` +
+        `${TX_GAS_CAP.toLocaleString("en")} one Ethereum transaction may use, so nothing was sent.`,
+    );
+  }
 
   // the wallet's next nonce: a later transaction using it while this one never landed means it was replaced
   const nonce = sent
     ? await client.getTransactionCount({ address: account, blockTag: "pending" }).catch(() => null)
     : null;
 
+  if (deps.devWalletOnly && !wallet.isDevWallet()) {
+    throw new SendError("wrong-chain", "This app runs on a local copy of Ethereum: send with the dev wallet only.");
+  }
   // read last, right before the prompt; pinned on the request too, so the wallet refuses any other chain
   if ((await wallet.getChainId()) !== chainId) {
     throw new SendError("wrong-chain", "Your wallet is on another network. Switch back and try again.");
@@ -145,10 +179,12 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
   }
 
   let receipt: TransactionReceipt;
+  let replacedBecause: ReplacementReason | undefined;
   try {
     receipt = await client.waitForTransactionReceipt({
       hash,
       timeout: deps.receiptTimeoutMs ?? DEFAULT_RECEIPT_TIMEOUT_MS,
+      onReplaced: (replacement) => (replacedBecause = replacement.reason),
     });
   } catch (error) {
     throw new SendError(
@@ -159,9 +195,20 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
     );
   }
 
+  // viem resolves with whatever transaction took this one's nonce; only a fee bump is the same call
+  const minedHash = receipt.transactionHash;
+  if (minedHash !== hash) {
+    if (replacedBecause !== "repriced") {
+      sent?.forget(chainId, tx.to, hash);
+      throw new SendError("replaced", "Your wallet cancelled or replaced this transaction, so it was not done.", hash);
+    }
+    const current = sent?.read(chainId, tx.to, account);
+    if (current?.hash === hash) sent?.save({ ...current, hash: minedHash });
+  }
+
   if (receipt.status !== "success") {
-    sent?.forget(chainId, tx.to, hash);
-    throw new SendError("reverted", "It didn't go through on-chain. Only the network fee was spent.", hash);
+    sent?.forget(chainId, tx.to, minedHash);
+    throw new SendError("reverted", "It didn't go through on-chain. Only the network fee was spent.", minedHash);
   }
   return receipt;
 }

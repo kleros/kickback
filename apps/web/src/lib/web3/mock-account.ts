@@ -7,6 +7,9 @@ import { isAddress, type Address } from "viem";
 /** Mock wiring is compiled out of production builds entirely. */
 export const isMockWalletEnabled = process.env.NODE_ENV !== "production";
 
+/** wagmi's `mock` connector's id. */
+export const MOCK_CONNECTOR_ID = "mock";
+
 /** Hardhat's deterministic accounts. Private keys live in e2e/utils/accounts.ts. */
 export const MOCK_ACCOUNTS = {
   alice: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",

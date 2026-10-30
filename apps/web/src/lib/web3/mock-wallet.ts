@@ -3,7 +3,13 @@ import { connect, disconnect, mock, type MockParameters } from "@wagmi/core";
 import { isUndefined } from "@/utils/is-undefined";
 
 import { withLocalSendTimeout } from "./localSends";
-import { isMockWalletEnabled, MOCK_ACCOUNTS, resolveMockAccount, type MockAccountRef } from "./mock-account";
+import {
+  isMockWalletEnabled,
+  MOCK_ACCOUNTS,
+  MOCK_CONNECTOR_ID,
+  resolveMockAccount,
+  type MockAccountRef,
+} from "./mock-account";
 import { wagmiConfig } from "./wagmi";
 
 declare global {
@@ -15,7 +21,7 @@ declare global {
   }
 }
 
-const isMock = (connector: { id: string }) => connector.id === "mock";
+const isMock = (connector: { id: string }) => connector.id === MOCK_CONNECTOR_ID;
 
 /**
  * Connects the app as `account` - a name from {@link MOCK_ACCOUNTS} or any address, without reloading.
