@@ -46,6 +46,7 @@ export interface SendDeps {
   chainId: number;
   /** Turns a revert or a wallet error into plain words. */
   errorText: (error: unknown) => string;
+  /** The gas limit sent for an estimate; a limit above TX_GAS_CAP refuses the send. */
   gasLimitFor: (estimate: bigint) => bigint;
   /** Where the sent transaction is recorded until it settles; omit to keep no record. */
   sent?: SentTxStore;
@@ -136,10 +137,11 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
       cause: error,
     });
   }
-  if ((estimate * 13n) / 10n > TX_GAS_CAP) {
+  const gas = gasLimitFor(estimate);
+  if (estimate > TX_GAS_CAP || gas > TX_GAS_CAP) {
     throw new SendError(
       "refused",
-      `This would need about ${estimate.toLocaleString("en")} gas, too close to the ` +
+      `This would need about ${estimate.toLocaleString("en")} gas, more than the ` +
         `${TX_GAS_CAP.toLocaleString("en")} one Ethereum transaction may use, so nothing was sent.`,
     );
   }
@@ -160,7 +162,7 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
 
   let hash: Hash;
   try {
-    hash = await wallet.sendTransaction({ ...tx, gas: gasLimitFor(estimate), chainId });
+    hash = await wallet.sendTransaction({ ...tx, gas, chainId });
   } catch (error) {
     throw new SendError("wallet", errorText(error), undefined, { cause: error });
   }

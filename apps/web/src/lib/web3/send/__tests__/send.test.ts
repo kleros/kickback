@@ -124,26 +124,36 @@ describe("gas", () => {
     expect(gasLimitFor(100_000n)).toBe(130_000n);
   });
 
-  it("an estimate whose +30% passes 2^24 (EIP-7825) is refused, not sent with a clamped limit", async () => {
+  it("an estimate whose +30% passes 2^24 (EIP-7825) is sent with the limit clamped to 2^24", async () => {
     expect(TX_GAS_CAP).toBe(2n ** 24n);
     const { deps, prepare, wallet } = setup({ estimate: 15_000_000n });
-    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
-      kind: "refused",
-      message: expect.stringMatching(/about 15,000,000 gas.*16,777,216/),
-    });
-    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
+    expect(wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: TX_GAS_CAP }));
   });
 
-  it("the largest estimate the 30% margin fits under 2^24 is sent, at or below the cap", async () => {
-    // largest e with floor(e * 13 / 10) <= 2^24
-    const fits = ((TX_GAS_CAP + 1n) * 10n - 1n) / 13n;
-    const { deps, prepare, wallet } = setup({ estimate: fits });
-    await sendTx(deps, { prepare });
-    expect(wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: gasLimitFor(fits) }));
-    expect(gasLimitFor(fits)).toBeLessThanOrEqual(TX_GAS_CAP);
+  it("an estimate at 2^24 is sent at 2^24; one above it cannot fit and is refused", async () => {
+    const at = setup({ estimate: TX_GAS_CAP });
+    await sendTx(at.deps, { prepare: at.prepare });
+    expect(at.wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: TX_GAS_CAP }));
 
-    const over = setup({ estimate: fits + 1n });
-    await expect(sendTx(over.deps, { prepare: over.prepare })).rejects.toMatchObject({ kind: "refused" });
+    const over = setup({ estimate: TX_GAS_CAP + 1n });
+    await expect(sendTx(over.deps, { prepare: over.prepare })).rejects.toMatchObject({
+      kind: "refused",
+      message: expect.stringMatching(/about 16,777,217 gas.*16,777,216/),
+    });
+    expect(over.wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("the limit sent is the injected gasLimitFor's, and one above 2^24 is refused", async () => {
+    const own = setup({ estimate: 1_000_000n });
+    await sendTx({ ...own.deps, gasLimitFor: (estimate) => estimate * 2n }, { prepare: own.prepare });
+    expect(own.wallet.sendTransaction).toHaveBeenCalledWith(expect.objectContaining({ gas: 2_000_000n }));
+
+    const big = setup({ estimate: 10_000_000n });
+    await expect(
+      sendTx({ ...big.deps, gasLimitFor: (estimate) => estimate * 2n }, { prepare: big.prepare }),
+    ).rejects.toMatchObject({ kind: "refused" });
+    expect(big.wallet.sendTransaction).not.toHaveBeenCalled();
   });
 });
 
