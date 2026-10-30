@@ -18,6 +18,7 @@ import { usePublicClient } from "wagmi";
 import { STALE_TIME } from "@/lib/query";
 
 import { DEFAULT_CHAIN_ID, isLocalChainEnabled } from "@/config/chains";
+import { knownLumaUrl } from "@/config/event";
 import { isKnownResolverOn } from "@/config/kleros";
 
 import { foldGuestLogs, type WalletDeposits } from "../model/guestLogs";
@@ -87,7 +88,7 @@ export function useEvent(contract: string) {
       return {
         ...info,
         clock: eventClock(caseText, info.eventStart),
-        lumaUrl: LUMA_RE.exec(caseText)?.[0],
+        lumaUrl: LUMA_RE.exec(caseText)?.[0] ?? knownLumaUrl(DEFAULT_CHAIN_ID, info.contract),
         stakerCount: Number(stakerCount),
       };
     },

@@ -59,7 +59,7 @@ export function useEventInfo(event: KickbackEvent) {
 export function useEventDetails(event: KickbackEvent) {
   const { details, info } = useEventInfo(event);
   const cover = useVerifiedCover(info?.cover);
-  const link = visibleLink(details.link);
+  const link = visibleLink(details.link ?? event.lumaUrl ?? null);
   const preview = useQuery({
     queryKey: ["registration-preview", link?.href],
     queryFn: () => fetchRegistrationPreview(link!.href),

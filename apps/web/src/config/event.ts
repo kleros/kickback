@@ -9,6 +9,14 @@ export const MAINNET_EVENT = {
   fromBlock: 26_290_226,
 } as const;
 
+/** Registration pages for events whose on-chain case template carries none (the live event predates the generic template's link). */
+const KNOWN_LUMA: Record<string, string> = {
+  [`1:${MAINNET_EVENT.contract.toLowerCase()}`]: "https://luma.com/qewnqhas",
+};
+
+export const knownLumaUrl = (chainId: number, contract: Address): string | undefined =>
+  KNOWN_LUMA[`${chainId}:${contract.toLowerCase()}`];
+
 /** Hardhat's first account. On a fresh node its first deployLocalEvent (two mocks, then the event) lands at nonce 2. */
 const HARDHAT_DEPLOYER: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 export const FIRST_LOCAL_EVENT = getContractAddress({ from: HARDHAT_DEPLOYER, nonce: 2n });
