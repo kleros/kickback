@@ -15,12 +15,7 @@ task(
   });
   const passed = results.filter((r) => r.ok).length;
   const handListed = results.filter((r) => r.name.startsWith(HAND_LISTED)).length;
-  console.log(
-    "%d/%d steps passed; %d of them check hand-written guest and check-in lists, not a Luma or check-in CSV",
-    passed,
-    LIFECYCLE_STEPS,
-    handListed,
-  );
+  console.log("%d of the steps check hand-written guest and check-in lists, not a Luma or check-in CSV", handListed);
   if (passed !== LIFECYCLE_STEPS) {
     process.exitCode = 1;
     throw new Error(`simulate-lifecycle: ${passed}/${LIFECYCLE_STEPS} steps passed`);
