@@ -9,7 +9,7 @@ import {
 } from "viem";
 
 import { acquireSendLock, releaseSendLock } from "./lock";
-import type { SentTxStore } from "./sentTx";
+import { learnTxNonce, type SentTx, type SentTxStore } from "./sentTx";
 import { TX_GAS_CAP } from "./stubs";
 
 export interface TxRequest {
@@ -35,10 +35,7 @@ export interface SendWallet {
   sendTransaction(request: PinnedTxRequest): Promise<Hash>;
 }
 
-export type SendClient = Pick<
-  PublicClient,
-  "call" | "estimateGas" | "getTransactionCount" | "getTransaction" | "waitForTransactionReceipt"
->;
+export type SendClient = Pick<PublicClient, "call" | "estimateGas" | "getTransaction" | "waitForTransactionReceipt">;
 
 export interface SendDeps {
   client: SendClient;
@@ -53,6 +50,8 @@ export interface SendDeps {
   now?: () => number;
   /** How long to wait for the receipt before reporting it unconfirmed. Ethereum: about 25 blocks. */
   receiptTimeoutMs?: number;
+  /** How often the read RPC is asked for the sent transaction's nonce while the receipt is awaited. */
+  nonceRetryMs?: number;
   /**
    * Refuse every wallet but the dev wallet: on a local fork answering as chainId 1, any other wallet passes
    * the chain check and broadcasts to the real Ethereum.
@@ -89,6 +88,29 @@ export class SendError extends Error {
 }
 
 const DEFAULT_RECEIPT_TIMEOUT_MS = 5 * 60_000;
+const DEFAULT_NONCE_RETRY_MS = 4_000;
+
+const sleep = (ms: number, signal: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
+  });
+
+/** Asks for the transaction's nonce until the network knows it, the record moves on, or `signal` aborts. */
+async function learnTxNonceUntil(
+  client: SendClient,
+  sent: SentTxStore,
+  record: SentTx,
+  every: number,
+  signal: AbortSignal,
+) {
+  while (!signal.aborted) {
+    const current = sent.read(record.chainId, record.contract, record.account);
+    if (current?.hash !== record.hash || current.txNonce !== null) return;
+    if (await learnTxNonce(client, sent, record)) return;
+    await sleep(every, signal);
+  }
+}
 
 /**
  * Sends one transaction: re-read, dry run, gas = estimate +30% capped at 2^24, the wallet's chain checked
@@ -146,11 +168,6 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
     );
   }
 
-  // the wallet's next nonce: a later transaction using it while this one never landed means it was replaced
-  const nonce = sent
-    ? await client.getTransactionCount({ address: account, blockTag: "pending" }).catch(() => null)
-    : null;
-
   if (deps.devWalletOnly && !wallet.isDevWallet()) {
     throw new SendError("wrong-chain", "This app runs on a local copy of Ethereum: send with the dev wallet only.");
   }
@@ -167,17 +184,11 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
     throw new SendError("wallet", errorText(error), undefined, { cause: error });
   }
 
+  const waiting = new AbortController();
   if (sent) {
-    const record = { hash, account, contract: tx.to, chainId, at: now(), nonce };
+    const record: SentTx = { hash, account, contract: tx.to, chainId, at: now(), txNonce: null };
     sent.save(record);
-    // the transaction's own nonce replaces the guess once the network knows it
-    void client
-      .getTransaction({ hash })
-      .then((known) => {
-        const current = sent.read(chainId, tx.to, account);
-        if (current?.hash === hash && known.nonce !== nonce) sent.save({ ...record, nonce: known.nonce });
-      })
-      .catch(() => {});
+    void learnTxNonceUntil(client, sent, record, deps.nonceRetryMs ?? DEFAULT_NONCE_RETRY_MS, waiting.signal);
   }
 
   let receipt: TransactionReceipt;
@@ -195,6 +206,8 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
       hash,
       { cause: error },
     );
+  } finally {
+    waiting.abort();
   }
 
   // viem resolves with whatever transaction took this one's nonce; only a fee bump is the same call

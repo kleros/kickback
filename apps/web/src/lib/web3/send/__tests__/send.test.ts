@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sendLock } from "../lock";
 import { SendError, sendTx, type SendDeps, type SendWallet } from "../send";
-import { createSentTxStore, sentTxKey } from "../sentTx";
+import { createSentTxStore, reconcileSentTx, sentTxKey } from "../sentTx";
 import { gasLimitFor, TX_GAS_CAP } from "../stubs";
 
 const ALICE: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -98,7 +98,6 @@ describe("sendTx order", () => {
       "prepare",
       "call",
       "estimateGas",
-      "getTransactionCount",
       "getChainId",
       "sendTransaction",
       "waitForTransactionReceipt",
@@ -297,8 +296,9 @@ describe("one action at a time", () => {
 });
 
 describe("the pending record", () => {
-  it("is saved with the wallet's nonce as soon as the wallet gives the hash, before the receipt", async () => {
+  it("is saved as soon as the wallet gives the hash, before the receipt, with its nonce once known", async () => {
     const { client, deps, prepare, storage } = setup();
+    client.getTransaction.mockRejectedValue(new Error("not found"));
     let seen: unknown;
     client.waitForTransactionReceipt.mockImplementationOnce(async () => {
       seen = JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null");
@@ -307,7 +307,7 @@ describe("the pending record", () => {
 
     await sendTx(deps, { prepare });
 
-    expect(seen).toEqual({ hash: HASH, account: ALICE, contract: EVENT, chainId: 1, at: 1_000, nonce: 3 });
+    expect(seen).toEqual({ hash: HASH, account: ALICE, contract: EVENT, chainId: 1, at: 1_000, txNonce: null });
   });
 
   it("is forgotten when the transaction fails on-chain", async () => {
@@ -327,7 +327,7 @@ describe("the pending record", () => {
     const { client, deps, prepare, storage } = setup();
     await sendTx({ ...deps, sent: undefined }, { prepare });
     expect(storage.map.size).toBe(0);
-    expect(client.getTransactionCount).not.toHaveBeenCalled();
+    expect(client.getTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -388,42 +388,89 @@ describe("the receipt", () => {
 
 describe("the recorded nonce", () => {
   const storedNonce = (storage: ReturnType<typeof memoryStorage>) =>
-    (JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null") as { nonce: number | null } | null)?.nonce;
+    (JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null") as { txNonce: number | null } | null)?.txNonce;
 
-  it("is the account's next nonce counting its queued transactions", async () => {
-    const { client, deps, prepare } = setup();
-    await sendTx(deps, { prepare });
-    expect(client.getTransactionCount).toHaveBeenCalledWith({ address: ALICE, blockTag: "pending" });
-  });
+  /** Holds the receipt until `release` is called, so the send stays in flight. */
+  const holdReceipt = (client: ReturnType<typeof setup>["client"]) => {
+    let release!: () => void;
+    client.waitForTransactionReceipt.mockImplementationOnce(
+      () => new Promise((resolve) => (release = () => resolve(receipt("success")))),
+    );
+    return () => release();
+  };
 
-  it("is corrected to the transaction's own nonce once the network knows it", async () => {
+  it("is the transaction's own, never a guess from the account's pending count", async () => {
     const { client, deps, prepare, storage } = setup();
     client.getTransaction.mockResolvedValueOnce({ nonce: 5 });
     await sendTx(deps, { prepare });
     await vi.waitFor(() => expect(storedNonce(storage)).toBe(5));
+    expect(client.getTransactionCount).not.toHaveBeenCalled();
+  });
+
+  it("is asked for again while the read RPC does not know the transaction yet", async () => {
+    const { client, deps, prepare, storage } = setup();
+    client.getTransaction
+      .mockRejectedValueOnce(new Error("not found"))
+      .mockRejectedValueOnce(new Error("not found"))
+      .mockResolvedValueOnce({ nonce: 5 });
+    const release = holdReceipt(client);
+    const running = sendTx({ ...deps, nonceRetryMs: 1 }, { prepare });
+
+    await vi.waitFor(() => expect(storedNonce(storage)).toBe(5));
+    expect(client.getTransaction).toHaveBeenCalledTimes(3);
+    release();
+    await running;
+  });
+
+  it("stops asking once the receipt wait settles", async () => {
+    const { client, deps, prepare } = setup();
+    client.getTransaction.mockRejectedValue(new Error("not found"));
+    await sendTx({ ...deps, nonceRetryMs: 1 }, { prepare });
+    const asked = client.getTransaction.mock.calls.length;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(client.getTransaction.mock.calls.length).toBe(asked);
+  });
+
+  it("a transaction the read RPC never saw is not taken for replaced when the account's nonce moves on", async () => {
+    const { client, deps, prepare, sent } = setup();
+    client.getTransaction.mockRejectedValue(new Error("not found"));
+    client.waitForTransactionReceipt.mockRejectedValueOnce(new Error("timed out"));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "unconfirmed" });
+
+    // an earlier transaction of the wallet's mined, moving the account's nonce past the pending count read
+    const notFound = Object.assign(new Error("missing"), { name: "TransactionNotFoundError" });
+    const network = {
+      getTransactionReceipt: vi.fn(async () => {
+        throw Object.assign(new Error("missing"), { name: "TransactionReceiptNotFoundError" });
+      }),
+      getTransactionCount: vi.fn(async () => 4),
+      getTransaction: vi.fn(async () => {
+        throw notFound;
+      }),
+    };
+    const checked = await reconcileSentTx(
+      network as unknown as Parameters<typeof reconcileSentTx>[0],
+      sent,
+      { chainId: 1, contract: EVENT, account: ALICE },
+      1_000 + 60_000,
+    );
+    expect(checked?.outcome).toBe("pending");
+    expect(sent.read(1, EVENT, ALICE)?.hash).toBe(HASH);
   });
 
   it("a late answer about this send leaves a newer send's record alone", async () => {
     const { client, deps, prepare, sent, storage } = setup();
     let answer!: (value: { nonce: number }) => void;
     client.getTransaction.mockImplementationOnce(() => new Promise((resolve) => (answer = resolve)));
-    await sendTx(deps, { prepare });
-    const newer = { hash: REPLACEMENT, account: ALICE, contract: EVENT, chainId: 1, at: 2_000, nonce: 4 };
+    const release = holdReceipt(client);
+    const running = sendTx(deps, { prepare });
+    await vi.waitFor(() => expect(client.getTransaction).toHaveBeenCalled());
+    const newer = { hash: REPLACEMENT, account: ALICE, contract: EVENT, chainId: 1, at: 2_000, txNonce: null };
     sent.save(newer);
     answer({ nonce: 9 });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toEqual(newer);
-  });
-
-  it("a nonce that cannot be read leaves it unknown and the send goes ahead", async () => {
-    const { client, deps, prepare, storage } = setup();
-    client.getTransactionCount.mockRejectedValueOnce(new Error("429"));
-    let seen: number | null | undefined;
-    client.waitForTransactionReceipt.mockImplementationOnce(async () => {
-      seen = storedNonce(storage);
-      return receipt("success");
-    });
-    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
-    expect(seen).toBeNull();
+    release();
+    await running;
   });
 });

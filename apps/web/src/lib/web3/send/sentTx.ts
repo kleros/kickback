@@ -11,8 +11,11 @@ export interface SentTx {
   chainId: number;
   /** Date.now() when the wallet returned the hash. */
   at: number;
-  /** The wallet's nonce for it; a later transaction using this nonce means this one was replaced. */
-  nonce: number | null;
+  /**
+   * The transaction's own nonce as the network reported it, null until then; never the account's pending
+   * count, which an RPC other than the wallet's reads without the wallet's queued transactions.
+   */
+  txNonce: number | null;
 }
 
 /** Milliseconds between sending and `now`, either way round: `at` is the laptop clock, which can be set back. */
@@ -62,7 +65,7 @@ export function createSentTxStore(storage: KeyValue | undefined): SentTxStore {
   const readStored = (key: string): SentTx | null => {
     try {
       const value: unknown = JSON.parse(storage?.getItem(key) ?? "null");
-      return isSentTx(value) ? { ...value, nonce: isNonce(value.nonce) ? value.nonce : null } : null;
+      return isSentTx(value) ? { ...value, txNonce: isNonce(value.txNonce) ? value.txNonce : null } : null;
     } catch {
       return null;
     }
@@ -118,7 +121,7 @@ export interface SentTxReads {
  */
 export function classifySentTx(record: SentTx, reads: SentTxReads, now: number): SentTxOutcome {
   if (reads.receipt) return reads.receipt.status === "success" ? "mined" : "failed";
-  if (record.nonce !== null && reads.nonceNow !== null && reads.nonceNow > record.nonce) {
+  if (record.txNonce !== null && reads.nonceNow !== null && reads.nonceNow > record.txNonce) {
     return reads.txKnown === false ? "replaced" : "pending";
   }
   if (ageOf(record, now) > DROPPED_AFTER_MS) return reads.txKnown === false ? "dropped" : "pending";
@@ -145,8 +148,10 @@ export async function checkSentTx(client: SentTxClient, record: SentTx, now: num
     if (receipt) return classifySentTx(record, { receipt, nonceNow: null, txKnown: null }, now);
 
     const nonceNow =
-      record.nonce === null ? null : await client.getTransactionCount({ address: record.account, blockTag: "latest" });
-    const nonceUsed = record.nonce !== null && nonceNow !== null && nonceNow > record.nonce;
+      record.txNonce === null
+        ? null
+        : await client.getTransactionCount({ address: record.account, blockTag: "latest" });
+    const nonceUsed = record.txNonce !== null && nonceNow !== null && nonceNow > record.txNonce;
     if (!nonceUsed && ageOf(record, now) <= DROPPED_AFTER_MS) return "pending";
 
     // the nonce moved on: it may be this very transaction that just mined
@@ -158,7 +163,23 @@ export async function checkSentTx(client: SentTxClient, record: SentTx, now: num
   }
 }
 
-/** Checks the saved record and forgets it once it failed, was replaced or was dropped. */
+/** Records the transaction's own nonce once the network knows it, unless a newer send replaced the record. */
+export async function learnTxNonce(
+  client: Pick<PublicClient, "getTransaction">,
+  store: SentTxStore,
+  record: SentTx,
+): Promise<boolean> {
+  const known = await client.getTransaction({ hash: record.hash }).catch(() => null);
+  if (!known) return false;
+  const current = store.read(record.chainId, record.contract, record.account);
+  if (current?.hash === record.hash) store.save({ ...current, txNonce: known.nonce });
+  return true;
+}
+
+/**
+ * Checks the saved record and forgets it once it failed, was replaced or was dropped. A pending record whose
+ * nonce is not known yet asks for it on every check.
+ */
 export async function reconcileSentTx(
   client: SentTxClient,
   store: SentTxStore,
@@ -168,6 +189,7 @@ export async function reconcileSentTx(
   const record = store.read(where.chainId, where.contract, where.account);
   if (!record) return null;
   const outcome = await checkSentTx(client, record, now);
+  if (outcome === "pending" && record.txNonce === null) await learnTxNonce(client, store, record);
   if (outcome === "failed" || outcome === "replaced" || outcome === "dropped") {
     store.forget(record.chainId, record.contract, record.hash);
   }

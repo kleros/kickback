@@ -102,7 +102,7 @@ describe("useSentTx", () => {
   it("checks a pending record again every few seconds, and stops once it settles", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { sentTxStore, useSentTx, client, wrapper } = await load("hardhat");
-    sentTxStore.save({ hash: HASH, account: ALICE, contract: EVENT, chainId: 31337, at: Date.now(), nonce: 0 });
+    sentTxStore.save({ hash: HASH, account: ALICE, contract: EVENT, chainId: 31337, at: Date.now(), txNonce: 0 });
 
     const { result } = renderHook(() => useSentTx(EVENT), { wrapper });
     await vi.waitFor(() => expect(result.current.data?.outcome).toBe("pending"));

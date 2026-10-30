@@ -25,7 +25,7 @@ const record = (overrides: Partial<SentTx> = {}): SentTx => ({
   contract: EVENT,
   chainId: 1,
   at: NOW,
-  nonce: 0,
+  txNonce: 0,
   ...overrides,
 });
 
@@ -112,9 +112,10 @@ describe("classifySentTx", () => {
   });
 
   it("a record without a nonce can only be dropped by age", () => {
-    const old = record({ nonce: null, at: NOW - DROPPED_AFTER_MS - 1 });
+    const old = record({ txNonce: null, at: NOW - DROPPED_AFTER_MS - 1 });
     expect(classifySentTx(old, { ...reads, txKnown: false }, NOW)).toBe("dropped");
-    expect(classifySentTx(record({ nonce: null }), { ...reads, txKnown: false }, NOW)).toBe("pending");
+    expect(classifySentTx(record({ txNonce: null }), { ...reads, txKnown: false }, NOW)).toBe("pending");
+    expect(classifySentTx(record({ txNonce: null }), { ...reads, nonceNow: 9, txKnown: false }, NOW)).toBe("pending");
   });
 });
 
@@ -190,8 +191,8 @@ describe("the store", () => {
 
   it("a record survives a reload: a fresh store reads what an earlier page saved", () => {
     const storage = memoryStorage();
-    createSentTxStore(storage).save(record({ nonce: 4 }));
-    expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toEqual(record({ nonce: 4 }));
+    createSentTxStore(storage).save(record({ txNonce: 4 }));
+    expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toEqual(record({ txNonce: 4 }));
   });
 
   it.each([
@@ -210,10 +211,22 @@ describe("the store", () => {
     ).resolves.toBeNull();
   });
 
-  it.each([["3"], [3.5], [-1]])("a stored nonce of %j reads back as unknown", (nonce) => {
+  it.each([["3"], [3.5], [-1]])("a stored nonce of %j reads back as unknown", (txNonce) => {
     const storage = memoryStorage();
-    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...record(), nonce }));
-    expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toEqual(record({ nonce: null }));
+    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...record(), txNonce }));
+    expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toEqual(record({ txNonce: null }));
+  });
+
+  it("a stored record with only a guessed `nonce` reads back with its nonce unknown, so it is never replaced", async () => {
+    const storage = memoryStorage();
+    const { txNonce: _, ...rest } = record({ at: NOW - 60_000 });
+    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...rest, nonce: 0 }));
+    const store = createSentTxStore(storage);
+    expect(store.read(1, EVENT, ALICE)?.txNonce).toBeNull();
+    await expect(
+      reconcileSentTx(asClient(chain({ nonce: 1 })), store, { chainId: 1, contract: EVENT, account: ALICE }, NOW),
+    ).resolves.toMatchObject({ outcome: "pending" });
+    expect(store.read(1, EVENT, ALICE)).not.toBeNull();
   });
 
   it("a browser that refuses to store still remembers what this tab sent", () => {
@@ -259,6 +272,24 @@ describe("reconcileSentTx", () => {
       reconcileSentTx(asClient(fake), store, { chainId: 1, contract: EVENT, account: ALICE }, NOW),
     ).resolves.toMatchObject({ outcome });
     expect(store.read(1, EVENT, ALICE)).not.toBeNull();
+  });
+
+  it("a pending record learns its transaction's nonce once the network knows it", async () => {
+    const store = createSentTxStore(memoryStorage());
+    store.save(record({ txNonce: null }));
+    const fake = chain({ known: true });
+    fake.getTransaction.mockResolvedValue({ nonce: 7 });
+    await expect(
+      reconcileSentTx(asClient(fake), store, { chainId: 1, contract: EVENT, account: ALICE }, NOW),
+    ).resolves.toMatchObject({ outcome: "pending" });
+    expect(store.read(1, EVENT, ALICE)?.txNonce).toBe(7);
+  });
+
+  it("a pending record the network does not know yet keeps its nonce unknown", async () => {
+    const store = createSentTxStore(memoryStorage());
+    store.save(record({ txNonce: null }));
+    await reconcileSentTx(asClient(chain()), store, { chainId: 1, contract: EVENT, account: ALICE }, NOW);
+    expect(store.read(1, EVENT, ALICE)?.txNonce).toBeNull();
   });
 
   it("nothing saved: nothing to check", async () => {
