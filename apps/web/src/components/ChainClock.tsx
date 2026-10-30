@@ -7,9 +7,14 @@ export function ChainClock() {
   const { data } = useChainTime();
 
   return (
-    <p className="type-caption text-klerosUIComponentsSecondaryText">
+    <p className="text-sm text-kb-text-2">
       Chain time:{" "}
-      <time data-testid="chain-time" data-unix={data?.now} dateTime={data && new Date(data.now * 1000).toISOString()}>
+      <time
+        className="kb-num"
+        data-testid="chain-time"
+        data-unix={data?.now}
+        dateTime={data && new Date(data.now * 1000).toISOString()}
+      >
         {data ? new Date(data.now * 1000).toUTCString() : "…"}
       </time>
     </p>

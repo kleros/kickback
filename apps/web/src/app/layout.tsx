@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 
 import { Shell } from "@/components/layout/Shell";
@@ -17,21 +17,45 @@ export const metadata: Metadata = {
   metadataBase: env.SITE_URL ? new URL(env.SITE_URL) : null,
 };
 
-const inter = localFont({
-  variable: "--font-inter",
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f6fb" },
+    { media: "(prefers-color-scheme: dark)", color: "#060a19" },
+  ],
+};
+
+const hostGrotesk = localFont({
+  variable: "--font-host-grotesk",
   display: "swap",
   src: [
-    { path: "../../../../node_modules/@fontsource/inter/files/inter-latin-400-normal.woff2", weight: "400" },
-    { path: "../../../../node_modules/@fontsource/inter/files/inter-latin-500-normal.woff2", weight: "500" },
-    { path: "../../../../node_modules/@fontsource/inter/files/inter-latin-600-normal.woff2", weight: "600" },
-    { path: "../../../../node_modules/@fontsource/inter/files/inter-latin-700-normal.woff2", weight: "700" },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-400-normal.woff2",
+      weight: "400",
+    },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-500-normal.woff2",
+      weight: "500",
+    },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-600-normal.woff2",
+      weight: "600",
+    },
+  ],
+});
+
+const geistMono = localFont({
+  variable: "--font-geist-mono",
+  display: "swap",
+  src: [
+    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2", weight: "400" },
+    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2", weight: "500" },
   ],
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={inter.variable} suppressHydrationWarning>
-      <body className="bg-klerosUIComponentsLightBackground flex min-h-screen flex-col antialiased">
+    <html lang="en" className={`${hostGrotesk.variable} ${geistMono.variable}`} suppressHydrationWarning>
+      <body className="flex min-h-screen flex-col">
         <AppProviders>
           <Web3Providers>
             <Shell>{children}</Shell>

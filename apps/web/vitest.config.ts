@@ -22,8 +22,5 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}", "e2e/utils/**/*.test.ts"],
-    // The Kleros library imports its own stylesheet; Vite must process that
-    // import rather than handing the .css to Node's loader.
-    server: { deps: { inline: [/@kleros\/ui-components-library/] } },
   },
 });

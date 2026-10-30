@@ -5,8 +5,7 @@ import { afterEach } from "vitest";
 // Auto-cleanup only ships with `globals: true`; unmount between tests ourselves.
 afterEach(cleanup);
 
-// jsdom implements no ResizeObserver, and the Kleros components that measure
-// themselves throw on mount without one.
+// jsdom implements no ResizeObserver; components that measure themselves need one.
 globalThis.ResizeObserver ??= class {
   observe() {}
   unobserve() {}

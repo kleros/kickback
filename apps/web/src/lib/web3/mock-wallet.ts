@@ -18,6 +18,8 @@ declare global {
     __connectMockAccount?: (account: MockAccountRef, features?: MockParameters["features"]) => Promise<void>;
     /** The names `__connectMockAccount` accepts, for discovery from the console. */
     __mockAccounts?: typeof MOCK_ACCOUNTS;
+    /** Only present outside production: puts the connected mock wallet on another chain, as a wallet would. */
+    __setMockChainId?: (chainId: number) => Promise<void>;
   }
 }
 
@@ -72,10 +74,24 @@ export const connectMockAccount = async (account: MockAccountRef, features?: Moc
   throw new Error(`The mock wallet would not stay connected as ${address}.`);
 };
 
+/**
+ * Moves the connected mock wallet to `chainId`, including one the app does not run on. The mock answers
+ * wallet_switchEthereumChain itself, where wagmi's switchChain refuses an unconfigured chain.
+ */
+export const setMockChainId = async (chainId: number) => {
+  const connector = wagmiConfig.connectors.find(isMock);
+  if (!connector) throw new Error("No mock wallet is connected.");
+  const provider = (await connector.getProvider()) as {
+    request: (args: { method: string; params: unknown[] }) => Promise<unknown>;
+  };
+  await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: `0x${chainId.toString(16)}` }] });
+};
+
 /** Publishes the hooks Playwright and hand debugging use. No-op in production. */
 export const installMockWallet = () => {
   if (!isMockWalletEnabled || isUndefined(globalThis.window)) return;
 
   window.__connectMockAccount = connectMockAccount;
   window.__mockAccounts = MOCK_ACCOUNTS;
+  window.__setMockChainId = setMockChainId;
 };

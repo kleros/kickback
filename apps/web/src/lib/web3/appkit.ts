@@ -21,6 +21,8 @@ export const getAppKit = () =>
       icons: [],
     },
     enableCoinbase: false,
+    // the app shows a wallet on another network itself, with a switch button; AppKit's modal would cover it
+    allowUnsupportedChain: true,
     features: {
       analytics: false,
     },
