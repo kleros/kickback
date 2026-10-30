@@ -4,5 +4,10 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
+    globalSetup: ["test/globalSetup.ts"],
+    // the chain tests share one node: its accounts' nonces and its clock
+    fileParallelism: false,
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
   },
 });

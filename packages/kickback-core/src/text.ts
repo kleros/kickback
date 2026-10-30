@@ -103,9 +103,9 @@ export const uncell = (v: unknown): string =>
   /^'[=+\-@\t\r]/.test(String(v ?? "")) ? String(v).slice(1) : String(v ?? "");
 
 /** A CSV text: the header row, then one line per row, safe cells. */
-export function toCsv<T extends object>(rows: readonly T[], headers?: readonly string[]): string {
+export function toCsv(rows: readonly object[], headers?: readonly string[]): string {
   const cols = headers ?? (rows[0] ? Object.keys(rows[0]) : []);
-  const cell = (r: T, c: string) => csvCell((r as Record<string, unknown>)[c]);
+  const cell = (r: object, c: string) => csvCell((r as Record<string, unknown>)[c]);
   return [cols.map(csvCell).join(","), ...rows.map((r) => cols.map((c) => cell(r, c)).join(","))].join("\n") + "\n";
 }
 
