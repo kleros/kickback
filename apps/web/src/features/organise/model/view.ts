@@ -6,7 +6,7 @@ import type { Gate } from "./shared";
 
 /** An amount in wei as the organiser reads it: "0.011186 ETH". */
 export const ethText = (units: bigint | null | undefined) =>
-  units === null || units === undefined ? "—" : `${fmt(units)} ETH`;
+  units === null || units === undefined ? "—" : `${fmt(units).replace(/\.0$/, "")} ETH`;
 
 export type Tone = "live" | "ok" | "warn" | "end";
 

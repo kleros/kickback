@@ -211,6 +211,11 @@
   bottom: 12px;
   z-index: 5;
 }
+@media (min-width: 768px) {
+  .og-thumb {
+    position: static;
+  }
+}
 .kb-btn.is-quiet {
   background: var(--kb-chip);
   color: var(--kb-text);
@@ -219,11 +224,6 @@
 .kb-btn.is-quiet[data-disabled]:not([data-pending]) {
   background: var(--kb-chip);
   color: var(--kb-text-3);
-}
-.kb-btn.is-small {
-  height: 40px;
-  padding: 0 16px;
-  font-size: 14px;
 }
 
 /* ---------- form ---------- */
@@ -297,7 +297,6 @@
 .og-steps {
   display: flex;
   flex-direction: column;
-  counter-reset: og-step;
 }
 .og-step {
   display: flex;
@@ -322,10 +321,6 @@
   color: var(--kb-text-2);
   font-size: 12px;
   font-weight: 600;
-}
-.og-step[data-done] .og-step-n {
-  background: var(--kb-axis);
-  color: #fff;
 }
 .og-link-row {
   display: flex;

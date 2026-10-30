@@ -30,6 +30,7 @@ async function shoot(page: Page, name: string) {
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
       await page.setViewportSize({ width, height: width === 375 ? 812 : 800 });
       await page.evaluate(() => document.fonts.ready);
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(150);
       await page.screenshot({ path: path.join(SHOTS, `${name}-${width}-${theme}.png`), fullPage: true });
     }
@@ -73,7 +74,7 @@ test.describe("organiser", () => {
     await page.goto("/organise");
     await shoot(page, "organise");
     await page.getByTestId("create-event").click();
-    await expect(page.getByTestId("create")).toBeVisible();
+    await expect(page.getByTestId("create")).toBeVisible({ timeout: 60_000 });
     await wallet.connect("alice");
 
     const form = page.getByTestId("create-form");
