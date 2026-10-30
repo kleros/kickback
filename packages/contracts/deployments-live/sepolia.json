@@ -1,0 +1,16 @@
+{
+  "chainId": 11155111,
+  "klerosLiquid": "0x20a7a7D8d3427739606C9e0852e2e61f25fE4D78",
+  "disputeResolver": "0x48C3ab79b8Ee41fc4928CC52D935ea006d4a9c58",
+  "deployBlock": 12026481,
+  "deployer": "0x88AB19C0c7b57EeBa545acbD4368748194cd796B",
+  "txs": {
+    "klerosLiquid": "0xe4420c3275f5f09a0a3da45395588148d96368bc9a5f0e0d3b1aaf48cd3710fb",
+    "disputeResolver": "0xe657f7bb963194f93e5d9e425dac29fbcd2f3780362e5238e10b0bf989432cfe"
+  },
+  "sampleEvent": {
+    "address": "0xe87bB7d65F49947ab93226F650F00D914e9Fe468",
+    "deployBlock": 12026483,
+    "tx": "0x94a4093caccbe9aac5edf79a143e377674954c35e77d8bf87a93e5663b0380b3"
+  }
+}
