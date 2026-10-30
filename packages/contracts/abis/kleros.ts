@@ -72,8 +72,9 @@ export const klerosLiquidAbi = [
 /**
  * Kleros's Dispute Resolver, an ArbitrableProxy (0x4b89e798b10478a839ea0abcf86c4b94a3c782a4); its IDs are local dispute IDs.
  * disputeIDtoRoundArray(localID, round) returns feeRewards only (getters drop mappings and arrays) and reverts past the last round.
- * Contribution and RulingFunded carry the mock's indexed layout. The live contract's layout is unconfirmed: decode their logs
- * by topic count, as the legacy pages do (see disputeResolverEventLayouts).
+ * Contribution and RulingFunded carry the mock's indexed layout. The live code emits both with LOG4 (three indexed fields,
+ * test/fork/LiveContract.ts), but which three of Contribution's fields are indexed is unconfirmed: no such log exists on
+ * mainnet. Decode them by topic count, as the legacy pages do (disputeResolverEventLayouts).
  */
 export const disputeResolverAbi = [
   {

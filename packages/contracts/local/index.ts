@@ -90,12 +90,12 @@ export type EventDetails = {
   eventLink: string;
 };
 
-export type DeployLocalEventOptions = Clients & {
-  /** The contract's owner, named in each case; defaults to the wallet client's account. */
-  owner?: Address;
+export type LocalEventSettings = {
+  /** The contract's owner, named in each case. */
+  owner: Address;
+  disputeResolver: Address;
   depositAmount?: bigint;
-  /** Unix seconds; defaults to the latest block's time + 3 days. */
-  eventStart?: bigint;
+  eventStart: bigint;
   /** Unix seconds; defaults to eventStart + 14 days. */
   claimDeadline?: bigint;
   details?: Partial<EventDetails>;
@@ -103,27 +103,16 @@ export type DeployLocalEventOptions = Clients & {
   templateText?: string;
   /** Defaults to the IPFS path of the generic policy's bytes. */
   policyURI?: string;
-  /** An existing Dispute Resolver; when unset, mocks are deployed. `arbitrator` is then read from the contract. */
-  disputeResolver?: Address;
   extraData?: Hex;
   explorer?: string;
 };
 
-/**
- * Deploys MockKlerosLiquid + MockArbitrableProxy (unless `disputeResolver` is given) and one
- * TruthPaysKickback with the generic juror policy and case template. Framework-free: any viem clients.
- */
-export async function deployLocalEvent(options: DeployLocalEventOptions) {
-  const { walletClient, publicClient } = options;
-  const owner = getAddress(options.owner ?? walletClient.account.address);
-  const depositAmount = options.depositAmount ?? DEFAULT_DEPOSIT;
-  const now = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
-  const eventStart = options.eventStart ?? now + BigInt(3 * DAY);
-  const claimDeadline = options.claimDeadline ?? eventStart + BigInt(14 * DAY);
-
-  const mocks = options.disputeResolver ? undefined : await deployMockKleros(options);
-  const disputeResolver = getAddress(options.disputeResolver ?? mocks!.disputeResolver);
-
+/** Constructor arguments for an event with the generic policy and case template (or the ones given). */
+export function localEventArgs(settings: LocalEventSettings) {
+  const owner = getAddress(settings.owner);
+  const depositAmount = settings.depositAmount ?? DEFAULT_DEPOSIT;
+  const { eventStart } = settings;
+  const claimDeadline = settings.claimDeadline ?? eventStart + BigInt(14 * DAY);
   const details: EventDetails = {
     eventTitle: "Kickback local test event",
     eventName: "Kickback Local",
@@ -131,43 +120,69 @@ export async function deployLocalEvent(options: DeployLocalEventOptions) {
     eventWhere: "Local test venue",
     hosts: "Kickback local stack",
     eventLink: "https://luma.com/kickback-local",
-    ...options.details,
+    ...settings.details,
   };
-  const policyURI = options.policyURI ?? ipfsPathOf(genericPolicyText);
+  const policyURI = settings.policyURI ?? ipfsPathOf(genericPolicyText);
   const values = templateValues(
     {
       ...details,
       depositUnits: depositAmount,
-      explorer: options.explorer ?? "https://etherscan.io",
+      explorer: settings.explorer ?? "https://etherscan.io",
       kleros: { policyURI },
     },
     owner,
   );
-  const tpl = caseTemplate(options.templateText ?? genericCaseTemplateText, values);
+  const tpl = caseTemplate(settings.templateText ?? genericCaseTemplateText, values);
   const template: CaseTemplate = { pieces: tpl.pieces, slots: tpl.slots };
-  const extraData = options.extraData ?? klerosExtraData();
-
   const args: KickbackArgs = [
     depositAmount,
     details.eventName,
     owner,
     eventStart,
     claimDeadline,
-    { disputeResolver, extraData, metaEvidenceTemplate: template.pieces, metaEvidenceSlots: template.slots, policyURI },
+    {
+      disputeResolver: getAddress(settings.disputeResolver),
+      extraData: settings.extraData ?? klerosExtraData(),
+      metaEvidenceTemplate: template.pieces,
+      metaEvidenceSlots: template.slots,
+      policyURI,
+    },
   ];
-  const { event, deployBlock } = await deployKickback(options, args);
-  const arbitrator = await publicClient.readContract({ address: event, abi: kickbackAbi, functionName: "arbitrator" });
+  return { args, owner, template, policyURI, details };
+}
 
+export type DeployLocalEventOptions = Clients &
+  Partial<Omit<LocalEventSettings, "owner" | "disputeResolver" | "eventStart">> & {
+    /** Defaults to the wallet client's account. */
+    owner?: Address;
+    /** An existing Dispute Resolver; when unset, mocks are deployed. */
+    disputeResolver?: Address;
+    /** Unix seconds; defaults to the latest block's time + 3 days. */
+    eventStart?: bigint;
+  };
+
+/**
+ * Deploys MockKlerosLiquid + MockArbitrableProxy (unless `disputeResolver` is given) and one
+ * TruthPaysKickback with the generic juror policy and case template. Framework-free: any viem clients.
+ */
+export async function deployLocalEvent(options: DeployLocalEventOptions) {
+  const { walletClient, publicClient } = options;
+  const now = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
+  const mocks = options.disputeResolver ? undefined : await deployMockKleros(options);
+  const built = localEventArgs({
+    ...options,
+    owner: options.owner ?? walletClient.account.address,
+    disputeResolver: options.disputeResolver ?? mocks!.disputeResolver,
+    eventStart: options.eventStart ?? now + BigInt(3 * DAY),
+  });
+  const { event, deployBlock } = await deployKickback(options, built.args);
+  const arbitrator = await publicClient.readContract({ address: event, abi: kickbackAbi, functionName: "arbitrator" });
   return {
     event,
-    disputeResolver,
+    disputeResolver: built.args[5].disputeResolver,
     arbitrator: getAddress(arbitrator),
     deployBlock,
-    owner,
-    args,
-    template,
-    policyURI,
-    details,
+    ...built,
   };
 }
 
