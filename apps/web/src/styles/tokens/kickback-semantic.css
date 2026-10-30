@@ -1,0 +1,83 @@
+/* Kickback semantic layer.
+   Kleros names variables by colour (MediumPurple, LightBlue); a role name cannot
+   be read off those. Everything in the Kickback layer consumes ONLY the names
+   below, so dark mode can differ structurally (glow where light has shadow) and
+   not merely chromatically. Never reach past this file to a kleros* variable. */
+:root {
+  /* Surfaces */
+  --kb-surface: var(--klerosUIComponentsWhiteBackground);
+  --kb-surface-raised: var(--klerosUIComponentsWhiteBackground);
+  --kb-surface-sunken: var(--klerosUIComponentsLightBackground);
+  --kb-surface-tint: var(--klerosUIComponentsMediumBlue);
+  --kb-surface-tint-purple: var(--klerosUIComponentsTintPurple);
+  /* How a raised surface separates from the page: shadow in light… */
+  --kb-raise: 0px 2px 3px var(--klerosUIComponentsDefaultShadow);
+  --kb-raise-glow: none;
+  --kb-raise-glow-opacity: 0;
+  /* Borders */
+  --kb-border: var(--klerosUIComponentsStroke);
+  --kb-border-strong: color-mix(in oklch, var(--klerosUIComponentsStroke), var(--klerosUIComponentsPrimaryText) 25%);
+  --kb-border-accent: var(--klerosUIComponentsPrimaryBlue);
+  /* Text */
+  --kb-text-primary: var(--klerosUIComponentsPrimaryText);
+  /* 5.1:1 on the sunken surface; Kleros' #999999 is 2.75:1 */
+  --kb-text-secondary: #6b6b6b;
+  --kb-text-inverse: var(--klerosUIComponentsWhiteBackground);
+  /* the accent fill is 4.1:1 on white, short of AA for text */
+  --kb-text-accent: #3355e0;
+  --kb-text-protocol: var(--klerosUIComponentsSecondaryPurple);
+  /* Accent: purple carries protocol identity, blue carries action */
+  --kb-accent: var(--klerosUIComponentsPrimaryBlue);
+  --kb-accent-hover: var(--klerosUIComponentsSecondaryBlue);
+  /* A primary that cannot be pressed now: white on it is 4.76:1 */
+  --kb-accent-disabled: color-mix(in srgb, var(--klerosUIComponentsPrimaryBlue) 55%, var(--kb-text-secondary));
+  /* white in both themes: dark's own primary label, #220050, is 2.7:1 on the greyed fill */
+  --kb-accent-disabled-text: #ffffff;
+  --kb-accent-protocol: var(--klerosUIComponentsSecondaryPurple);
+  --kb-accent-protocol-hover: var(--klerosUIComponentsPrimaryPurple);
+  /* Tone: what the reader is being told, paired with its own background */
+  --kb-tone-success: var(--klerosUIComponentsSuccess);
+  --kb-tone-success-bg: var(--klerosUIComponentsSuccessLight);
+  --kb-tone-warning: var(--klerosUIComponentsWarning);
+  --kb-tone-warning-bg: var(--klerosUIComponentsWarningLight);
+  --kb-tone-error: var(--klerosUIComponentsError);
+  --kb-tone-error-bg: var(--klerosUIComponentsErrorLight);
+  --kb-tone-info: var(--klerosUIComponentsTint);
+  --kb-tone-info-bg: var(--klerosUIComponentsTintMedium);
+  --kb-tone-neutral: var(--klerosUIComponentsSecondaryText);
+  --kb-tone-neutral-bg: var(--klerosUIComponentsLightGrey);
+  /* Tone as text: the tones above are fills and icons, below 4.5:1 as light-theme text */
+  --kb-tone-success-text: #0a7f27;
+  --kb-tone-warning-text: #9a5b00;
+  --kb-tone-error-text: #c4002a;
+  /* An estimate above or below the market: the slider's fill and thumb, 3:1 or more on the sunken surface */
+  --kb-estimate-up: #16a34a;
+  --kb-estimate-down: #e0405f;
+  /* Geometry inherited from Kleros, restated so this layer has one vocabulary */
+  --kb-radius: var(--klerosUIComponentsBaseRadius);
+  --kb-border-width: 1px;
+  --kb-gradient-border-width: 1px;
+  --kb-gradient-border-width-strong: 2px;
+}
+:root.dark,
+.dark {
+  --kb-surface: var(--klerosUIComponentsWhiteBackground);
+  --kb-surface-raised: var(--klerosUIComponentsWhiteBackground);
+  --kb-surface-sunken: var(--klerosUIComponentsLightBackground);
+  --kb-text-secondary: var(--klerosUIComponentsSecondaryText);
+  /* a lighter accent for text: #4872ff on #220050 is 4.3:1 */
+  --kb-text-accent: #7b96ff;
+  --kb-tone-success-text: var(--klerosUIComponentsSuccess);
+  --kb-tone-warning-text: var(--klerosUIComponentsWarning);
+  --kb-tone-error-text: var(--klerosUIComponentsError);
+  /* mixed toward the pale secondary text it would lighten instead: white on it is 6.2:1 */
+  --kb-accent-disabled: color-mix(in srgb, var(--klerosUIComponentsPrimaryBlue) 55%, var(--kb-border));
+  /* futarchy's pastels, 7.5:1 on the dark track */
+  --kb-estimate-up: var(--green-2);
+  --kb-estimate-down: var(--red-2);
+  /* …and a soft radial purple glow behind the card in dark. A shadow on #1b003f
+     is invisible; a glow in light mode is grime. */
+  --kb-raise: none;
+  --kb-raise-glow: radial-gradient(60% 70% at 50% 0%, var(--klerosUIComponentsSecondaryPurple) 0%, transparent 70%);
+  --kb-raise-glow-opacity: 0.15;
+}
