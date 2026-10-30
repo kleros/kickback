@@ -9,7 +9,7 @@ it("returns the app CSP, framing and referrer headers, including configured RPC 
     const rules = await config.headers!();
     const headers = Object.fromEntries(rules[0]!.headers.map((h) => [h.key, h.value]));
     const csp = headers["Content-Security-Policy"]!;
-    expect(csp).toContain("frame-src https://www.google.com;");
+    expect(csp).toContain("frame-src https://www.google.com https://secure.walletconnect.org;");
     expect(csp).toContain("img-src 'self' data: blob: https://cdn.kleros.link;");
     for (const host of [
       "https://rpc.example.com",

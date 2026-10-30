@@ -3,10 +3,11 @@
 import { useState } from "react";
 
 import type { BuildPayoutResult, Config, RegistrationRow } from "@kickback/core";
+import { getAddress } from "viem";
 
 import { useSendBusy } from "@/lib/web3/send";
 
-import { usePostAttendance } from "./useActions";
+import { useAddAttendees, usePostAttendance } from "./useActions";
 import { useAttendancePlan } from "./useAttendancePlan";
 import { useGuests } from "./useGuests";
 import { errorMessage } from "./useGuestsScreen";
@@ -60,6 +61,9 @@ export function useAttendanceScreen(cfg: Config, scope: EventScope) {
       : null;
   const plan = useAttendancePlan(cfg, input, TYPED_WORDS.post, TYPED_WORDS.noShow);
   const post = usePostAttendance(scope);
+  const add = useAddAttendees(scope);
+  const [wallets, setWallets] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
   const busy = useSendBusy();
   const [frozen, setFrozen] = useState<FrozenAttendance | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,6 +72,36 @@ export function useAttendanceScreen(cfg: Config, scope: EventScope) {
   const gate = openable(plan.gates.post, `type ${TYPED_WORDS.post}`, `type ${TYPED_WORDS.noShow}`);
 
   return {
+    correction: {
+      wallets,
+      setWallets,
+      open: addOpen,
+      gate: plan.gates.add,
+      pending: add.isPending,
+      done: add.isSuccess,
+      show: () => {
+        setError(null);
+        setAddOpen(true);
+      },
+      close: () => {
+        if (!add.isPending) setAddOpen(false);
+      },
+      confirm: async () => {
+        setError(null);
+        try {
+          const selected = wallets
+            .trim()
+            .split(/[\s,]+/)
+            .filter(Boolean)
+            .map((wallet) => getAddress(wallet));
+          await add.mutateAsync({ wallets: selected });
+          setAddOpen(false);
+          setWallets("");
+        } catch (caught) {
+          setError(errorMessage(caught));
+        }
+      },
+    },
     checkin,
     door,
     loadCheckin: (name: string, text: string) => {

@@ -63,8 +63,9 @@ export interface DepositInput {
     refundedAt?: number;
   };
   /** The browser's record of the last deposit sent, as reconciled with the network. */
-  sent?: { outcome: SentTxOutcome; hash: Hash; at: number } | null;
+  sent?: { outcome: SentTxOutcome; hash: Hash; at: number; data?: string; value?: string } | null;
   send: {
+    account?: Address;
     status: "idle" | "pending" | "success" | "error";
     /** Date.now() when the send started. */
     startedAt?: number;
@@ -143,7 +144,14 @@ function guestsLine(guests: number | undefined): StatusLine {
 
 /** The deposit card's state, from everything the page knows. Earlier rules win. */
 export function depositState(input: DepositInput): DepositView {
-  const { amount, chain, wallet, history, sent, send, explorer } = input;
+  const { amount, chain, wallet, history, explorer } = input;
+  const sent =
+    (input.sent?.data === "0xd0e30db0" && input.sent.value === amount.toString()) ||
+    (input.sent?.data === undefined && input.sent?.outcome === "pending")
+      ? input.sent
+      : null;
+  const send =
+    input.send.account?.toLowerCase() === wallet.address?.toLowerCase() ? input.send : { status: "idle" as const };
   const amt = ethText(amount);
   const connected = wallet.status === "connected" && wallet.address !== undefined;
   const onChain = connected && wallet.chainId === chain.id;
@@ -209,7 +217,10 @@ export function depositState(input: DepositInput): DepositView {
       key: "earlier",
       label: "Sending",
       lines: [
-        { text: "An earlier deposit is still confirming.", tone: "pri" },
+        {
+          text: sent.data ? "An earlier deposit is still confirming." : "An earlier transaction is still confirming.",
+          tone: "pri",
+        },
         { text: `Sent ${agoText(input.wallNow - sent.at)} ago`, link: etherscan(sent.hash) },
       ],
       action: "none",

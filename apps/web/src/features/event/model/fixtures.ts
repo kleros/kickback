@@ -48,7 +48,7 @@ export function baseInput(): DepositInput {
     fee: parseEther("0.0003"),
     history: { deposited: 0n },
     sent: null,
-    send: { status: "idle" },
+    send: { account: WALLET, status: "idle" },
     wallNow: NOW_MS,
     guests: 26,
     explorer: "https://etherscan.io",
@@ -63,11 +63,11 @@ const disconnected = { status: "disconnected" as const, address: undefined, chai
 /** The input that puts the card in `state`. */
 export function galleryInput(state: GalleryState): DepositInput {
   const b = baseInput();
-  const sending = { status: "pending" as const, startedAt: NOW_MS - 60 * SEC };
+  const sending = { account: WALLET, status: "pending" as const, startedAt: NOW_MS - 60 * SEC };
   const pending = (waited: number): DepositInput => ({
     ...b,
-    send: { status: "pending", startedAt: NOW_MS - waited - 5 * SEC },
-    sent: { outcome: "pending", hash: TX, at: NOW_MS - waited },
+    send: { account: WALLET, status: "pending", startedAt: NOW_MS - waited - 5 * SEC },
+    sent: { data: "0xd0e30db0", value: b.amount.toString(), outcome: "pending", hash: TX, at: NOW_MS - waited },
   });
   switch (state) {
     case "rest":
@@ -93,19 +93,37 @@ export function galleryInput(state: GalleryState): DepositInput {
     case "pending3":
       return pending(400 * SEC);
     case "done":
-      return { ...b, send: { status: "success", hash: TX } };
+      return { ...b, send: { account: WALLET, status: "success", hash: TX } };
     case "failed":
-      return { ...b, send: { status: "error", errorKind: "reverted", hash: TX } };
+      return { ...b, send: { account: WALLET, status: "error", errorKind: "reverted", hash: TX } };
     case "closed":
       return { ...b, wallet: { ...b.wallet, ...disconnected }, chainNow: b.eventStart + 60, history: undefined };
     case "already":
       return { ...b, history: { deposited: b.amount, txHash: TX, at: NOW_MS / 1000 - 2 * 86_400 } };
     case "earlier":
-      return { ...b, sent: { outcome: "pending", hash: TX, at: NOW_MS - 3 * 60 * SEC } };
+      return {
+        ...b,
+        sent: {
+          data: "0xd0e30db0",
+          value: b.amount.toString(),
+          outcome: "pending",
+          hash: TX,
+          at: NOW_MS - 3 * 60 * SEC,
+        },
+      };
     case "dropped":
-      return { ...b, sent: { outcome: "dropped", hash: TX, at: NOW_MS - 40 * 60 * SEC } };
+      return {
+        ...b,
+        sent: {
+          data: "0xd0e30db0",
+          value: b.amount.toString(),
+          outcome: "dropped",
+          hash: TX,
+          at: NOW_MS - 40 * 60 * SEC,
+        },
+      };
     case "replaced":
-      return { ...b, send: { status: "error", errorKind: "replaced", hash: TX } };
+      return { ...b, send: { account: WALLET, status: "error", errorKind: "replaced", hash: TX } };
     case "refunded":
       return { ...b, history: { deposited: b.amount, txHash: TX, refundedAt: NOW_MS / 1000 - 86_400 } };
     case "short":

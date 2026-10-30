@@ -9,6 +9,7 @@ import { useSendBusy } from "@/lib/web3/send";
 import { useRegisterStakers, useRejectAndRefund } from "./useActions";
 import { useGuests } from "./useGuests";
 import type { EventScope } from "../model/shared";
+import { runGuestBatches } from "../operations/guests";
 
 export type GuestFilter = "all" | "register" | "refund" | "look";
 
@@ -52,7 +53,11 @@ export function useGuestsScreen(cfg: Config, scope: EventScope) {
     try {
       const lists = guests.selectedBatches(action);
       const mutation = action === "register" ? register : refund;
-      for (const list of lists) await mutation.mutateAsync({ list });
+      await runGuestBatches(
+        lists,
+        (list) => mutation.mutateAsync({ list }),
+        (remaining) => guests.refreshBatches(remaining, action),
+      );
       const total = lists.reduce((sum, list) => sum + list.items.length, 0);
       setDone(action === "register" ? `Registered ${total}.` : `Refunded ${total}.`);
     } catch (caught) {

@@ -9,6 +9,7 @@ import { fromBlockFor } from "@/config/event";
 import { courtName } from "@/config/kleros";
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 
+import { EventDetails } from "./EventDetails";
 import { EventHead } from "./EventHead";
 import { HowItWorks } from "./HowItWorks";
 import { Refusal } from "./Refusal";
@@ -62,6 +63,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
           }}
         />
       </div>
+      <EventDetails key={event.contract} event={event} />
       <HowItWorks
         amount={amount}
         example={example}
@@ -76,7 +78,6 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   );
 }
 
-/** The guest's event page: the ticket, then how it works; or a refusal for anything unverified. */
 export function EventScreen({ contract, from }: { contract: string; from?: string }) {
   const event = useEvent(contract);
 
@@ -88,5 +89,5 @@ export function EventScreen({ contract, from }: { contract: string; from?: strin
       </div>
     );
   if (!event.data) return <TicketSkeleton />;
-  return <LoadedEvent event={event.data} from={from} />;
+  return <LoadedEvent key={event.data.contract} event={event.data} from={from} />;
 }

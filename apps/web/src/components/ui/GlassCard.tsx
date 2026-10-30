@@ -6,7 +6,7 @@ import { cn } from "@/utils/cn";
 import { hasFinePointer } from "@/utils/media";
 
 export interface GlassCardProps extends HTMLAttributes<HTMLElement> {
-  as?: "section" | "div" | "article";
+  as?: "section" | "div" | "article" | "header";
   /** Hover lift plus an edge highlight that follows the cursor, on a mouse or trackpad only. */
   interactive?: boolean;
   /** The 1px edge stroke, e.g. the gradient axis on a card that carries the deposit. */

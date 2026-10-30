@@ -187,6 +187,7 @@ body {
   gap: 8px;
   min-width: 0;
 }
+.kb-chip,
 .kb-test-pill {
   display: inline-flex;
   align-items: center;
@@ -626,4 +627,11 @@ body {
   .kb-modal[data-exiting] {
     animation: kb-fade-in var(--kb-dur-quick) linear reverse;
   }
+}
+
+.kb-chip {
+  height: auto;
+  min-height: 28px;
+  padding-block: 4px;
+  gap: 6px;
 }

@@ -59,8 +59,10 @@ export function guestRows(deposits: readonly OverviewRow[], check?: CheckGuestsR
       register: canRegister,
       refund:
         canRefund ||
-        (r.code === "VERIFIED" && r.onchain === "unregistered" && check!.newStakers.includes(r)) ||
-        (check!.toReview.includes(r) && r.onchain === "unregistered") ||
+        (r.code === "VERIFIED" &&
+          r.onchain === "unregistered" &&
+          check!.newStakers.some((item) => key(item) === key(r))) ||
+        (check!.toReview.some((item) => key(item) === key(r)) && r.onchain === "unregistered") ||
         (r.onchain === "registered" &&
           check!.listOpen &&
           (r.code === "VERIFIED" || r.code === "REGISTERED_NOT_APPROVED")),

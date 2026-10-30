@@ -285,6 +285,17 @@ describe("guests", () => {
 
 const attendanceModel = (patch: Partial<AttendanceScreenModel> = {}) =>
   cast<AttendanceScreenModel>({
+    correction: {
+      wallets: "",
+      setWallets: vi.fn(),
+      open: false,
+      gate: gate(),
+      pending: false,
+      done: false,
+      show: vi.fn(),
+      close: vi.fn(),
+      confirm: vi.fn(),
+    },
     checkin: null,
     door: null,
     loadCheckin: vi.fn(),
@@ -391,10 +402,11 @@ const payoutModel = (patch: Partial<PayoutScreenModel> = {}) =>
       sweep: locked("Collect leftovers after payouts or cancellation."),
       cancel: locked("Cancel only before the attendance list is posted."),
       refund: gate(),
+      returnToken: gate(),
       removeGuest: locked("Remove a guest only before the list is posted."),
     },
     frozen: null,
-    fields: { to: "", amount: "", guest: "" },
+    fields: { to: "", amount: "", guest: "", token: "" },
     setField: vi.fn(),
     dialogGate: null,
     open: vi.fn(),
@@ -539,4 +551,85 @@ describe("create", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Deploy" }));
     expect(model.confirmNew).toHaveBeenCalledWith("NEW");
   });
+});
+
+it("offers corrections after posting and opens their confirmation", async () => {
+  const model = attendanceModel();
+  render(<AttendanceView model={model} posted />);
+  await userEvent.type(screen.getByLabelText("Registered wallets to add"), guest);
+  expect(model.correction.setWallets).toHaveBeenCalled();
+  await userEvent.click(screen.getByRole("button", { name: "Add attendees" }));
+  expect(model.correction.show).toHaveBeenCalledOnce();
+});
+
+it("locks corrections when the challenge window closes", () => {
+  const model = attendanceModel();
+  model.correction.gate = locked("The challenge window has closed; the list cannot be changed.");
+  render(<AttendanceView model={model} posted />);
+  expect(screen.getByRole("button", { name: "Add attendees" })).toBeDisabled();
+  expect(screen.getByText(/window has closed/)).toBeVisible();
+});
+
+it("opens Return tokens from More and shows token-specific inputs", async () => {
+  const model = payoutModel();
+  const view = render(<PayoutView model={model} released />);
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: /Return tokens/ }));
+  expect(model.open).toHaveBeenCalledWith("returnToken");
+  view.rerender(
+    <PayoutView
+      released
+      model={payoutModel({
+        frozen: { action: "returnToken" },
+        token: { balance: 1000000n, decimals: 6, symbol: "USDC" },
+        dialogGate: locked("Enter an amount to return."),
+      })}
+    />,
+  );
+  expect(screen.getByLabelText("Token contract")).toBeVisible();
+  expect(screen.getByLabelText("To wallet")).toBeVisible();
+  expect(screen.getByLabelText("Amount, smallest token units")).toBeVisible();
+  expect(screen.getByRole("dialog")).toHaveTextContent("1000000");
+});
+
+it("wires description, cover and links inputs and shows the guest preview", async () => {
+  const model = createModel({
+    setCover: vi.fn(),
+    form: { ...initialForm(), title: "Dinner", description: "Meet friends", links: "Website | https://example.com" },
+    coverUrl: "blob:chosen-cover",
+    detailLinks: [{ label: "Website", url: "https://example.com" }],
+  });
+  render(<CreateView model={model} />);
+  await userEvent.type(screen.getByLabelText("Description"), "!");
+  expect(model.setField).toHaveBeenCalledWith("description", "Meet friends!");
+  await userEvent.type(screen.getByRole("textbox", { name: "Extra links" }), "x");
+  expect(model.setField).toHaveBeenCalledWith("links", expect.stringContaining("example.com"));
+  const file = new File(["image"], "cover.png", { type: "image/png" });
+  await userEvent.upload(screen.getByLabelText("Cover image"), file);
+  expect(model.setCover).toHaveBeenCalledWith(file);
+  const preview = screen.getByLabelText("Guest page preview");
+  expect(preview).toHaveTextContent("Meet friends");
+  expect(within(preview).getByRole("link")).toHaveTextContent("example.com");
+  expect(preview.querySelector("img")).toHaveAttribute("src", "blob:chosen-cover");
+});
+
+it("converts create details into the pinning form and rejects too many links", async () => {
+  const { createFormInput } = await import("../hooks/useCreateScreen");
+  const { form } = await import("./fixtures");
+  const file = new File(["image"], "cover.png", { type: "image/png" });
+  const values = { ...form, settleDays: "14", description: "Details", links: "Site | https://example.com" };
+  expect(createFormInput(values, file)).toMatchObject({
+    description: "Details",
+    cover: file,
+    links: [{ label: "Site", url: "https://example.com" }],
+  });
+  expect(formErrors({ ...values, links: Array(4).fill(values.links).join("\n") }).links).toBeTruthy();
+});
+
+it("labels both guest and disconnected organiser preview wallets as examples", () => {
+  render(<CreateView model={createModel({ preview: "Example case" })} />);
+  expect(screen.getByTestId("jurors-preview")).toHaveTextContent("Guest: example wallet.");
+  expect(screen.getByTestId("jurors-preview")).toHaveTextContent(
+    "When disconnected, the organiser is also an example wallet.",
+  );
 });

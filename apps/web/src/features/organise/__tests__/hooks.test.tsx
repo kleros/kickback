@@ -425,3 +425,13 @@ it("guests retain a manual tick through RPC refusal and refresh", async () => {
   await waitFor(() => expect(result.current.isSuccess).toBe(true));
   expect(result.current.rows[0]?.tick).toBeNull();
 });
+
+it("pins deployment signing to the owner from before policy upload", async () => {
+  mocks.account = guest;
+  mocks.send.mockResolvedValue({ ...receipt, contractAddress: address });
+  const { Wrapper } = wrapper();
+  const { result } = renderHook(() => useDeploy({ chainId: 1 }), { wrapper: Wrapper });
+  act(() => result.current.mutate({ form, owner, policyURI }));
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(mocks.send).toHaveBeenCalledWith(expect.objectContaining({ expectedAccount: owner }));
+});

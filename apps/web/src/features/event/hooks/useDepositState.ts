@@ -142,6 +142,7 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
     sent,
     send: {
       status: send.status,
+      account: send.account,
       startedAt: send.startedAt,
       hash: send.data?.transactionHash ?? sendError?.hash,
       errorKind: sendError?.kind,

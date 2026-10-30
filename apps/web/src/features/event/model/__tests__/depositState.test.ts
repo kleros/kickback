@@ -139,14 +139,20 @@ describe("depositState", () => {
   });
 
   it("returns to ready with the reason and a shake when the wallet declines", () => {
-    const view = depositState({ ...baseInput(), send: { status: "error", errorKind: "wallet" } });
+    const view = depositState({
+      ...baseInput(),
+      send: { account: FIXTURE.wallet, status: "error", errorKind: "wallet" },
+    });
     expect(view.key).toBe("ready");
     expect(view.shake).toBe(true);
     expect(view.lines[0]).toMatchObject({ text: "Declined in your wallet. Nothing was sent.", tone: "err" });
   });
 
   it("says nothing was sent when the dry run refuses", () => {
-    const view = depositState({ ...baseInput(), send: { status: "error", errorKind: "refused" } });
+    const view = depositState({
+      ...baseInput(),
+      send: { account: FIXTURE.wallet, status: "error", errorKind: "refused" },
+    });
     expect(view.key).toBe("failed");
     expect(view.lines[1]!.text).toBe("Nothing was sent.");
   });
@@ -154,21 +160,36 @@ describe("depositState", () => {
   it("treats an unconfirmed send as stuck pending", () => {
     const view = depositState({
       ...baseInput(),
-      send: { status: "error", errorKind: "unconfirmed", hash: FIXTURE.tx },
+      send: { account: FIXTURE.wallet, status: "error", errorKind: "unconfirmed", hash: FIXTURE.tx },
     });
     expect(view).toMatchObject({ key: "pending", stage: 3 });
   });
 
   it("reads a mined record as deposited before the logs catch up", () => {
-    const view = depositState({ ...baseInput(), sent: { outcome: "mined", hash: FIXTURE.tx, at: FIXTURE.nowMs } });
+    const view = depositState({
+      ...baseInput(),
+      sent: {
+        data: "0xd0e30db0",
+        value: baseInput().amount.toString(),
+        outcome: "mined",
+        hash: FIXTURE.tx,
+        at: FIXTURE.nowMs,
+      },
+    });
     expect(view.key).toBe("already");
   });
 
   it("ignores a record older than the send under way", () => {
     const view = depositState({
       ...baseInput(),
-      send: { status: "pending", startedAt: FIXTURE.nowMs },
-      sent: { outcome: "pending", hash: FIXTURE.tx, at: FIXTURE.nowMs - 1000 },
+      send: { account: FIXTURE.wallet, status: "pending", startedAt: FIXTURE.nowMs },
+      sent: {
+        data: "0xd0e30db0",
+        value: baseInput().amount.toString(),
+        outcome: "pending",
+        hash: FIXTURE.tx,
+        at: FIXTURE.nowMs - 1000,
+      },
     });
     expect(view.key).toBe("signing");
   });
@@ -194,4 +215,23 @@ describe("text helpers", () => {
     expect(agoText(30_000)).toBe("under a minute");
     expect(agoText(3 * 60_000)).toBe("3 min");
   });
+});
+
+it("does not call an organiser transaction a deposit", () => {
+  const input = baseInput();
+  expect(depositState({ ...input, sent: { hash: FIXTURE.tx, outcome: "mined", at: input.wallNow } }).key).toBe("ready");
+});
+
+it("does not reuse A's successful deposit for B", () => {
+  const input = galleryInput("done");
+  expect(
+    depositState({ ...input, wallet: { ...input.wallet, address: "0x9999999999999999999999999999999999999999" } }).key,
+  ).toBe("ready");
+});
+
+it("keeps legacy pending records blocking without claiming they are deposits", () => {
+  const input = baseInput();
+  const view = depositState({ ...input, sent: { hash: FIXTURE.tx, outcome: "pending", at: input.wallNow } });
+  expect(view.action).toBe("none");
+  expect(view.lines[0]?.text).toBe("An earlier transaction is still confirming.");
 });

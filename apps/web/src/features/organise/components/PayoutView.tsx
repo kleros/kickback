@@ -12,6 +12,7 @@ import { challengeText, ethText, TYPED_WORDS } from "../model/view";
 
 const RARE: { key: RareAction; label: string; hint: string }[] = [
   { key: "sweep", label: "Collect leftovers", hint: "Rounding dust, after payouts or cancellation" },
+  { key: "returnToken", label: "Return tokens", hint: "ERC-20 tokens sent here by mistake" },
   { key: "refund", label: "Return stray ETH", hint: "Sent to the contract by mistake" },
   { key: "removeGuest", label: "Remove and refund one guest", hint: "Only while deposits are open" },
   { key: "cancel", label: "Cancel the event", hint: "Refunds every registered guest" },
@@ -121,6 +122,55 @@ function PayoutDialog({ model }: { model: PayoutScreenModel }) {
         ]}
         words={[TYPED_WORDS.cancel]}
         action="Cancel the event"
+      />
+    );
+  if (frozen.action === "returnToken")
+    return (
+      <ConfirmDialog
+        {...common}
+        title="Return tokens"
+        intro="Return ERC-20 tokens sent to the event by mistake."
+        figures={
+          model.token
+            ? [
+                {
+                  label: `Balance, smallest units (${model.token.symbol ?? "token"})`,
+                  value: model.token.balance.toString(),
+                },
+              ]
+            : []
+        }
+        words={[]}
+        gate={model.dialogGate}
+        action="Return tokens"
+        extra={
+          <>
+            <Field
+              label="Token contract"
+              mono
+              value={model.fields.token}
+              onChange={(v) => model.setField("token", v)}
+              placeholder="0x…"
+            />
+            <Field
+              label="To wallet"
+              mono
+              value={model.fields.to}
+              onChange={(v) => model.setField("to", v)}
+              placeholder="0x…"
+            />
+            <Field
+              label="Amount, smallest token units"
+              value={model.fields.amount}
+              onChange={(v) => model.setField("amount", v)}
+            />
+            {model.token?.decimals !== null && model.token?.decimals !== undefined && (
+              <p className="og-note">
+                This token uses {model.token.decimals} decimals. Enter whole smallest units, not ETH.
+              </p>
+            )}
+          </>
+        }
       />
     );
   if (frozen.action === "refund")

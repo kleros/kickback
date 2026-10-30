@@ -148,3 +148,15 @@ describe("rpcTimeoutMs", () => {
     }
   });
 });
+
+it("opens the recorded Sepolia sample event and its deployment block", async () => {
+  vi.stubEnv("NEXT_PUBLIC_CHAIN", "sepolia");
+  vi.stubEnv("NEXT_PUBLIC_EVENT_CONTRACT", "");
+  const { testnets } = await import("@kickback/contracts");
+  const { DEFAULT_EVENT, fromBlockFor } = await import("../event");
+  expect(DEFAULT_EVENT).toEqual({
+    contract: testnets.sepolia.sampleEvent.address,
+    fromBlock: testnets.sepolia.sampleEvent.deployBlock,
+  });
+  expect(fromBlockFor(DEFAULT_EVENT.contract, undefined)).toBe(testnets.sepolia.sampleEvent.deployBlock);
+});

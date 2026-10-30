@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 
-import type { Config } from "@kickback/core";
+import type { Config, StampedList } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
 import { usePublicClient } from "wagmi";
 
 import { batchLists, guestRows, type Tick, type Ticks } from "../model/guests";
 import { organiserKey, configKey } from "../model/shared";
-import { readGuests, selectedGuestList } from "../operations/guests";
+import { readGuests, selectedGuestList, refreshRemainingBatches } from "../operations/guests";
 
 export function useGuests(cfg: Config) {
   const client = usePublicClient({ chainId: cfg.chainId });
@@ -32,6 +32,11 @@ export function useGuests(cfg: Config) {
     loadCsv: (text: string | null) => setFiles((old) => ({ ...old, [identity]: text })),
     setTick: (id: string, tick: Tick) =>
       setSelections((old) => ({ ...old, [identity]: { ...old[identity], [id]: tick } })),
+    refreshBatches: async (remaining: StampedList[], action: "register" | "refund") => {
+      const fresh = await query.refetch({ throwOnError: true });
+      if (!fresh.data) throw new Error("Check the guests first.");
+      return refreshRemainingBatches(fresh.data, remaining, action);
+    },
     selectedBatches: (action: "register" | "refund") => {
       if (!query.data) throw new Error("Check the guests first.");
       return batchLists(selectedGuestList(query.data, ticks, action));

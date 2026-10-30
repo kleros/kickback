@@ -4,6 +4,7 @@ import Link from "next/link";
 
 import { TZ_OFFSETS } from "@kickback/core";
 
+import { EventDetailsView } from "@/components/EventDetailsView";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { CheckIcon } from "@/components/ui/icons";
@@ -18,16 +19,30 @@ import { caseView, shortHex } from "../model/view";
 export interface FieldSpec {
   name: string;
   label: string;
-  type?: "text" | "datetime-local" | "number" | "url" | "select";
+  type?: "text" | "datetime-local" | "number" | "url" | "select" | "textarea" | "file";
   options?: readonly string[];
   hint?: string;
   full?: boolean;
   inputMode?: "decimal" | "numeric";
 }
 
-/** The create form's fields, in order. Later fields (description, cover, links) are appended here. */
 export const CREATE_FIELDS: readonly FieldSpec[] = [
   { name: "title", label: "Title", full: true },
+  {
+    name: "description",
+    label: "Description",
+    type: "textarea",
+    full: true,
+    hint: "Plain text, up to 1200 characters",
+  },
+  { name: "cover", label: "Cover image", type: "file", full: true, hint: "PNG, JPEG or WebP, up to 2 MB" },
+  {
+    name: "links",
+    label: "Extra links",
+    type: "textarea",
+    full: true,
+    hint: "Up to 3 lines: Label | https://example.com",
+  },
   { name: "shortName", label: "Short name", hint: "Shown to guests and in the contract" },
   { name: "venue", label: "Venue" },
   { name: "start", label: "Starts", type: "datetime-local" },
@@ -45,12 +60,14 @@ export function CreateForm({
   values,
   errors,
   onChange,
+  onCover,
   disabled,
 }: {
   fields?: readonly FieldSpec[];
   values: CreateFormValues;
   errors: Record<string, string>;
   onChange: (name: string, value: string) => void;
+  onCover?: (file?: File) => void;
   disabled?: boolean;
 }) {
   return (
@@ -72,7 +89,17 @@ export function CreateForm({
             <label className="og-label" htmlFor={id}>
               {field.label}
             </label>
-            {field.type === "select" ? (
+            {field.type === "file" ? (
+              <input
+                {...common}
+                value={undefined}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                onChange={(event) => onCover?.(event.currentTarget.files?.[0])}
+              />
+            ) : field.type === "textarea" ? (
+              <textarea {...common} rows={4} onChange={(event) => onChange(field.name, event.currentTarget.value)} />
+            ) : field.type === "select" ? (
               <select {...common} onChange={(event) => onChange(field.name, event.currentTarget.value)}>
                 {field.options?.map((option) => (
                   <option key={option} value={option}>
@@ -112,6 +139,11 @@ export function JurorsPreview({
   return (
     <GlassCard as="section" className="og-card" data-testid="jurors-preview">
       <h2 className="og-h2">What jurors will read</h2>
+      {text && (
+        <p className="og-note">
+          Guest: example wallet. Contract: example address. When disconnected, the organiser is also an example wallet.
+        </p>
+      )}
       {text ? (
         <div className="og-preview" data-testid="case-text">
           {caseView(text).map((part, i) =>
@@ -217,13 +249,19 @@ export function CreateView({ model }: { model: CreateScreenModel }) {
                 </p>
               )}
               <GlassCard className="og-card">
-                <CreateForm values={model.form} errors={model.errors} onChange={model.setField} disabled={working} />
+                <CreateForm
+                  values={model.form}
+                  errors={model.errors}
+                  onChange={model.setField}
+                  onCover={model.setCover}
+                  disabled={working}
+                />
               </GlassCard>
               <div className="flex flex-col gap-2">
                 <Primary gate={model.deployGate} onPress={model.deploy} pending={working} busy={model.busy}>
                   {label}
                 </Primary>
-                <p className="og-note">Pins the policy, then asks your wallet once.</p>
+                <p className="og-note">Pins the policy and event details, then asks your wallet once.</p>
               </div>
               <ErrorLine error={model.error} />
             </>
@@ -232,6 +270,23 @@ export function CreateView({ model }: { model: CreateScreenModel }) {
         </div>
         <div className="og-aside">
           <JurorsPreview text={model.preview} policyURI={model.policyURI} pinned={model.policyPinned} />
+          <div aria-label="Guest page preview">
+            <h2 className="og-h2">Guest page preview</h2>
+            <EventDetailsView
+              details={{
+                title: model.form.title || null,
+                name: null,
+                when: model.form.start || null,
+                where: model.form.venue || null,
+                hosts: (model.form.hosts ?? "").split(/,\s*|\s+and\s+/).filter(Boolean),
+                link: model.form.registrationLink || null,
+                infoPath: null,
+              }}
+              description={model.form.description ?? ""}
+              coverUrl={model.coverUrl}
+              links={model.detailLinks ?? []}
+            />
+          </div>
         </div>
       </div>
       {model.askNew && (

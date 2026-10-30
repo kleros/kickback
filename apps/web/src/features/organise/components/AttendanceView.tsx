@@ -16,9 +16,48 @@ export function AttendanceView({ model, posted }: { model: AttendanceScreenModel
     <div className="flex flex-col gap-5" data-testid="attendance">
       <h2 className="kb-h1">Attendance</h2>
       {posted ? (
-        <p className="og-success" role="status" data-testid="posted">
-          The attendance list is posted. Payouts open once the challenge window closes.
-        </p>
+        <>
+          <p className="og-success" role="status" data-testid="posted">
+            The attendance list is posted. Payouts open once the challenge window closes.
+          </p>
+          <label className="og-field">
+            <span className="og-label">Registered wallets to add</span>
+            <textarea
+              className="og-input is-mono"
+              value={model.correction.wallets}
+              onChange={(event) => model.correction.setWallets(event.currentTarget.value)}
+              disabled={model.correction.pending}
+              aria-describedby="add-attendees-note"
+            />
+          </label>
+          <p id="add-attendees-note" className="og-note">
+            Separate wallets with commas or new lines. Only registered guests can be added during the challenge window.
+          </p>
+          <Primary gate={model.correction.gate} onPress={model.correction.show} busy={model.busy}>
+            Add attendees
+          </Primary>
+          {model.correction.done && (
+            <p role="status" className="og-success">
+              Attendees added.
+            </p>
+          )}
+          {model.correction.open && (
+            <ConfirmDialog
+              isOpen
+              title="Add attendees"
+              intro="Adds these registered guests to attendance. Their payout share will be recalculated."
+              figures={[]}
+              words={[]}
+              action="Add attendees"
+              busy={model.correction.pending}
+              error={model.error}
+              gate={model.correction.gate}
+              onClose={model.correction.close}
+              onConfirm={() => void model.correction.confirm()}
+              extra={<p className="og-mono break-all">{model.correction.wallets}</p>}
+            />
+          )}
+        </>
       ) : (
         <>
           <FilePick

@@ -1,5 +1,5 @@
 import { kickbackAbi } from "@kickback/contracts";
-import { deployLocalEvent } from "@kickback/contracts/local";
+import { deployLocalEvent, type EventDetails } from "@kickback/contracts/local";
 import { describeWhen } from "@kickback/core";
 import { createPublicClient, createWalletClient, http, type Address, type Hash } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -25,7 +25,11 @@ export async function guestAccounts(count: number): Promise<Address[]> {
 }
 
 /** Deploys an event from alice on the suite's mock court, starting `startIn` seconds after the chain's now. */
-export async function deployOrganiserEvent(name: string, startIn: number) {
+export async function deployOrganiserEvent(
+  name: string,
+  startIn: number,
+  presentation: { eventInfo?: string; details?: Partial<EventDetails> } = {},
+) {
   const now = Number((await publicClient.getBlock()).timestamp);
   const eventStart = Math.ceil((now + startIn) / 60) * 60;
   const local = await deployLocalEvent({
@@ -33,10 +37,12 @@ export async function deployOrganiserEvent(name: string, startIn: number) {
     publicClient,
     eventStart: BigInt(eventStart),
     disputeResolver: LOCAL_KLEROS.disputeResolver,
+    eventInfo: presentation.eventInfo,
     details: {
       eventName: name,
       eventWhen: describeWhen(iso(eventStart), iso(eventStart + 3 * 3600), "UTC"),
       eventLink: "https://luma.com/kickback-organiser",
+      ...presentation.details,
     },
   });
   return { address: local.event, deployBlock: Number(local.deployBlock), eventStart };

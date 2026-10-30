@@ -34,6 +34,7 @@ export function useDeploy(network: NetworkInput) {
   return useMutation({
     mutationFn: (input: DeployInput) =>
       send.mutateAsync({
+        expectedAccount: input.owner,
         prepare: async () => {
           if (!client) throw new Error("The network connection is unavailable.");
           if (Number(network.chainId) !== DEFAULT_CHAIN_ID) throw new Error("This app cannot deploy on that network.");

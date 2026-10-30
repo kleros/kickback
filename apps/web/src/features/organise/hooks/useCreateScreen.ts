@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { ipfsCidV0 } from "@kickback/core";
+import { buildEventInfo, ipfsCidV0, COVER_MIMES, MAX_COVER_BYTES, type EventInfoLink } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
 import * as v from "valibot";
 import type { Address } from "viem";
@@ -42,6 +42,8 @@ export function initialForm(now = new Date()): CreateFormValues {
   const end = new Date(start);
   end.setHours(22);
   return {
+    description: "",
+    links: "",
     title: "",
     shortName: "",
     start: localInput(start),
@@ -56,14 +58,41 @@ export function initialForm(now = new Date()): CreateFormValues {
   };
 }
 
-const toInput = (form: CreateFormValues) => ({ ...form, settleDays: Number(form.settleDays) });
+export function formLinks(text: string): EventInfoLink[] {
+  return text
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => {
+      const [label, ...rest] = line.split("|");
+      return { label: label!.trim(), url: rest.join("|").trim() };
+    });
+}
 
-export function formErrors(form: CreateFormValues): Record<string, string> {
-  const parsed = v.safeParse(createEventSchema, toInput(form));
+export const createFormInput = (form: CreateFormValues, cover?: File) => ({
+  ...form,
+  settleDays: Number(form.settleDays),
+  links: formLinks(form.links ?? ""),
+  ...(cover ? { cover } : {}),
+});
+
+export function formErrors(form: CreateFormValues, cover?: File): Record<string, string> {
+  const parsed = v.safeParse(createEventSchema, createFormInput(form, cover));
   if (parsed.success) return {};
   const errors: Record<string, string> = {};
   for (const issue of parsed.issues) {
     const key = issue.path?.[0]?.key;
+    if (typeof key !== "string") {
+      try {
+        buildEventInfo({ description: form.description });
+      } catch {
+        errors.description = "Use plain text up to 1200 characters.";
+      }
+      try {
+        buildEventInfo({ links: formLinks(form.links ?? "") });
+      } catch {
+        errors.links = "Use at most 3 lines: Label | https://example.com.";
+      }
+    }
     if (typeof key === "string" && !errors[key])
       errors[key] =
         key === "registrationLink"
@@ -91,18 +120,29 @@ export function useCreateScreen() {
   const create = useCreateEvent(network);
   const busy = useSendBusy();
   const [form, setForm] = useState<CreateFormValues>(() => initialForm());
+  const [cover, setCover] = useState<File>();
+  const [coverUrl, setCoverUrl] = useState<string>();
+  useEffect(() => {
+    if (!cover || cover.size > MAX_COVER_BYTES || !COVER_MIMES.some((mime) => mime === cover.type)) {
+      setCoverUrl(undefined);
+      return;
+    }
+    const url = URL.createObjectURL(cover);
+    setCoverUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [cover]);
   const [touched, setTouched] = useState(false);
   const [askNew, setAskNew] = useState(false);
   const [deployed, setDeployed] = useState<DeployedEvent | null>(null);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
 
-  const errors = formErrors(form);
+  const errors = formErrors(form, cover);
   const valid = Object.keys(errors).length === 0;
   let preview: string | null = null;
   let previewError: string | null = null;
   if (valid) {
     try {
-      preview = create.preview(toInput(form), EXPECTED_POLICY_URI, owner);
+      preview = create.preview(createFormInput(form, cover), EXPECTED_POLICY_URI, owner);
     } catch (caught) {
       previewError = errorMessage(caught);
     }
@@ -132,7 +172,12 @@ export function useCreateScreen() {
     try {
       if (!owner) throw new Error("Connect your wallet first.");
       const policyURI = await create.pin.mutateAsync();
-      const receipt = await create.deploy.mutateAsync({ form: toInput(form), owner, policyURI, confirmation });
+      const receipt = await create.deploy.mutateAsync({
+        form: createFormInput(form, cover),
+        owner,
+        policyURI,
+        confirmation,
+      });
       const address = receipt.contractAddress!;
       const block = Number(receipt.blockNumber);
       const origin = typeof window === "undefined" ? "" : window.location.origin;
@@ -150,6 +195,10 @@ export function useCreateScreen() {
 
   return {
     form,
+    cover,
+    setCover,
+    coverUrl,
+    detailLinks: formLinks(form.links ?? ""),
     setField: (name: string, value: string) => setForm((old) => ({ ...old, [name]: value })),
     errors: touched ? errors : {},
     preview,

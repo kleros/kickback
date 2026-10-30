@@ -16,7 +16,7 @@ const nextConfig = {
       "base-uri 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
-      "frame-src https://www.google.com",
+      "frame-src https://www.google.com https://secure.walletconnect.org",
       "img-src 'self' data: blob: https://cdn.kleros.link",
       "font-src 'self' data: https://fonts.reown.com",
       "style-src 'self' 'unsafe-inline'",

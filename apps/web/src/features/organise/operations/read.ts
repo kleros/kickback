@@ -77,7 +77,7 @@ export async function readRelease(
       : state.now <= state.challengeEndsAt
         ? "The challenge window is still open."
         : state.challenges.some((c) => c.state === 1 && state.now <= c.matchEndsAt)
-          ? "A challenge is still waiting for a match; wait for its deadline."
+          ? `Challenges are handled in a later release · ${state.openChallenges}`
           : null;
   if (prerequisite) return { ...gate(prerequisite), ...releasePlan([], state.now, null) };
   let dryRunError: string | null = null;
@@ -96,7 +96,7 @@ export async function readRelease(
   return {
     ...gate(
       plan.needsPreSettlement
-        ? "Settle the expired unmatched challenges one at a time, then check payouts again."
+        ? `Challenges are handled in a later release · ${plan.wallets.length}`
         : (dryRunError ??
             (estimate === null
               ? "Could not estimate the payout; try again."

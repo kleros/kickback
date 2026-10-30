@@ -1,3 +1,4 @@
+import { testnets } from "@kickback/contracts";
 import { getContractAddress, isAddress, type Address } from "viem";
 
 import { CHAIN_MODE } from "./chains";
@@ -14,13 +15,18 @@ export const FIRST_LOCAL_EVENT = getContractAddress({ from: HARDHAT_DEPLOYER, no
 
 const override = process.env.NEXT_PUBLIC_EVENT_CONTRACT;
 
-/** The event `/event` opens: NEXT_PUBLIC_EVENT_CONTRACT, else the live event, else the first local deploy. */
+/** An explicit override takes precedence over the selected network's default event. */
 export const DEFAULT_EVENT: { contract: Address; fromBlock: number } =
   override && isAddress(override)
     ? { contract: override, fromBlock: 0 }
     : CHAIN_MODE === "hardhat"
       ? { contract: FIRST_LOCAL_EVENT, fromBlock: 0 }
-      : MAINNET_EVENT;
+      : CHAIN_MODE === "sepolia"
+        ? {
+            contract: testnets.sepolia.sampleEvent.address as Address,
+            fromBlock: testnets.sepolia.sampleEvent.deployBlock,
+          }
+        : MAINNET_EVENT;
 
 /** Where deposit logs are read from for `contract`: the link's `from`, the live event's deploy block, or 0. */
 export function fromBlockFor(contract: Address, from: string | undefined): number | undefined {

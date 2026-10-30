@@ -6,13 +6,13 @@ import { parseEther, type Address } from "viem";
 
 import { useSendBusy } from "@/lib/web3/send";
 
-import { useCancel, useRefund, useRejectAndRefund, useReleasePayouts, useSweep } from "./useActions";
+import { useCancel, useRefund, useRejectAndRefund, useReleasePayouts, useReturnToken, useSweep } from "./useActions";
 import { errorMessage } from "./useGuestsScreen";
 import { usePayoutActions } from "./usePayoutActions";
 import type { EventScope, Gate } from "../model/shared";
 import { openable, TYPED_WORDS } from "../model/view";
 
-export type RareAction = "sweep" | "refund" | "removeGuest" | "cancel";
+export type RareAction = "sweep" | "refund" | "removeGuest" | "cancel" | "returnToken";
 
 /** Figures frozen when a dialog opens; the send refuses if the chain has moved from them. */
 export type Frozen =
@@ -20,7 +20,8 @@ export type Frozen =
   | { action: "sweep"; spare: bigint }
   | { action: "cancel"; registered: number; refundTotal: bigint }
   | { action: "refund"; spare: bigint }
-  | { action: "removeGuest" };
+  | { action: "removeGuest" }
+  | { action: "returnToken" };
 
 const parseAmount = (text: string): bigint | undefined => {
   try {
@@ -35,21 +36,37 @@ const asAddress = (text: string) => (/^0x[0-9a-fA-F]{40}$/.test(text.trim()) ? (
 export function usePayoutScreen(scope: EventScope, deposit: bigint) {
   const actions = usePayoutActions(scope);
   const [frozen, setFrozen] = useState<Frozen | null>(null);
-  const [fields, setFields] = useState({ to: "", amount: "", guest: "" });
+  const [fields, setFields] = useState({ to: "", amount: "", guest: "", token: "" });
   const dialogInput = {
-    amount: frozen?.action === "refund" ? parseAmount(fields.amount) : undefined,
+    amount:
+      frozen?.action === "refund"
+        ? parseAmount(fields.amount)
+        : frozen?.action === "returnToken" && /^\d+$/.test(fields.amount)
+          ? BigInt(fields.amount)
+          : undefined,
+    token: frozen?.action === "returnToken" ? asAddress(fields.token) : undefined,
     guest: frozen?.action === "removeGuest" ? asAddress(fields.guest) : undefined,
   };
-  const dialogRead = usePayoutActions(scope, frozen && (dialogInput.amount || dialogInput.guest) ? dialogInput : {});
+  const dialogRead = usePayoutActions(
+    scope,
+    frozen && (dialogInput.amount || dialogInput.guest || dialogInput.token) ? dialogInput : {},
+  );
   const release = useReleasePayouts(scope);
   const sweep = useSweep(scope);
   const cancel = useCancel(scope);
   const refund = useRefund(scope);
+  const returnToken = useReturnToken(scope);
   const remove = useRejectAndRefund(scope);
   const busy = useSendBusy();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
-  const pending = release.isPending || sweep.isPending || cancel.isPending || refund.isPending || remove.isPending;
+  const pending =
+    release.isPending ||
+    sweep.isPending ||
+    cancel.isPending ||
+    refund.isPending ||
+    remove.isPending ||
+    returnToken.isPending;
 
   const data = actions.data;
   const locked = (reason: string): Gate => ({ enabled: false, lockedReason: reason });
@@ -60,15 +77,23 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
         sweep: openable(data.sweep, `type ${TYPED_WORDS.sweep}`),
         cancel: openable(data.cancel, `type ${TYPED_WORDS.cancel}`),
         refund: openable(data.refund, "enter an amount"),
+        returnToken: openable(data.returnToken, "read the token balance first"),
         removeGuest: openable(data.removeGuest, "choose a registered guest"),
       }
-    : { release: reading, sweep: reading, cancel: reading, refund: reading, removeGuest: reading };
+    : {
+        release: reading,
+        sweep: reading,
+        cancel: reading,
+        refund: reading,
+        removeGuest: reading,
+        returnToken: reading,
+      };
 
   const open = (action: Frozen["action"]) => {
     if (!data) return;
     setError(null);
     setDone(null);
-    setFields({ to: "", amount: "", guest: "" });
+    setFields({ to: "", amount: "", guest: "", token: "" });
     if (action === "release")
       setFrozen({
         action,
@@ -85,17 +110,27 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
   };
 
   const dialogGate: Gate | null =
-    frozen?.action === "refund"
-      ? dialogRead.data && dialogInput.amount
-        ? !asAddress(fields.to)
-          ? locked("Enter the wallet to return it to.")
-          : dialogRead.data.refund
-        : locked("Enter an amount to return.")
-      : frozen?.action === "removeGuest"
-        ? dialogRead.data && dialogInput.guest
-          ? dialogRead.data.removeGuest
-          : locked("Paste the guest's wallet.")
-        : null;
+    frozen?.action === "returnToken"
+      ? dialogRead.isError
+        ? locked("Could not read this token. Check its address and try again.")
+        : !dialogInput.token
+          ? locked("Enter the token contract.")
+          : !asAddress(fields.to)
+            ? locked("Enter the wallet to return it to.")
+            : dialogRead.isPlaceholderData
+              ? reading
+              : (dialogRead.data?.returnToken ?? reading)
+      : frozen?.action === "refund"
+        ? dialogRead.data && dialogInput.amount
+          ? !asAddress(fields.to)
+            ? locked("Enter the wallet to return it to.")
+            : dialogRead.data.refund
+          : locked("Enter an amount to return.")
+        : frozen?.action === "removeGuest"
+          ? dialogRead.data && dialogInput.guest
+            ? dialogRead.data.removeGuest
+            : locked("Paste the guest's wallet.")
+          : null;
 
   const confirm = async (typed: string) => {
     if (!frozen) return;
@@ -111,6 +146,12 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
         await cancel.mutateAsync({ confirmation: typed, expectedRegistered: frozen.registered });
       else if (frozen.action === "refund")
         await refund.mutateAsync({ to: asAddress(fields.to)!, amount: dialogInput.amount! });
+      else if (frozen.action === "returnToken")
+        await returnToken.mutateAsync({
+          token: dialogInput.token!,
+          to: asAddress(fields.to)!,
+          amount: dialogInput.amount!,
+        });
       else {
         const list = dialogRead.data?.removeGuestList;
         if (!list) throw new Error("Paste a registered guest's wallet.");
@@ -123,6 +164,7 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
           cancel: "Event cancelled. Registered guests were refunded.",
           refund: "Returned.",
           removeGuest: "Guest removed and refunded.",
+          returnToken: "Tokens returned.",
         }[frozen.action],
       );
       setFrozen(null);
@@ -150,6 +192,7 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
     fields,
     setField: (name: keyof typeof fields, value: string) => setFields((old) => ({ ...old, [name]: value })),
     dialogGate,
+    token: dialogRead.isPlaceholderData ? null : (dialogRead.data?.token ?? null),
     open,
     close: () => {
       if (!pending) setFrozen(null);

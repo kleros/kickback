@@ -112,7 +112,10 @@ describe("TicketCard", () => {
     vi.useFakeTimers();
     render(
       <TicketCard
-        view={depositState({ ...galleryInput("ready"), send: { status: "error", errorKind: "wallet" } })}
+        view={depositState({
+          ...galleryInput("ready"),
+          send: { account: galleryInput("ready").wallet.address, status: "error", errorKind: "wallet" },
+        })}
         amount="0.01"
         actions={actions()}
         verified={VERIFIED}

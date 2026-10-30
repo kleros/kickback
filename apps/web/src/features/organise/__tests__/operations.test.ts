@@ -79,7 +79,7 @@ describe("payout dry run", () => {
     ).rejects.toThrow("Only expired");
     values.challenges = [1, zeroAddress, 1500n];
     expect((await readRelease(client, await readEventState(client, scope))).lockedReason).toContain(
-      "waiting for a match",
+      "Challenges are handled in a later release",
     );
   });
 });
@@ -243,4 +243,76 @@ it("refuses release, sweep, and cancellation when their confirmed figures change
   await expect(
     prepareAction(client, scope, owner, { name: "cancel", input: { confirmation: "CANCEL", expectedRegistered: 2 } }),
   ).rejects.toThrow("count changed");
+});
+
+it.each(["register", "refund"] as const)(
+  "refreshes the remaining snapshot after the first %s batch",
+  async (action) => {
+    const { runGuestBatches, refreshRemainingBatches } = await import("../operations/guests");
+    const { batchLists } = await import("../model/guests");
+    const { getAddress } = await import("viem");
+    const { client, methods, values } = mockClient();
+    values.status = 0;
+    const wallets = Array.from({ length: 150 }, (_, i) => getAddress(`0x${(i + 100).toString(16).padStart(40, "0")}`));
+    const lists = batchLists({
+      ...stamp(),
+      items: wallets.map((wallet) => ({ wallet, name: "", email: "", onchain: "unregistered", status: 0 })),
+    });
+    let block = 10;
+    const sent: number[] = [];
+    methods.getBlockNumber.mockImplementation(async () => BigInt(block));
+    methods.getLogs.mockImplementation(async (args) => (Number(args.fromBlock) <= 11 && block >= 11 ? [{}] : []));
+    await runGuestBatches(
+      lists,
+      async (list) => {
+        await checkSnapshot(client, cfg, list);
+        sent.push(list.items.length);
+        block++;
+      },
+      async (remaining) => {
+        const data = {
+          overview: {
+            deposits: wallets.slice(100).map((wallet) => ({ ...row, from: wallet })),
+            returns: [],
+            check: null,
+          },
+          snapshotBlock: block,
+          check: null,
+          stamp: { ...stamp(), block },
+          statusOf: new Map(wallets.slice(100).map((wallet) => [wallet.toLowerCase(), 0])),
+        } as Awaited<ReturnType<typeof readGuests>>;
+        return refreshRemainingBatches(data, remaining, action);
+      },
+    );
+    expect(sent).toEqual([100, 50]);
+  },
+);
+
+it("explains unsupported challenge pre-settlement with a count", async () => {
+  const { client, values, methods } = mockClient();
+  Object.assign(values, {
+    phase: 1,
+    challengeEndsAt: 1499n,
+    challengers: [guest],
+    challenges: [1, zeroAddress, 1499n],
+  });
+  methods.estimateGas.mockRejectedValue(new Error("too much gas"));
+  expect((await readRelease(client, await readEventState(client, scope))).lockedReason).toBe(
+    "Challenges are handled in a later release · 1",
+  );
+});
+
+it("does not rebase a remaining batch onto changed guest status or another event", async () => {
+  const { refreshRemainingBatches } = await import("../operations/guests");
+  const data: Awaited<ReturnType<typeof readGuests>> = {
+    overview: { deposits: [row], returns: [], check: null },
+    check: null,
+    snapshotBlock: 11,
+    stamp: { ...stamp(), block: 11 },
+    statusOf: new Map([[guest.toLowerCase(), 1]]),
+  };
+  expect(() => refreshRemainingBatches(data, [stamp()], "register")).toThrow("remaining guests changed");
+  expect(() =>
+    refreshRemainingBatches({ ...data, stamp: { ...data.stamp, contract: owner } }, [stamp()], "register"),
+  ).toThrow("event snapshot changed");
 });

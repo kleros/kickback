@@ -277,3 +277,16 @@ it("shows deposit amounts and permits a manual refund of a verified approved pay
   expect(rows[0]?.canRefund.enabled).toBe(true);
   expect(guestRows([row], guestCheck(), { [rows[0]!.id]: "refund" })[0]?.tick).toBe("refund");
 });
+
+it("keeps refund eligibility when query structural sharing separates equivalent rows", async () => {
+  const { replaceEqualDeep } = await import("@tanstack/react-query");
+  const first = { ...checked, wallet: owner, email: "first@example.com" };
+  const before = guestCheck({ verified: [first, checked], newStakers: [first, checked] });
+  const after = guestCheck({
+    verified: [{ ...first, onchain: "registered" }, { ...checked }],
+    newStakers: [{ ...checked }],
+  });
+  const cached = replaceEqualDeep(before, after);
+  expect(cached.verified[1]).not.toBe(cached.newStakers[0]);
+  expect(guestRows([row], cached).find((r) => r.wallet === guest)?.canRefund.enabled).toBe(true);
+});

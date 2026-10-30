@@ -96,3 +96,44 @@ export async function checkSnapshot(
     }),
   );
 }
+
+export function refreshRemainingBatches(data: GuestsData, lists: StampedList[], action: "register" | "refund") {
+  const rows = guestRows(data.overview.deposits, data.check);
+  for (const list of lists) {
+    if (
+      list.contract.toLowerCase() !== data.stamp.contract.toLowerCase() ||
+      list.chainId !== data.stamp.chainId ||
+      list.deposit !== data.stamp.deposit ||
+      data.stamp.block < list.block
+    )
+      throw new Error("The event snapshot changed; check the list again.");
+  }
+  return lists.map((list) => ({
+    ...list,
+    ...data.stamp,
+    items: list.items.map((item) => {
+      const eligible = rows.some(
+        (row) =>
+          row.wallet.toLowerCase() === item.wallet.toLowerCase() &&
+          (action === "register" ? row.canRegister.enabled : row.canRefund.enabled),
+      );
+      const status = data.statusOf.get(item.wallet.toLowerCase());
+      if (!eligible || status !== item.status)
+        throw new Error("The remaining guests changed; check the list again. Your ticks are kept.");
+      return { ...item, status };
+    }),
+  }));
+}
+
+export async function runGuestBatches(
+  lists: StampedList[],
+  send: (list: StampedList) => Promise<unknown>,
+  refresh: (remaining: StampedList[]) => Promise<StampedList[]>,
+) {
+  let remaining = lists;
+  while (remaining.length) {
+    await send(remaining[0]!);
+    remaining = remaining.slice(1);
+    if (remaining.length) remaining = await refresh(remaining);
+  }
+}

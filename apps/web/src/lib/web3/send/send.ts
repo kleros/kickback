@@ -68,6 +68,7 @@ export interface SendDeps {
 }
 
 export interface SendArgs {
+  expectedAccount?: Address;
   /** Re-reads whatever the request depends on and builds it, right before the wallet prompt. Throw to refuse. */
   prepare: () => Promise<TxRequest>;
 }
@@ -135,12 +136,15 @@ export async function sendTx(deps: SendDeps, args: SendArgs): Promise<Transactio
   }
 }
 
-async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<TransactionReceipt> {
+async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs): Promise<TransactionReceipt> {
   const { client, wallet, chainId, errorText, gasLimitFor, sent } = deps;
   const now = deps.now ?? Date.now;
 
   const account = wallet.getAddress();
   if (!account) throw new SendError("no-account", "Connect your wallet first. Nothing was sent.");
+
+  if (expectedAccount && !isAddressEqual(account, expectedAccount))
+    throw new SendError("account-changed", "Your wallet switched accounts, so nothing was sent. Try again.");
 
   const request = await prepare();
   const data = request.data ?? "0x";
@@ -200,7 +204,16 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
 
   const waiting = new AbortController();
   if (sent) {
-    const record: SentTx = { hash, account, contract: recordKey, chainId, at: now(), txNonce: null };
+    const record: SentTx = {
+      hash,
+      account,
+      contract: recordKey,
+      chainId,
+      at: now(),
+      txNonce: null,
+      data,
+      value: tx.value.toString(),
+    };
     sent.save(record);
     void learnTxNonceUntil(client, sent, record, deps.nonceRetryMs ?? DEFAULT_NONCE_RETRY_MS, waiting.signal);
   }

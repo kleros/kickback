@@ -6,6 +6,8 @@ import { isAddress, isAddressEqual, type Address, type Hash, type PublicClient }
  */
 export interface SentTx {
   hash: Hash;
+  data?: string;
+  value?: string;
   account: Address;
   contract: Address;
   chainId: number;

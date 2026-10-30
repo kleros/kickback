@@ -307,7 +307,16 @@ describe("the pending record", () => {
 
     await sendTx(deps, { prepare });
 
-    expect(seen).toEqual({ hash: HASH, account: ALICE, contract: EVENT, chainId: 1, at: 1_000, txNonce: null });
+    expect(seen).toEqual({
+      data: DEPOSIT.data,
+      value: DEPOSIT.value.toString(),
+      hash: HASH,
+      account: ALICE,
+      contract: EVENT,
+      chainId: 1,
+      at: 1_000,
+      txNonce: null,
+    });
   });
 
   it("is forgotten when the transaction fails on-chain", async () => {
@@ -538,4 +547,18 @@ describe("deploying a contract", () => {
     const { deps } = setup();
     await expect(sendTx(deps, { prepare: deploy() })).rejects.toBeInstanceOf(SendError);
   });
+});
+
+it("refuses a deployment owner captured before the connected account changed", async () => {
+  const { deps, prepare, wallet, switchTo } = setup();
+  switchTo(BOB);
+  await expect(sendTx(deps, { prepare, expectedAccount: ALICE })).rejects.toMatchObject({ kind: "account-changed" });
+  expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  expect(prepare).not.toHaveBeenCalled();
+});
+
+it("records calldata and value so deposit consumers can reject organiser sends", async () => {
+  const { deps, prepare, sent } = setup();
+  await sendTx(deps, { prepare });
+  expect(sent.read(1, EVENT, ALICE)).toMatchObject({ data: DEPOSIT.data, value: DEPOSIT.value.toString() });
 });
