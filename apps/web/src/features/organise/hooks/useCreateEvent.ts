@@ -8,13 +8,14 @@ import { usePublicClient } from "wagmi";
 import { useSend } from "@/lib/web3/send";
 
 import {
-  createDeployment,
+  createConfig,
   jurorPreview,
   pinGenericPolicy,
   readDeployments,
   saveDeployment,
   type BrowserDeployment,
 } from "../model/create";
+import { pinEventInfo, eventInfoTransport, prepareEventDeployment } from "../operations/eventInfo";
 import { policyTransport } from "../operations/policy";
 
 export interface DeployInput {
@@ -38,7 +39,7 @@ export function useDeploy(network: NetworkInput) {
           if (readDeployments().length && input.confirmation !== "NEW")
             throw new Error("Type NEW to create another event from this browser.");
           const block = await client.getBlock();
-          createDeployment(input.form, network, input.owner, input.policyURI, Number(block.timestamp));
+          await prepareEventDeployment(input.form, network, input.owner, input.policyURI, Number(block.timestamp));
           throw new Error(DEPLOYMENT_SEND_BLOCKER);
         },
       }),
@@ -48,7 +49,7 @@ export function useDeploy(network: NetworkInput) {
         address: receipt.contractAddress,
         chainId: Number(network.chainId),
         block: Number(receipt.blockNumber),
-        name: createDeployment(input.form, network, input.owner, input.policyURI, 0).config.eventName!,
+        name: createConfig(input.form, network, input.owner).eventName!,
       };
       saveDeployment(deployment);
       await queries.invalidateQueries({ queryKey: ["organise"] });
@@ -59,6 +60,7 @@ export function useDeploy(network: NetworkInput) {
 export function useCreateEvent(
   network: NetworkInput,
   transport: Parameters<typeof pinGenericPolicy>[0] = policyTransport(),
+  infoTransport = eventInfoTransport(),
 ) {
   const deployments = useQuery({
     queryKey: ["organise", "deployments"],
@@ -66,11 +68,14 @@ export function useCreateEvent(
     staleTime: Infinity,
   });
   const pin = useMutation({ mutationFn: () => pinGenericPolicy(transport) });
+  const info = useMutation({ mutationFn: (input: unknown) => pinEventInfo(input, infoTransport) });
   const deploy = useDeploy(network);
   return {
     deployments,
     pin,
+    info,
     deploy,
-    preview: (input: unknown, policyURI: string, owner?: Address) => jurorPreview(input, network, policyURI, owner),
+    preview: (input: unknown, policyURI: string, owner?: Address, infoPath?: string | null) =>
+      jurorPreview(input, network, policyURI, owner, infoPath),
   };
 }

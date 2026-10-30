@@ -33,6 +33,7 @@ export const EVENT_FIELDS = [
 /** Deploy-time placeholders; a non-empty label means an empty value is refused with that label. */
 const DEPLOY_PLACEHOLDERS: Record<string, string> = {
   eventName: "",
+  eventInfo: "",
   deposit: "",
   policyURI: "",
   owner: "",
@@ -97,6 +98,7 @@ export function renderCase({ pieces, slots }: CaseTemplate, wallet: string, cont
 }
 
 export type TemplateConfig = {
+  eventInfo?: string;
   eventName?: string;
   depositUnits: bigint;
   explorer?: string;
@@ -116,6 +118,7 @@ export function templateValues(cfg: TemplateConfig, owner?: string): Record<stri
   const deposit = formatEther(cfg.depositUnits);
   const values: Record<string, string> = {
     eventName: cfg.eventName ?? "Truth Pays",
+    eventInfo: cfg.eventInfo ?? "none",
     deposit: `${deposit.includes(".") ? deposit : `${deposit}.0`} ETH`,
     policyURI: cfg.kleros?.policyURI ?? "",
     owner: organiser,
@@ -154,13 +157,15 @@ export function caseTemplate(
       continue;
     }
     if (!(key in DEPLOY_PLACEHOLDERS)) throw new Error(`Unknown placeholder ${m[0]} in ${name}`);
-    const v = values[key];
+    const v = values[key] ?? (key === "eventInfo" ? "none" : undefined);
     if ((key === "owner" || key === "ownerLower") && !v)
       throw new Error(`Set "owner" in the config: the case description (${name}) names the organiser's wallet`);
     if (DEPLOY_PLACEHOLDERS[key] && !String(v ?? "").trim())
       throw new Error(
         `${name} names the event's "${DEPLOY_PLACEHOLDERS[key]}" (${m[0]}), but it is empty: please fill it in.`,
       );
+    if (key === "eventInfo" && v !== "none" && !/^\/ipfs\/Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(v ?? ""))
+      throw new Error("Invalid event info path.");
     piece += JSON.stringify(String(v ?? "")).slice(1, -1);
   }
   pieces.push(piece + text.slice(last));

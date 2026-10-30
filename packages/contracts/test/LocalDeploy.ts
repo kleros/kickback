@@ -21,6 +21,27 @@ describe("deployLocalEvent", function () {
     expect(truthPaysCaseTemplateText).to.equal(doc("metaevidence.template.json"));
   });
 
+  it("returns an event info path in the on-chain case without changing the live runtime", async function () {
+    const publicClient = await hre.viem.getPublicClient();
+    const [walletClient] = await hre.viem.getWalletClients();
+    const eventInfo = ipfsPathOf("event info");
+    const ev = await deployLocalEvent({ walletClient: walletClient!, publicClient, eventInfo });
+    const [text] = await publicClient.readContract({
+      address: ev.event,
+      abi: kickbackAbi,
+      functionName: "caseMetaEvidence",
+      args: [walletClient!.account.address],
+    });
+    expect(text).to.equal(renderCase(ev.template, walletClient!.account.address, ev.event));
+    expect(JSON.parse(text).description).to.include(`event page details: ${eventInfo}`);
+    expect(
+      fingerprint(
+        (await publicClient.getCode({ address: ev.event }))!,
+        kickbackImmutables as unknown as [number, number][],
+      ),
+    ).to.equal(kickbackFingerprint);
+  });
+
   it("deploys the mocks and the live build with the generic policy and template, 0.01 ETH, start in 3 days, 14 days to settle", async function () {
     const publicClient = await hre.viem.getPublicClient();
     const [walletClient] = await hre.viem.getWalletClients();

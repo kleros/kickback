@@ -30,19 +30,31 @@ const varint = (value: number): number[] => {
   return o;
 };
 
-/**
- * The CIDv0 ("Qm…") `ipfs add` gives these bytes with default settings, for up to one block
- * (256 KiB): sha256 of a dag-pb node holding a UnixFS file, as a base58 multihash. Same as the contract.
- */
+/** Default CIDv0 UnixFS encoding: 256 KiB chunks, dag-pb leaves and a balanced parent, up to 2 MiB. */
 export function ipfsCidV0(data: string | Uint8Array): string {
   const bytes = typeof data === "string" ? stringToBytes(data) : data;
-  if (bytes.length > MAX_METAEVIDENCE_BYTES) throw new Error("More than one IPFS block (256 KiB)");
-  const size = varint(bytes.length);
-  const file = concat([new Uint8Array([0x08, 0x02, 0x12, ...size]), bytes, new Uint8Array([0x18, ...size])]);
-  const node = concat([new Uint8Array([0x0a, ...varint(file.length)]), file]);
-  return base58(concat([new Uint8Array([0x12, 0x20]), sha256(node, "bytes")]));
+  if (bytes.length > 2 * 1024 * 1024) throw new Error("More than 2 MiB of IPFS data");
+  const field = (tag: number, value: Uint8Array) => concat([new Uint8Array([tag, ...varint(value.length)]), value]);
+  const hash = (block: Uint8Array) => concat([new Uint8Array([0x12, 0x20]), sha256(block, "bytes")]);
+  const leaf = (chunk: Uint8Array) =>
+    field(
+      0x0a,
+      concat([new Uint8Array([0x08, 0x02]), field(0x12, chunk), new Uint8Array([0x18, ...varint(chunk.length)])]),
+    );
+  if (bytes.length <= MAX_METAEVIDENCE_BYTES) return base58(hash(leaf(bytes)));
+  const links: Uint8Array[] = [];
+  const sizes: number[] = [];
+  for (let i = 0; i < bytes.length; i += MAX_METAEVIDENCE_BYTES) {
+    const chunk = bytes.subarray(i, i + MAX_METAEVIDENCE_BYTES);
+    const node = leaf(chunk);
+    links.push(field(0x12, concat([field(0x0a, hash(node)), new Uint8Array([0x12, 0, 0x18, ...varint(node.length)])])));
+    sizes.push(0x20, ...varint(chunk.length));
+  }
+  // DAG-PB serializes links before data; UnixFS records each child's file size separately from its DAG size.
+  const file = new Uint8Array([0x08, 0x02, 0x18, ...varint(bytes.length), ...sizes]);
+  return base58(hash(concat([...links, field(0x0a, file)])));
 }
-/** "/ipfs/<CIDv0>" of a text, as the contract's caseMetaEvidence computes it. */
+/** "/ipfs/<CIDv0>" of text using the default UnixFS encoding. */
 export const ipfsPathOf = (text: string): string => "/ipfs/" + ipfsCidV0(text);
 
 export interface MetaEvidenceTemplate {

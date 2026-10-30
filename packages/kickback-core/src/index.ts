@@ -8,3 +8,5 @@ export * from "./deposits";
 export * from "./chain";
 export * from "./lists";
 export * from "./errorText";
+export * from "./eventInfo";
+export * from "./eventDetails";

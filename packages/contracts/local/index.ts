@@ -96,6 +96,7 @@ export type EventDetails = {
 
 export type LocalEventSettings = {
   /** The contract's owner, named in each case. */
+  eventInfo?: string;
   owner: Address;
   disputeResolver: Address;
   depositAmount?: bigint;
@@ -130,6 +131,7 @@ export function localEventArgs(settings: LocalEventSettings) {
   const values = templateValues(
     {
       ...details,
+      eventInfo: settings.eventInfo,
       depositUnits: depositAmount,
       explorer: settings.explorer ?? "https://etherscan.io",
       kleros: { policyURI },

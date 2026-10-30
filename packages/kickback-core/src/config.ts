@@ -40,6 +40,7 @@ export type EventFieldKey = "eventTitle" | "eventName" | "eventWhen" | "eventWhe
 
 /** A config as written by hand (config.json) or built by a page, before normalizeConfig. */
 export interface RawConfig extends Partial<Record<EventFieldKey, string>> {
+  eventInfo?: string;
   chain?: string;
   chainId?: number | string;
   chainName?: string;
@@ -232,10 +233,18 @@ export const EVENT_FIELDS: readonly EventField[] = [
   { key: "eventLink", label: "Registration link", max: 300, example: "https://luma.com/your-event", link: true },
 ];
 type DeployKey =
-  "eventName" | "deposit" | "policyURI" | "owner" | "ownerLower" | "explorer" | Exclude<EventFieldKey, "eventName">;
+  | "eventInfo"
+  | "eventName"
+  | "deposit"
+  | "policyURI"
+  | "owner"
+  | "ownerLower"
+  | "explorer"
+  | Exclude<EventFieldKey, "eventName">;
 /** The deploy-time placeholders and the label to name when one is empty ("" = not checked). */
 const DEPLOY_PLACEHOLDERS: Record<DeployKey, string> = {
   eventName: "",
+  eventInfo: "",
   deposit: "",
   policyURI: "",
   owner: "",
@@ -289,6 +298,7 @@ export function templateValues(cfg: Pick<Config, "depositUnits"> & RawConfig, ow
         : "";
   const values: TemplateValues = {
     eventName: cfg.eventName ?? "Truth Pays",
+    eventInfo: cfg.eventInfo ?? "none",
     deposit: `${fmt(cfg.depositUnits)} ${SYMBOL}`,
     policyURI: cfg.kleros?.policyURI ?? "",
     owner: organiser,
@@ -336,13 +346,15 @@ export function caseTemplate(
     }
     if (!Object.hasOwn(DEPLOY_PLACEHOLDERS, key)) throw new Error(`Unknown placeholder ${m[0]} in ${name}`);
     const k = key as DeployKey;
-    const v = values[k];
+    const v = values[k] ?? (k === "eventInfo" ? "none" : undefined);
     if ((k === "owner" || k === "ownerLower") && !v)
       throw new Error(`Set "owner" in the config: the case description (${name}) names the organiser's wallet`);
     if (DEPLOY_PLACEHOLDERS[k] && !String(v ?? "").trim())
       throw new Error(
         `${name} names the event's "${DEPLOY_PLACEHOLDERS[k]}" (${m[0]}), but it is empty: please fill it in.`,
       );
+    if (key === "eventInfo" && v !== "none" && !/^\/ipfs\/Qm[1-9A-HJ-NP-Za-km-z]{44}$/.test(v ?? ""))
+      throw new Error("Invalid event info path.");
     // values go inside JSON strings, so they are escaped as JSON
     piece += JSON.stringify(String(v ?? "")).slice(1, -1);
   }
