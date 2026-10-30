@@ -21,4 +21,12 @@ export const paths = {
   organise: {
     getHref: () => "/organise",
   },
+  organiseNew: {
+    getHref: () => "/organise/new",
+  },
+  organiseEvent: {
+    /** An organiser tab; `from` is the event's deploy block, so the tab need not search for it. */
+    getHref: (contract: string, from?: string | number, tab?: "guests" | "attendance" | "payout") =>
+      `/organise/${contract}${tab ? `/${tab}` : ""}${from === undefined ? "" : `?from=${encodeURIComponent(String(from))}`}`,
+  },
 } as const;
