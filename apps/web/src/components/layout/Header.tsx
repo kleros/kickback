@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { KickbackMark } from "@/components/ui/icons";
 import { WalletChip } from "@/components/wallet/WalletChip";
 
+import { isSepolia } from "@/config/chains";
 import { paths } from "@/config/paths";
 import { siteConfig } from "@/config/site";
 
@@ -30,6 +31,11 @@ export function Header() {
           {siteConfig.name}
         </Link>
         <div className="kb-header-right">
+          {isSepolia && (
+            <span className="kb-test-pill" data-testid="test-chain">
+              Sepolia test
+            </span>
+          )}
           <WalletChip />
           <ThemeToggle />
         </div>

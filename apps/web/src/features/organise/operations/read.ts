@@ -5,13 +5,13 @@ import {
   errorText,
   findDeployBlock,
   incomingDeposits,
-  isKnownResolver,
-  KLEROS,
   TX_GAS_CAP,
   readEvent,
   type NetworkInput,
 } from "@kickback/core";
 import { encodeFunctionData, zeroAddress, type Address, type PublicClient } from "viem";
+
+import { isKnownArbitratorOn, isKnownResolverOn } from "@/config/kleros";
 
 import { pinnedRead } from "./pinned";
 import { releasePlan, type ChallengeFact } from "../model/payout";
@@ -126,7 +126,7 @@ export async function openEvent(client: PublicClient, scope: EventScope, network
     deposits: deposits.length,
     release,
     verifiedKleros:
-      isKnownResolver(scope.chainId, state.event.disputeResolver) &&
-      KLEROS[scope.chainId]?.arbitrator.toLowerCase() === state.event.arbitrator.toLowerCase(),
+      isKnownResolverOn(scope.chainId, state.event.disputeResolver) &&
+      isKnownArbitratorOn(scope.chainId, state.event.arbitrator),
   };
 }

@@ -1,11 +1,14 @@
 "use client";
 
+import { kickbackAbi, kickbackBytecode } from "@kickback/contracts";
 import type { NetworkInput } from "@kickback/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Address } from "viem";
+import { encodeDeployData, type Address } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { useSend } from "@/lib/web3/send";
+
+import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import {
   createConfig,
@@ -24,23 +27,40 @@ export interface DeployInput {
   policyURI: string;
   confirmation?: string;
 }
-export const DEPLOYMENT_SEND_BLOCKER =
-  "Deployment is unavailable: useSend requires a recipient address. Contract creation must omit the recipient; the shared send layer needs deployment support.";
-
 export function useDeploy(network: NetworkInput) {
   const client = usePublicClient({ chainId: Number(network.chainId) });
   const queries = useQueryClient();
-  const send = useSend();
+  const send = useSend({ record: true });
   return useMutation({
     mutationFn: (input: DeployInput) =>
       send.mutateAsync({
         prepare: async () => {
           if (!client) throw new Error("The network connection is unavailable.");
+          if (Number(network.chainId) !== DEFAULT_CHAIN_ID) throw new Error("This app cannot deploy on that network.");
           if (readDeployments().length && input.confirmation !== "NEW")
             throw new Error("Type NEW to create another event from this browser.");
           const block = await client.getBlock();
-          await prepareEventDeployment(input.form, network, input.owner, input.policyURI, Number(block.timestamp));
-          throw new Error(DEPLOYMENT_SEND_BLOCKER);
+          const { args } = await prepareEventDeployment(
+            input.form,
+            network,
+            input.owner,
+            input.policyURI,
+            Number(block.timestamp),
+          );
+          const [deposit, name, owner, start, deadline, [disputeResolver, extraData, pieces, slots, policyURI]] = args;
+          const data = encodeDeployData({
+            abi: kickbackAbi,
+            bytecode: kickbackBytecode,
+            args: [
+              deposit,
+              name,
+              owner,
+              BigInt(start),
+              BigInt(deadline),
+              { disputeResolver, extraData, metaEvidenceTemplate: pieces, metaEvidenceSlots: slots, policyURI },
+            ],
+          });
+          return { data, value: 0n };
         },
       }),
     onSuccess: async (receipt, input) => {

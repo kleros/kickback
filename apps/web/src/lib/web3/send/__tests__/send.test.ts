@@ -3,7 +3,7 @@ import type { Address, Hash, TransactionReceipt } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sendLock } from "../lock";
-import { SendError, sendTx, type SendDeps, type SendWallet } from "../send";
+import { DEPLOY_RECORD_KEY, SendError, sendTx, type SendDeps, type SendWallet } from "../send";
 import { createSentTxStore, reconcileSentTx, sentTxKey } from "../sentTx";
 
 const ALICE: Address = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
@@ -472,5 +472,70 @@ describe("the recorded nonce", () => {
     expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toEqual(newer);
     release();
     await running;
+  });
+});
+
+describe("deploying a contract", () => {
+  const CODE = "0x6080604052" as const;
+  const NEW: Address = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  const deploy = () => vi.fn(async () => ({ data: CODE }));
+
+  it("dry-runs and estimates with no `to`, sends pinned, and returns the receipt's contract address", async () => {
+    const { calls, client, deps, wallet } = setup();
+    client.waitForTransactionReceipt.mockImplementation(async () => {
+      calls.push("waitForTransactionReceipt");
+      return { ...receipt("success"), contractAddress: NEW };
+    });
+    const prepare = deploy();
+
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ contractAddress: NEW });
+    expect(calls).toEqual(["call", "estimateGas", "getChainId", "sendTransaction", "waitForTransactionReceipt"]);
+    expect(client.call).toHaveBeenCalledWith({ account: ALICE, data: CODE, value: 0n });
+    expect(client.estimateGas).toHaveBeenCalledWith({ account: ALICE, data: CODE, value: 0n });
+    expect(wallet.sendTransaction).toHaveBeenCalledWith({
+      account: ALICE,
+      data: CODE,
+      value: 0n,
+      gas: 130_000n,
+      chainId: 1,
+    });
+    expect(wallet.sendTransaction.mock.calls[0]).not.toHaveProperty("0.to");
+  });
+
+  it("is refused with no code to deploy", async () => {
+    const { deps, wallet } = setup();
+    await expect(sendTx(deps, { prepare: async () => ({}) })).rejects.toMatchObject({ kind: "refused" });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("caps the gas the same way: an estimate above 2^24 is refused", async () => {
+    const { deps, wallet } = setup({ estimate: TX_GAS_CAP + 1n });
+    await expect(sendTx(deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "refused" });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("is refused on another chain, and while another send holds the lock", async () => {
+    const other = setup({ walletChain: 5 });
+    await expect(sendTx(other.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "wrong-chain" });
+
+    sendLock.setState({ busy: true });
+    const busy = setup();
+    await expect(sendTx(busy.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "busy" });
+  });
+
+  it("is recorded as pending under the deploy key until it mines", async () => {
+    const { client, deps, sent } = setup();
+    let seen: unknown = null;
+    client.waitForTransactionReceipt.mockImplementation(async () => {
+      seen = sent.read(1, DEPLOY_RECORD_KEY, ALICE);
+      return { ...receipt("success"), contractAddress: NEW };
+    });
+    await sendTx(deps, { prepare: deploy() });
+    expect(seen).toMatchObject({ hash: HASH, contract: DEPLOY_RECORD_KEY, account: ALICE });
+  });
+
+  it("a mined receipt that names no contract is not reported deployed", async () => {
+    const { deps } = setup();
+    await expect(sendTx(deps, { prepare: deploy() })).rejects.toBeInstanceOf(SendError);
   });
 });

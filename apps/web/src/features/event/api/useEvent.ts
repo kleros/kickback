@@ -5,7 +5,6 @@ import {
   eventClock,
   findDeployBlock,
   getLogsChunked,
-  isKnownResolver,
   KickbackError,
   readEvent,
   renderCase,
@@ -19,6 +18,7 @@ import { usePublicClient } from "wagmi";
 import { STALE_TIME } from "@/lib/query";
 
 import { DEFAULT_CHAIN_ID, isLocalChainEnabled } from "@/config/chains";
+import { isKnownResolverOn } from "@/config/kleros";
 
 export type RefusalReason = "not-address" | "no-contract" | "not-kickback" | "look-alike";
 
@@ -72,7 +72,7 @@ export function useEvent(contract: string) {
         if (reason) throw new EventRefused(/^0x[0-9a-fA-F]{40}$/.test(contract) ? reason : "not-address", contract);
         throw error;
       }
-      if (!isLocalChainEnabled && !isKnownResolver(DEFAULT_CHAIN_ID, info.disputeResolver))
+      if (!isLocalChainEnabled && !isKnownResolverOn(DEFAULT_CHAIN_ID, info.disputeResolver))
         throw new EventRefused("look-alike", contract);
 
       const caseText = renderCase(info.metaEvidenceTemplate, zeroAddress, info.contract);

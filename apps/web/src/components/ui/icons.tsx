@@ -90,3 +90,23 @@ export const KickbackMark = () => (
     </svg>
   </span>
 );
+
+export const LockIcon = ({ size = 14, ...props }: IconProps) => (
+  <svg {...base(size)} {...props}>
+    <rect x="5" y="10.5" width="14" height="9.5" rx="2.5" />
+    <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+  </svg>
+);
+
+export const FileIcon = ({ size = 20, ...props }: IconProps) => (
+  <svg {...base(size)} {...props}>
+    <path d="M14 3.5H8A2.5 2.5 0 0 0 5.5 6v12A2.5 2.5 0 0 0 8 20.5h8a2.5 2.5 0 0 0 2.5-2.5V8L14 3.5z" />
+    <path d="M14 3.5V8h4.5" />
+  </svg>
+);
+
+export const DownloadIcon = ({ size = 16, ...props }: IconProps) => (
+  <svg {...base(size)} {...props}>
+    <path d="M12 4.5v11M7 11l5 5 5-5M5 19.5h14" />
+  </svg>
+);

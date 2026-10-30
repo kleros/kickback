@@ -9,7 +9,7 @@ import * as v from "valibot";
  * time, so an explicit map is the only form guaranteed to survive both the
  * server and the client bundle.
  *
- * NEXT_PUBLIC_CHAIN, NEXT_PUBLIC_MAINNET_RPC and NEXT_PUBLIC_LOCAL_RPC_URL are read in
+ * NEXT_PUBLIC_CHAIN, NEXT_PUBLIC_MAINNET_RPC, NEXT_PUBLIC_SEPOLIA_RPC and NEXT_PUBLIC_LOCAL_RPC_URL are read in
  * `chains.ts`, which must import without this full set.
  */
 const EnvSchema = v.object({

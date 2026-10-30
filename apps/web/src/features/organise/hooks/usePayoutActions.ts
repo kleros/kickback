@@ -5,7 +5,7 @@ import { useAccount, usePublicClient } from "wagmi";
 
 import { useChainTime } from "@/lib/web3/chain-time";
 
-import { organiserKey, type EventScope } from "../model/shared";
+import { organiserKey, sameEventPlaceholder, type EventScope } from "../model/shared";
 import { readPayoutActions, type PayoutInput } from "../operations/payout";
 
 export function usePayoutActions(scope: EventScope, input: PayoutInput = {}) {
@@ -26,5 +26,6 @@ export function usePayoutActions(scope: EventScope, input: PayoutInput = {}) {
     queryFn: () => readPayoutActions(client!, scope, account, input),
     enabled: !!client,
     retry: false,
+    placeholderData: sameEventPlaceholder(scope),
   });
 }

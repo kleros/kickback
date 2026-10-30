@@ -4,6 +4,7 @@
 @import "./motion.css";
 @import "./components.css";
 @import "./event.css";
+@import "./organise.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 

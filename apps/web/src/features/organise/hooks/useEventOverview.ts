@@ -7,7 +7,7 @@ import { usePublicClient } from "wagmi";
 import { useChainTime } from "@/lib/web3/chain-time";
 
 import { overviewModel } from "../model/phase";
-import { organiserKey, type EventScope } from "../model/shared";
+import { organiserKey, sameEventPlaceholder, type EventScope } from "../model/shared";
 import { openEvent } from "../operations/read";
 
 export function useEventOverview(scope: EventScope, network: NetworkInput = { chainId: scope.chainId }) {
@@ -28,5 +28,6 @@ export function useEventOverview(scope: EventScope, network: NetworkInput = { ch
     },
     enabled: !!client,
     retry: false,
+    placeholderData: sameEventPlaceholder(scope),
   });
 }
