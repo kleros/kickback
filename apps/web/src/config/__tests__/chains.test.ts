@@ -49,6 +49,18 @@ describe("chain per mode", () => {
     t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["https://rpc.mevblocker.io"]);
   });
 
+  it.each(["http://127.0.0.1:8545", "http://localhost:8545"])(
+    "mainnet on %s, a local node answering as chainId 1, allows the dev wallet only",
+    async (url) => {
+      vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet");
+      vi.stubEnv("NEXT_PUBLIC_MAINNET_RPC", url);
+      const chains = await import("../chains");
+      expect(chains.DEFAULT_CHAIN_ID).toBe(1);
+      expect(chains.isDevWalletEnabled).toBe(true);
+      expect(chains.isDevWalletOnly).toBe(true);
+    },
+  );
+
   it.each(["https://localhost.example.com", "https://rpc.example.org/127.0.0.1"])(
     "mainnet on %s, a remote host that names a local one, gets no dev wallet",
     async (url) => {
@@ -57,6 +69,7 @@ describe("chain per mode", () => {
       const chains = await import("../chains");
       expect(chains.MAINNET_RPC_URL).toBe(url);
       expect(chains.isDevWalletEnabled).toBe(false);
+      expect(chains.isDevWalletOnly).toBe(false);
     },
   );
 
