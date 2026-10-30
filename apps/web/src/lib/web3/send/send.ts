@@ -1,3 +1,4 @@
+import { TX_GAS_CAP } from "@kickback/core";
 import {
   isAddressEqual,
   type Address,
@@ -10,7 +11,6 @@ import {
 
 import { acquireSendLock, releaseSendLock } from "./lock";
 import { learnTxNonce, type SentTx, type SentTxStore } from "./sentTx";
-import { TX_GAS_CAP } from "./stubs";
 
 export interface TxRequest {
   to: Address;
