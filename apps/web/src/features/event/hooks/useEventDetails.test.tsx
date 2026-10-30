@@ -183,3 +183,12 @@ it("uses the default share text when old events have no info document", async ()
   expect(result.current.text).toContain("https://luma.com/dinner");
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("falls back to the known Luma page only when the case template has no registration link", async () => {
+  const { withRegistrationLink } = await import("./useEventDetails");
+  expect(withRegistrationLink({ link: null }, "https://luma.com/qewnqhas").link).toBe("https://luma.com/qewnqhas");
+  expect(withRegistrationLink({ link: "https://luma.com/dinner" }, "https://luma.com/qewnqhas").link).toBe(
+    "https://luma.com/dinner",
+  );
+  expect(withRegistrationLink({ link: null }, undefined).link).toBeNull();
+});

@@ -39,4 +39,4 @@ packages/contracts/cache/
 .claude/worktrees/
 
 # vercel
-.vercel/
+.vercel*/

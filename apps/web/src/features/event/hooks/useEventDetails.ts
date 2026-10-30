@@ -56,10 +56,16 @@ export function useEventInfo(event: KickbackEvent) {
   return { details, info: info.data };
 }
 
+/** The on-chain registration link, or the app's known Luma page when the case template carries none. */
+export function withRegistrationLink<T extends { link: string | null }>(details: T, lumaUrl: string | undefined): T {
+  return details.link || !lumaUrl ? details : { ...details, link: lumaUrl };
+}
+
 export function useEventDetails(event: KickbackEvent) {
-  const { details, info } = useEventInfo(event);
+  const { details: onChain, info } = useEventInfo(event);
+  const details = useMemo(() => withRegistrationLink(onChain, event.lumaUrl), [onChain, event.lumaUrl]);
   const cover = useVerifiedCover(info?.cover);
-  const link = visibleLink(details.link ?? event.lumaUrl ?? null);
+  const link = visibleLink(details.link);
   const preview = useQuery({
     queryKey: ["registration-preview", link?.href],
     queryFn: () => fetchRegistrationPreview(link!.href),
