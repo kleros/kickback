@@ -25,9 +25,30 @@ for (const width of [375, 1280] as const)
       .evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
     expect(clipped).toEqual([]);
 
-    // the live card at rest has the same height, and its skeleton too
+    // the shipped face has tabular figures: digits are equal width, so a ticking timer does not jitter
+    const widths = await page
+      .locator(".tk-amount")
+      .first()
+      .evaluate((el) =>
+        ["0.01", "1.11", "8.88"].map((text) => {
+          const probe = el.cloneNode() as HTMLElement;
+          probe.textContent = text;
+          probe.style.position = "absolute";
+          el.parentElement!.appendChild(probe);
+          const width = probe.getBoundingClientRect().width;
+          probe.remove();
+          return width;
+        }),
+      );
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThan(0.5);
+
+    // the live card at rest has the same height
     await page.goto(`/event/${suiteEvent().contract}`);
     await expect(page.getByTestId("ticket")).toHaveAttribute("data-state", "rest");
-    const live = await page.getByTestId("ticket").evaluate((c) => c.getBoundingClientRect().height);
+    // after its entrance: the rise scales the card while it plays
+    const live = await page.getByTestId("ticket").evaluate(async (c) => {
+      await Promise.all(c.getAnimations().map((a) => a.finished));
+      return c.getBoundingClientRect().height;
+    });
     expect(live).toBeCloseTo(first, 1);
   });
