@@ -13,6 +13,7 @@ test("the app loads, a mock account connects, and the chain clock follows the ch
   page,
   wallet,
   time,
+  hardhat,
 }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1, name: "Kickback" })).toBeVisible();
@@ -26,9 +27,12 @@ test("the app loads, a mock account connects, and the chain clock follows the ch
   const before = await time.getHardhatTime();
   await expect(clock).toHaveAttribute("data-unix", String(before));
 
-  await time.advanceTime(DAY);
+  // the chain alone moves a day ahead; the browser clock stays put, so only chain time can match
+  await hardhat.increaseTime({ seconds: DAY });
+  await hardhat.mine({ blocks: 1 });
   const after = await time.getHardhatTime();
   expect(after - before).toBeGreaterThanOrEqual(DAY);
+  expect(Math.abs(after - (await page.evaluate(() => Math.floor(Date.now() / 1000))))).toBeGreaterThan(DAY / 2);
 
   await expect(clock).toHaveAttribute("data-unix", String(after));
 });

@@ -17,6 +17,8 @@ const SEND_ANSWERS_AFTER_MS = 10_500;
 let server: Server;
 let url: string;
 const methods: string[] = [];
+/** Answer eth_sendTransaction with this HTTP status instead of a hash, at once. */
+let sendStatus: number | undefined;
 
 beforeAll(async () => {
   server = createServer((request, response) => {
@@ -29,7 +31,10 @@ beforeAll(async () => {
         response.setHeader("content-type", "application/json");
         response.end(JSON.stringify({ jsonrpc: "2.0", id, result: method === "eth_sendTransaction" ? HASH : "0x64" }));
       };
-      if (method === "eth_sendTransaction") setTimeout(answer, SEND_ANSWERS_AFTER_MS);
+      if (method === "eth_sendTransaction" && sendStatus !== undefined) {
+        response.statusCode = sendStatus;
+        response.end();
+      } else if (method === "eth_sendTransaction") setTimeout(answer, SEND_ANSWERS_AFTER_MS);
       else answer();
     });
   });
@@ -44,6 +49,7 @@ afterAll(() => {
 
 beforeEach(() => {
   methods.length = 0;
+  sendStatus = undefined;
 });
 
 const chainAt = (rpc: string) =>
@@ -88,6 +94,28 @@ describe("the dev wallet's send on a local node", () => {
     await expect(provider.request({ method: "eth_accounts" })).resolves.toEqual([ACCOUNT]);
     await expect(provider.request({ method: "eth_blockNumber" })).resolves.toBe("0x64");
     expect(methods).toEqual(["eth_blockNumber"]);
+  });
+
+  it("never retries a send the node failed to answer: the first may still mine", async () => {
+    sendStatus = 503;
+    const provider = await devWalletOn(url);
+    await expect(provider.request({ method: "eth_sendTransaction", params: [{ from: ACCOUNT }] })).rejects.toThrow();
+    expect(methods).toEqual(["eth_sendTransaction"]);
+  });
+
+  it("takes over eth_sendTransaction only, not the other eth_send methods", async () => {
+    const own = { request: vi.fn(async () => HASH) };
+    const inner = ((config) => ({
+      ...mock({ accounts: [ACCOUNT] })(config),
+      getProvider: () => Promise.resolve(own),
+    })) as CreateConnectorFn;
+    const provider = (await withLocalSendTimeout(inner)(configAt(url)).getProvider({ chainId: 1 })) as {
+      request: EIP1193RequestFn;
+    };
+
+    await provider.request({ method: "eth_sendRawTransaction", params: ["0x01"] });
+    expect(own.request).toHaveBeenCalledWith({ method: "eth_sendRawTransaction", params: ["0x01"] }, undefined);
+    expect(methods).toEqual([]);
   });
 });
 
