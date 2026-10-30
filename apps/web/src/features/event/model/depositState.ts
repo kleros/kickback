@@ -196,6 +196,21 @@ export function depositState(input: DepositInput): DepositView {
   if (connected && history && history.deposited >= amount && history.txHash)
     return done(history.txHash, history.at ?? input.chainNow ?? 0);
   if (connected && sent?.outcome === "mined") return done(sent.hash, Math.floor(sent.at / 1000));
+  // a mined record without call data cannot be told apart from a deposit until the history answers
+  if (connected && input.sent?.data === undefined && input.sent?.outcome === "mined" && history === undefined)
+    return {
+      key: "earlier",
+      label: "Refundable deposit",
+      lines: [
+        { text: "A transaction from this browser went through.", tone: "pri" },
+        { text: "Checking it before you deposit again.", link: etherscan(input.sent.hash) },
+      ],
+      action: "none",
+      button: "Checking",
+      disabled: true,
+      glyph: "arc",
+      foot: DEFAULT_FOOT,
+    };
 
   if (connected && send.status === "pending") {
     const record = sent?.outcome === "pending" && sent.at >= (send.startedAt ?? 0) ? sent : undefined;

@@ -222,6 +222,18 @@ it("does not call an organiser transaction a deposit", () => {
   expect(depositState({ ...input, sent: { hash: FIXTURE.tx, outcome: "mined", at: input.wallNow } }).key).toBe("ready");
 });
 
+it("holds the Deposit button while a mined record without call data waits for the history", () => {
+  const input = baseInput();
+  const view = depositState({
+    ...input,
+    history: undefined,
+    sent: { hash: FIXTURE.tx, outcome: "mined", at: input.wallNow },
+  });
+  expect(view.key).toBe("earlier");
+  expect(view.action).toBe("none");
+  expect(view.disabled).toBe(true);
+});
+
 it("does not reuse A's successful deposit for B", () => {
   const input = galleryInput("done");
   expect(
