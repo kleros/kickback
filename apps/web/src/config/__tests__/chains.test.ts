@@ -88,6 +88,14 @@ describe("chain per mode", () => {
     t.expect(chains.isDevWalletEnabled).toBe(true);
     t.expect(chains.isDevWalletOnly).toBe(true);
   });
+
+  it("mainnet-fork through a remote URL: still the dev wallet only, so a real wallet cannot reach Ethereum", async (t) => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet-fork");
+    vi.stubEnv("NEXT_PUBLIC_LOCAL_RPC_URL", "https://fork.example.com");
+    const chains = await import("../chains");
+    t.expect(chains.isDevWalletEnabled).toBe(false);
+    t.expect(chains.isDevWalletOnly).toBe(true);
+  });
 });
 
 describe("rpcTimeoutMs", () => {

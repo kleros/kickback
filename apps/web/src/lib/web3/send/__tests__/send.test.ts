@@ -138,7 +138,7 @@ describe("gas", () => {
     const over = setup({ estimate: TX_GAS_CAP + 1n });
     await expect(sendTx(over.deps, { prepare: over.prepare })).rejects.toMatchObject({
       kind: "refused",
-      message: expect.stringMatching(/about 16,777,217 gas.*16,777,216/),
+      message: expect.stringMatching(/about 16,777,217, more than the 16,777,216/),
     });
     expect(over.wallet.sendTransaction).not.toHaveBeenCalled();
   });
@@ -151,7 +151,7 @@ describe("gas", () => {
     const big = setup({ estimate: 10_000_000n });
     await expect(
       sendTx({ ...big.deps, gasLimitFor: (estimate) => estimate * 2n }, { prepare: big.prepare }),
-    ).rejects.toMatchObject({ kind: "refused" });
+    ).rejects.toMatchObject({ kind: "refused", message: expect.stringMatching(/about 20,000,000, more than/) });
     expect(big.wallet.sendTransaction).not.toHaveBeenCalled();
   });
 });

@@ -38,7 +38,8 @@ const LOCAL_NODE = /^https?:\/\/(127\.0\.0\.1|localhost)([:/]|$)/;
 export const isLocalChainEnabled = CHAIN_MODE === "hardhat";
 
 /** A local node answering as chainId 1: any wallet but the dev wallet would send to the real Ethereum instead. */
-export const isDevWalletOnly = !isLocalChainEnabled && LOCAL_NODE.test(MAINNET_RPC_URL);
+export const isDevWalletOnly =
+  CHAIN_MODE === "mainnet-fork" || (!isLocalChainEnabled && LOCAL_NODE.test(MAINNET_RPC_URL));
 
 /** Hardhat unlocks its accounts, so the dev wallet works wherever the chain is a local node. */
 export const isDevWalletEnabled = isLocalChainEnabled || LOCAL_NODE.test(MAINNET_RPC_URL);

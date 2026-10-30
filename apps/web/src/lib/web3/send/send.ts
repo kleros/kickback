@@ -92,6 +92,7 @@ const DEFAULT_NONCE_RETRY_MS = 4_000;
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
+    if (signal.aborted) return resolve();
     const timer = setTimeout(resolve, ms);
     signal.addEventListener("abort", () => (clearTimeout(timer), resolve()), { once: true });
   });
@@ -163,7 +164,7 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
   if (estimate > TX_GAS_CAP || gas > TX_GAS_CAP) {
     throw new SendError(
       "refused",
-      `This would need about ${estimate.toLocaleString("en")} gas, more than the ` +
+      `This would need a gas limit of about ${(estimate > gas ? estimate : gas).toLocaleString("en")}, more than the ` +
         `${TX_GAS_CAP.toLocaleString("en")} one Ethereum transaction may use, so nothing was sent.`,
     );
   }
