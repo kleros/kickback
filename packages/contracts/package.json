@@ -10,13 +10,23 @@
       "default": "./generated/index.ts"
     },
     "./generated/*": "./generated/*",
-    "./docs/*": "./docs/*"
+    "./docs/*": "./docs/*",
+    "./local": {
+      "types": "./local/index.ts",
+      "default": "./local/index.ts"
+    },
+    "./kleros": {
+      "types": "./abis/kleros.ts",
+      "default": "./abis/kleros.ts"
+    }
   },
   "files": [
     "contracts",
     "docs",
     "generated",
-    "deployments-live"
+    "deployments-live",
+    "local",
+    "abis"
   ],
   "scripts": {
     "build": "hardhat compile && hardhat export-abis",

@@ -73,4 +73,22 @@ task("export-abis", "Writes generated/index.ts: ABIs, the live build of TruthPay
       ].join("\n"),
     );
     console.log("Wrote %s", path.relative(process.cwd(), file));
+
+    const docs = path.join(__dirname, "..", "generated", "docs.ts");
+    const text = (name: string) => JSON.stringify(readFileSync(path.join(__dirname, "..", "docs", name), "utf8"));
+    writeFileSync(
+      docs,
+      [
+        "// Written by `hardhat export-abis` from docs/; do not edit.",
+        "",
+        "/** The event-neutral juror policy (docs/attendance-policy.generic.md). */",
+        `export const genericPolicyText = ${text("attendance-policy.generic.md")};`,
+        "/** The event-neutral case description template (docs/metaevidence.generic.template.json). */",
+        `export const genericCaseTemplateText = ${text("metaevidence.generic.template.json")};`,
+        "/** The Truth Pays case description template the live event was deployed with (docs/metaevidence.template.json). */",
+        `export const truthPaysCaseTemplateText = ${text("metaevidence.template.json")};`,
+        "",
+      ].join("\n"),
+    );
+    console.log("Wrote %s", path.relative(process.cwd(), docs));
   });

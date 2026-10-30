@@ -1,11 +1,23 @@
 {
   "extends": "@kickback/typescript-config/node-library.json",
   "compilerOptions": {
-    "module": "node16",
-    "moduleResolution": "node16",
+    "module": "preserve",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "typeRoots": ["node_modules/@types", "../../node_modules/@types"],
     "types": ["node", "mocha"]
   },
-  "include": ["hardhat.config.ts", "config/**/*.ts", "tasks/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "generated/**/*.ts"]
+  "ts-node": {
+    "compilerOptions": { "module": "commonjs", "moduleResolution": "node10" }
+  },
+  "include": [
+    "hardhat.config.ts",
+    "config/**/*.ts",
+    "tasks/**/*.ts",
+    "scripts/**/*.ts",
+    "test/**/*.ts",
+    "generated/**/*.ts",
+    "local/**/*.ts",
+    "abis/**/*.ts"
+  ]
 }

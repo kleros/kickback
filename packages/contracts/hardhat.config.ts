@@ -12,9 +12,10 @@ import "./tasks/simulateLifecycle";
 
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.mainnet-fork") });
 
-const forkMainnet = process.env.HARDHAT_FORK === "mainnet";
+const forkMainnet = process.env.HARDHAT_FORK === "mainnet" && !!process.env.MAINNET_FORK_RPC_URL;
 
-if (forkMainnet && !process.env.MAINNET_FORK_RPC_URL) {
+// `hardhat test` runs unforked without the URL so the fork suites can skip; a fork node must not start unforked
+if (process.env.HARDHAT_FORK === "mainnet" && !forkMainnet && !process.argv.includes("test")) {
   throw new Error("HARDHAT_FORK=mainnet needs MAINNET_FORK_RPC_URL in .env.mainnet-fork at the repo root");
 }
 
@@ -39,6 +40,8 @@ const config: HardhatUserConfig = {
     hardhat: {
       // the release-payouts gas cap test sends one transaction near EIP-7825's 2^24 limit
       blockGasLimit: 36_000_000,
+      // the ported contract suite uses an owner and 159 guests; the first 20 accounts are Hardhat's defaults
+      accounts: { count: 160 },
       ...(forkMainnet && {
         chainId: 1,
         forking: {
