@@ -24,15 +24,22 @@ export const viewport: Viewport = {
   ],
 };
 
-const FONTS = "../../../../node_modules/@fontsource";
-
 const hostGrotesk = localFont({
   variable: "--font-host-grotesk",
   display: "swap",
   src: [
-    { path: `${FONTS}/host-grotesk/files/host-grotesk-latin-400-normal.woff2`, weight: "400" },
-    { path: `${FONTS}/host-grotesk/files/host-grotesk-latin-500-normal.woff2`, weight: "500" },
-    { path: `${FONTS}/host-grotesk/files/host-grotesk-latin-600-normal.woff2`, weight: "600" },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-400-normal.woff2",
+      weight: "400",
+    },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-500-normal.woff2",
+      weight: "500",
+    },
+    {
+      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-600-normal.woff2",
+      weight: "600",
+    },
   ],
 });
 
@@ -40,8 +47,8 @@ const geistMono = localFont({
   variable: "--font-geist-mono",
   display: "swap",
   src: [
-    { path: `${FONTS}/geist-mono/files/geist-mono-latin-400-normal.woff2`, weight: "400" },
-    { path: `${FONTS}/geist-mono/files/geist-mono-latin-500-normal.woff2`, weight: "500" },
+    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2", weight: "400" },
+    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2", weight: "500" },
   ],
 });
 
