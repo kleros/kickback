@@ -1,13 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
-/** Where the app is served; another port runs a second dev server beside one already on 3000. */
-const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:3000";
+import { E2E_APP_PORT, E2E_RPC_PORT } from "./e2e/utils/servers";
 
-/** The Hardhat node's port; another one runs the tests beside a node already on 8545. */
+const BASE_URL = process.env.E2E_BASE_URL ?? `http://localhost:${E2E_APP_PORT}`;
+
 // eslint-disable-next-line turbo/no-undeclared-env-vars -- read by Playwright directly, never through a turbo task
-const RPC_PORT = process.env.E2E_RPC_PORT ?? "8545";
+const RPC_PORT = process.env.E2E_RPC_PORT ?? E2E_RPC_PORT;
 
-// set before the workers start, so the fixtures' `config/chains` reads the same node the app does
+// set before the workers start, so global-setup and the fixtures' `config/chains` read the servers started here
+process.env.E2E_BASE_URL = BASE_URL;
 process.env.NEXT_PUBLIC_LOCAL_RPC_URL = `http://127.0.0.1:${RPC_PORT}`;
 
 export default defineConfig({
@@ -31,13 +32,14 @@ export default defineConfig({
       // the package's `local-node` script passes --no-deploy, which this Hardhat does not accept
       command: `yarn workspace @kickback/contracts hardhat node --port ${RPC_PORT}`,
       url: process.env.NEXT_PUBLIC_LOCAL_RPC_URL,
-      reuseExistingServer: true,
+      // never reuse: a process already on the port is not known to be this suite's node or app
+      reuseExistingServer: false,
       timeout: 180_000,
     },
     {
-      command: `yarn next dev --port ${new URL(BASE_URL).port || "3000"}`,
+      command: `yarn next dev --port ${new URL(BASE_URL).port || "80"}`,
       url: BASE_URL,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: false,
       timeout: 180_000,
       env: {
         NEXT_PUBLIC_CHAIN: "hardhat",
