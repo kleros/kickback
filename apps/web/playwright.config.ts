@@ -26,7 +26,16 @@ export default defineConfig({
     trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
     timezoneId: "GMT",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /organiser\.spec\.ts/ },
+    // warps the shared node's clock for good, so it runs after every spec that needs the suite event open
+    {
+      name: "organiser",
+      use: { ...devices["Desktop Chrome"] },
+      testMatch: /organiser\.spec\.ts/,
+      dependencies: ["chromium"],
+    },
+  ],
   webServer: [
     {
       // the package's `local-node` script passes --no-deploy, which this Hardhat does not accept
