@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+staged_files=$(git diff --cached --name-only)
+
+yarn lint-staged
+
+if echo "$staged_files" | grep -q "^apps/web/"; then
+  yarn workspace web check-types
+fi
+
+if echo "$staged_files" | grep -q "^packages/contracts/"; then
+  yarn workspace @kickback/contracts check-types
+fi
+
+if echo "$staged_files" | grep -q "^packages/kickback-core/"; then
+  yarn workspace @kickback/core check-types
+fi

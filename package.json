@@ -1,0 +1,55 @@
+{
+  "name": "kickback",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "check-types": "turbo run check-types",
+    "test": "turbo run test",
+    "format": "prettier --write . --ignore-path .prettierignore.root && turbo run format",
+    "format:check": "sh -c 'prettier --check . --ignore-path .prettierignore.root; r1=$?; turbo run format:check --continue=always; r2=$?; exit $((r1 | r2))'",
+    "-": "---------------------------------------------------------------------------------------------",
+    "local-stack": "./scripts/local-stack.sh start",
+    "stop-local-stack": "./scripts/local-stack.sh stop",
+    "dev": "yarn turbo run dev --filter=web",
+    "dev:mainnet-fork": "yarn workspace web dev:mainnet-fork",
+    "--": "--------------------------------------------------------------------------------------------",
+    "local-node:contracts": "yarn workspace @kickback/contracts start",
+    "local-node:contracts:mainnet-fork": "yarn workspace @kickback/contracts start:mainnet-fork",
+    "local-node:deploy": "yarn workspace @kickback/contracts deploy:local",
+    "simulate:lifecycle": "yarn workspace @kickback/contracts simulate:lifecycle",
+    "simulate:lifecycle:mainnet-fork": "yarn workspace @kickback/contracts simulate:lifecycle:mainnet-fork",
+    "---": "-------------------------------------------------------------------------------------------",
+    "test:e2e": "yarn workspace web test:e2e",
+    "test:fork": "yarn workspace @kickback/contracts test:fork && yarn workspace web test:fork",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "@kickback/prettier-config": "workspace:*",
+    "husky": "^9.1.7",
+    "lint-staged": "^15.5.2",
+    "prettier": "^3.7.4",
+    "turbo": "^2.7.1",
+    "typescript": "^5.8.3"
+  },
+  "prettier": "@kickback/prettier-config",
+  "packageManager": "yarn@4.9.2",
+  "engines": {
+    "node": ">=22"
+  },
+  "resolutions": {
+    "undici": "6.21.2",
+    "@internationalized/date": "3.12.3"
+  },
+  "volta": {
+    "node": "22.23.2"
+  }
+}

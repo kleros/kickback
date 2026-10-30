@@ -1,0 +1,9 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": { "outputs": ["artifacts/**", "generated/**"], "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"] },
+    "test": { "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"] },
+    "check-types": { "env": ["HARDHAT_FORK"] }
+  }
+}

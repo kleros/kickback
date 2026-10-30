@@ -1,0 +1,11 @@
+{
+  "extends": "@kickback/typescript-config/node-library.json",
+  "compilerOptions": {
+    "module": "node16",
+    "moduleResolution": "node16",
+    "resolveJsonModule": true,
+    "typeRoots": ["node_modules/@types", "../../node_modules/@types"],
+    "types": ["node", "mocha"]
+  },
+  "include": ["hardhat.config.ts", "config/**/*.ts", "tasks/**/*.ts", "scripts/**/*.ts", "test/**/*.ts", "generated/**/*.ts"]
+}

@@ -1,0 +1,73 @@
+{
+  "name": "@kickback/contracts",
+  "version": "0.0.0",
+  "private": true,
+  "sideEffects": false,
+  "type": "commonjs",
+  "exports": {
+    ".": {
+      "types": "./generated/index.ts",
+      "default": "./generated/index.ts"
+    },
+    "./generated/*": "./generated/*",
+    "./docs/*": "./docs/*"
+  },
+  "files": [
+    "contracts",
+    "docs",
+    "generated",
+    "deployments-live"
+  ],
+  "scripts": {
+    "build": "hardhat compile && hardhat export-abis",
+    "test": "hardhat test",
+    "test:fork": "HARDHAT_FORK=mainnet hardhat test test/fork/*.ts",
+    "local-node": "hardhat node --port 8545 --no-deploy",
+    "local-node:mainnet-fork": "HARDHAT_FORK=mainnet hardhat node --port 8545 --no-deploy",
+    "start": "yarn build && yarn local-node",
+    "start:mainnet-fork": "yarn build && yarn local-node:mainnet-fork",
+    "deploy:local": "hardhat deploy-local --network localhost",
+    "simulate:lifecycle": "hardhat simulate-lifecycle --network localhost",
+    "simulate:lifecycle:mainnet-fork": "hardhat simulate-lifecycle --network mainnet-fork",
+    "lint": "eslint . --max-warnings 0",
+    "format:sol": "prettier --write \"contracts/test/**/*.sol\"",
+    "format:ts": "prettier --write \"**/*.{ts,mts,mjs,cjs,json,md}\"",
+    "format": "yarn format:ts",
+    "format:check": "prettier --check \"**/*.{ts,mts,mjs,cjs,json,md}\"",
+    "check-types": "yarn build && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@kickback/eslint-config": "workspace:*",
+    "@kickback/prettier-config": "workspace:*",
+    "@kickback/typescript-config": "workspace:*",
+    "@nomicfoundation/hardhat-chai-matchers": "^2.0.8",
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
+    "@nomicfoundation/hardhat-network-helpers": "^1.0.12",
+    "@nomicfoundation/hardhat-viem": "^2.0.6",
+    "@types/chai": "^4.3.20",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^22.15.3",
+    "chai": "^4.5.0",
+    "chai-as-promised": "^7.1.2",
+    "dotenv": "^16.4.7",
+    "eslint": "^9.28.0",
+    "ethers": "^6.13.5",
+    "hardhat": "^2.22.19",
+    "prettier": "^3.7.4",
+    "solc": "0.8.28",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3",
+    "viem": "^2.23.2"
+  },
+  "peerDependencies": {
+    "viem": "^2.23.2"
+  },
+  "installConfig": {
+    "hoistingLimits": "workspaces"
+  },
+  "prettier": "@kickback/prettier-config",
+  "volta": {
+    "extends": "../../package.json"
+  }
+}

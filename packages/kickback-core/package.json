@@ -1,0 +1,38 @@
+{
+  "name": "@kickback/core",
+  "version": "0.0.0",
+  "private": true,
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check-types": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@kickback/contracts": "workspace:*",
+    "viem": "^2.55.4"
+  },
+  "devDependencies": {
+    "@kickback/eslint-config": "workspace:*",
+    "@kickback/prettier-config": "workspace:*",
+    "@kickback/typescript-config": "workspace:*",
+    "@types/node": "^22.15.30",
+    "eslint": "^9.28.0",
+    "prettier": "^3.7.4",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.0"
+  },
+  "prettier": "@kickback/prettier-config",
+  "volta": {
+    "extends": "../../package.json"
+  }
+}
