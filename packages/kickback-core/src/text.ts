@@ -183,10 +183,10 @@ export function checkedAddress(value: unknown): Address {
   return getAddress(value.toLowerCase());
 }
 
-/** An exact amount ("0.01", "1.0", "0.0"): always one decimal at least, the form the CSV and summary files use. */
+/** An exact amount with at least one decimal place, unless the token has zero decimals. */
 export const fmt = (units: bigint, decimals = DECIMALS): string => {
   const s = formatUnits(units, decimals);
-  return s.includes(".") ? s : `${s}.0`;
+  return decimals === 0 || s.includes(".") ? s : `${s}.0`;
 };
 
 /**

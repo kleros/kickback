@@ -15,14 +15,66 @@ import * as core from "../src";
 import { chainKit } from "./chain";
 import { read } from "./docs";
 
-const dummy = (p: AbiParameter): unknown =>
+const argument = (p: AbiParameter, index: number): unknown =>
   p.type === "address"
-    ? zeroAddress
-    : p.type.startsWith("uint")
-      ? 12_345_000_000_000_000n
-      : p.type === "bool"
-        ? false
+    ? "0x0000000000000000000000000000000000000123"
+    : p.name === "count"
+      ? 3n
+      : p.type.startsWith("uint")
+        ? [parseEther("0.01"), parseEther("0.02")][index]
         : "0x";
+
+const CONSOLE_TEXT: Record<string, string> = {
+  NotOwner: "Only the owner wallet can do this. Switch to the owner account in your wallet.",
+  NotPendingOwner: "This wallet was not proposed as the new owner.",
+  NotOpen:
+    "The attendance list is already posted, or the event is paid out or cancelled, so this is no longer possible.",
+  NotListed: "This is only possible after the attendance list is posted and before the payout.",
+  AlreadyAttending: "0x0000000000000000000000000000000000000123 is already on the attendance list.",
+  AlreadyChallenged: "0x0000000000000000000000000000000000000123 has already challenged.",
+  NoChallenge: "0x0000000000000000000000000000000000000123 has not challenged.",
+  WrongChallengeState:
+    "The challenge of 0x0000000000000000000000000000000000000123 is not in a state that allows this (see the challenge list).",
+  WrongDeposit: "The ETH deposit must be 0.01 ETH (sent 0.02 ETH).",
+  ArbitrationCostTooHigh:
+    "The Kleros fee went up since the challenge was opened (now 0.01 ETH, the two deposits cover 0.02 ETH), so a dispute cannot be created. Nothing was sent.",
+  NotRuled: "Kleros has not ruled yet on the challenge of 0x0000000000000000000000000000000000000123.",
+  ChallengesPending:
+    "3 challenge(s) are still waiting for a match (each has 1 day). Payouts can be released after that.",
+  InDispute:
+    "0x0000000000000000000000000000000000000123 is already in a Kleros case, so the jurors decide. If they did attend, say so in the case (Send evidence): the jury rules attended when the organiser confirms it.",
+  OnlyNumberedRulings: "Kleros returned a ruling this contract does not know. Nothing was changed.",
+  NotEnoughGas:
+    "The transaction ran short of gas while paying someone. Nothing changed. Try again, with a higher gas limit in your wallet if it happens again.",
+  Reentrancy: "The contract refused a nested call.",
+  NotSettled: "Leftovers can only be collected after the payout or a cancellation.",
+  ZeroAddress: "One of the addresses is empty, zero, or the contract itself.",
+  ZeroDeposit: "The deposit amount is zero.",
+  BadTimes: "The settlement deadline must be at least 7 days after the event start.",
+  TooLate:
+    "Too late: either the 1-day window is over, or the settlement deadline passed (then each guest can withdraw their own deposit).",
+  TooEarly:
+    "Too early: check the times in the status (list opens at the event start; payouts and settling wait for the windows to end).",
+  AlreadyRegistered:
+    '0x0000000000000000000000000000000000000123 is already registered. Press "Load deposits" again (and "Check the Luma list" again if you used it), then check the ticked guests before you try again.',
+  NotAStaker:
+    '0x0000000000000000000000000000000000000123 is not a registered staker. Press "Load deposits" again (and "Check the Luma list" again if you used it), then check the ticked guests before you try again.',
+  CannotReject:
+    "0x0000000000000000000000000000000000000123 cannot be refunded: they were already refunded or paid out.",
+  DuplicateAttendee:
+    "0x0000000000000000000000000000000000000123 appears twice in the attendee list. Build the attendance list again.",
+  NoAttendees: "The attendee list is empty.",
+  ShareMismatch:
+    "The payout per person changed (you confirmed 0.01 ETH, it is now 0.02 ETH). Build the attendance list again.",
+  InsufficientBalance:
+    "Not enough spare ETH in the contract for this (needs 0.01 ETH in total, has 0.02 ETH). A deposit may be missing; load the deposits again and check them.",
+  NothingToClaim: "There is nothing to claim for this wallet.",
+  NotAppealable:
+    "The challenge of 0x0000000000000000000000000000000000000123 is not in a Kleros case that can be appealed.",
+  TransferFailed:
+    "The transfer to 0x0000000000000000000000000000000000000123 did not go through: an address that refuses ETH (some smart-contract wallets do), or, when returning tokens, a token contract that refused (check the token address and the amount the contract holds). Nothing was sent.",
+};
+
 const ERRORS = kickbackAbi.filter(
   (x): x is Extract<(typeof kickbackAbi)[number], { type: "error" }> => x.type === "error",
 );
@@ -34,9 +86,13 @@ describe("errorText", () => {
     expect(ERRORS.length).toBeGreaterThan(30);
     expect(Object.keys(core.KICKBACK_ERROR_TEXT).sort()).toEqual(ERRORS.map((e) => e.name).sort());
     for (const e of ERRORS) {
-      const args = e.inputs.map(dummy);
+      const args = e.inputs.map(argument);
       const data = encodeErrorResult({ abi: kickbackAbi, errorName: e.name, args } as never);
-      const text = core.KICKBACK_ERROR_TEXT[e.name]!(args);
+      const text =
+        e.name === "BadMetaEvidenceTemplate"
+          ? "The case description template does not fit the contract: it must name the challenged wallet, use only known placeholders and stay under about 24 KB."
+          : CONSOLE_TEXT[e.name];
+      expect(text, e.name).toBeDefined();
       expect(text, e.name).not.toMatch(/The contract refused: |undefined|NaN/);
       for (const err of [
         data,
@@ -53,6 +109,32 @@ describe("errorText", () => {
         encodeErrorResult({ abi: kickbackAbi, errorName: "WrongDeposit", args: [parseEther("0.01"), 1n] }),
       ),
     ).toBe("The ETH deposit must be 0.01 ETH (sent 0.000000000000000001 ETH).");
+  });
+
+  test.each([
+    "it's too early for this",
+    "it's too late for this",
+    "a challenge is still waiting for a match",
+    "the attendance list isn't open for this (not published yet, or payouts were already released)",
+    "there's nothing to claim",
+    "the ETH amount needed has changed. Check again",
+    "this wallet has already challenged",
+    "this wallet is already on the attendance list",
+    "this wallet has no confirmed spot",
+    "the challenge has moved on. Check again",
+    "Kleros hasn't delivered the final ruling yet",
+    "deposits are closed",
+    "the amount can't be zero",
+    "the gas limit was set too low. Try again and keep the gas your wallet suggests",
+    "the Kleros fee went up beyond both deposits",
+    "that address can't receive it",
+    "that address refused the ETH. Use another address",
+    "the appeal period for this answer is over",
+    "this answer is already fully funded",
+    "the case already has its final ruling, so it takes no more evidence",
+    "the case has no final ruling yet",
+  ])("preserves site RPC error wording: %s", (text) => {
+    expect(core.errorText(new Error(text))).toBe(text);
   });
 
   test("Kleros reason strings, wallet rejection, rate limits, insufficient funds, timeouts", () => {

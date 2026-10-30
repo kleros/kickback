@@ -8,7 +8,16 @@ import { fileURLToPath } from "node:url";
 
 import { kickbackAbi, liveEvent } from "@kickback/contracts";
 import { parse } from "csv-parse/sync";
-import { encodeAbiParameters, encodeDeployData, getAddress, keccak256, parseEther, size, zeroAddress } from "viem";
+import {
+  encodeAbiParameters,
+  encodeDeployData,
+  getAddress,
+  keccak256,
+  parseEther,
+  size,
+  zeroAddress,
+  type ContractConstructorArgs,
+} from "viem";
 import { describe, expect, test } from "vitest";
 
 import * as core from "../src";
@@ -145,7 +154,13 @@ describe("the live contract", () => {
     },
   ];
   const encoded = (args: core.KickbackDeployArgs) =>
-    keccak256(encodeDeployData({ abi: kickbackAbi, bytecode: "0x", args }));
+    keccak256(
+      encodeDeployData({
+        abi: kickbackAbi,
+        bytecode: "0x",
+        args: args as unknown as ContractConstructorArgs<typeof kickbackAbi>,
+      }),
+    );
 
   test.each(GOLDEN)(
     "constructor arguments and case description are unchanged: $cfg.eventName",
@@ -160,7 +175,7 @@ describe("the live contract", () => {
       // the case description jurors see, for a sample wallet: same IPFS path
       const t = core.caseTemplate(LIVE_TEXT, core.templateValues(cfg, owner));
       expect(core.ipfsPathOf(t.sample)).toBe(sample);
-      expect([t.pieces, t.slots]).toEqual([args[5].metaEvidenceTemplate, args[5].metaEvidenceSlots]);
+      expect([t.pieces, t.slots]).toEqual([args[5][2], args[5][3]]);
     },
   );
 
@@ -306,21 +321,19 @@ test("the generic case description is valid ERC-1497 once filled in: it names th
   expect(cfg.depositUnits).toBe(E("0.01"));
   const args = core.deployArgs(cfg, ORGANISER, GENERIC_TEXT, { name: "metaevidence.generic.template.json" });
   const [deposit, eventName, owner, start, end, arbitration] = args;
+  const [resolver, extraData, pieces, slots, policyURI] = arbitration;
+  expect(arbitration).toHaveLength(5);
   expect([deposit, eventName, owner, start, end]).toEqual([
     E("0.01"),
     FORM.eventName,
     ORGANISER,
-    1804874400n,
-    1806084000n,
+    1804874400,
+    1806084000,
   ]);
-  expect(arbitration.disputeResolver).toBe(getAddress(core.KLEROS[1]!.disputeResolver)); // Kleros's own Dispute Resolver on mainnet
-  expect(arbitration.extraData).toBe(encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [0n, 3n])); // General Court, 3 jurors
-  expect(arbitration.policyURI).toBe(GENERIC_POLICY_PATH);
-  const text = core.renderCase(
-    { pieces: arbitration.metaEvidenceTemplate, slots: arbitration.metaEvidenceSlots },
-    W,
-    C,
-  );
+  expect(resolver).toBe(getAddress(core.KLEROS[1]!.disputeResolver)); // Kleros's own Dispute Resolver on mainnet
+  expect(extraData).toBe(encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [0n, 3n])); // General Court, 3 jurors
+  expect(policyURI).toBe(GENERIC_POLICY_PATH);
+  const text = core.renderCase({ pieces, slots }, W, C);
   const meta = JSON.parse(text);
   // ERC-1497 metaevidence, the same shape as the live template
   const liveMeta = JSON.parse(
@@ -564,4 +577,15 @@ describe("eventClock reads the event's own clock from its case description, or g
         expect(core.TZ_OFFSETS, `${name} ${off} is an offset the form offers`).toContain(core.offsetText(off));
       }
   });
+});
+
+test.each([0n, 1n, -1n, 123456789n])("fmt preserves zero-decimal integer %s", (units) => {
+  expect(core.fmt(units, 0)).toBe(String(units));
+});
+
+test("fmt retains a decimal place for tokens with fractional units", () => {
+  expect(core.fmt(0n)).toBe("0.0");
+  expect(core.fmt(E("1"))).toBe("1.0");
+  expect(core.fmt(100n, 2)).toBe("1.0");
+  expect(core.fmt(101n, 2)).toBe("1.01");
 });

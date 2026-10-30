@@ -26,6 +26,8 @@ import { mnemonicToAccount } from "viem/accounts";
 import { hardhat } from "viem/chains";
 import { inject } from "vitest";
 
+import type { KickbackDeployArgs } from "../src";
+
 const MNEMONIC = "test test test test test test test test test test test junk";
 /** Hardhat's default accounts (10,000 ETH each); 0 is the owner in these tests. */
 export const accounts = Array.from({ length: 16 }, (_, i) => mnemonicToAccount(MNEMONIC, { addressIndex: i }));
@@ -99,8 +101,8 @@ export function chainKit(transport: Transport = http(inject("rpcUrl"))) {
     const proxy = await deploy(mockArbitrableProxyAbi, mockArbitrableProxyBytecode, [liquid]);
     return { liquid, proxy };
   };
-  const deployKickback = (args: ContractConstructorArgs<typeof kickbackAbi>, from = 0) =>
-    deploy(kickbackAbi, kickbackBytecode, args, from);
+  const deployKickback = (args: ContractConstructorArgs<typeof kickbackAbi> | KickbackDeployArgs, from = 0) =>
+    deploy(kickbackAbi, kickbackBytecode, args as ContractConstructorArgs<typeof kickbackAbi>, from);
 
   return {
     rpcUrl,
