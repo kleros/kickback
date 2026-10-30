@@ -1,56 +1,36 @@
 "use client";
 
-import React from "react";
-
-import { Button } from "@kleros/ui-components-library";
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { useAccount, useSwitchChain } from "wagmi";
 
-import { shortenAddress } from "@/utils/address";
+import { GradientButton } from "@/components/ui/GradientButton";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 
-export const SwitchChainButton: React.FC<{ className?: string }> = ({ className }) => {
-  const { switchChain, isPending } = useSwitchChain();
-
-  return (
-    <Button
-      small
-      text={`Switch to ${DEFAULT_CHAIN.name}`}
-      className={className}
-      isLoading={isPending}
-      isDisabled={isPending}
-      onPress={() => switchChain({ chainId: DEFAULT_CHAIN_ID })}
-    />
-  );
-};
-
-const ConnectButton: React.FC<{ text?: string; className?: string }> = ({ text, className }) => {
+/** Connect, or switch to the app's chain: whichever the wallet needs next. The header shows the address. */
+export function ConnectWallet({ text = "Connect" }: { text?: string }) {
+  const { address, isConnected, chainId } = useAccount();
   const { open } = useAppKit();
   const { open: isOpen } = useAppKitState();
-
-  return (
-    <Button
-      small
-      className={className}
-      isDisabled={isOpen}
-      text={text ?? "Connect"}
-      onPress={() => open({ view: "Connect" })}
-    />
-  );
-};
-
-export const ConnectWallet: React.FC<{ text?: string; className?: string }> = ({ text, className }) => {
-  const { address, isConnected, chainId } = useAccount();
+  const { switchChain, isPending } = useSwitchChain();
 
   if (isConnected && address) {
-    if (chainId !== DEFAULT_CHAIN_ID) return <SwitchChainButton className={className} />;
-    return (
-      <span className="type-label text-klerosUIComponentsPrimaryText" title={address}>
-        {shortenAddress(address)}
-      </span>
-    );
+    if (chainId !== DEFAULT_CHAIN_ID)
+      return (
+        <GradientButton
+          isPending={isPending}
+          glyph={isPending ? "ring" : undefined}
+          onPress={() => switchChain({ chainId: DEFAULT_CHAIN_ID })}
+        >
+          {`Switch to ${DEFAULT_CHAIN.name}`}
+        </GradientButton>
+      );
+    return null;
   }
 
-  return <ConnectButton text={text} className={className} />;
-};
+  return (
+    <GradientButton isDisabled={isOpen} onPress={() => open({ view: "Connect" })}>
+      {text}
+    </GradientButton>
+  );
+}

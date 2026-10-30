@@ -1,0 +1,201 @@
+/* Motion tokens (transitions.dev scale): three durations and named curves. */
+:root {
+  --kb-dur-quick: 150ms; /* close, text swap, colour, reduced-motion fade */
+  --kb-dur-fast: 250ms; /* open, slide, press, disclosure */
+  --kb-dur-slow: 500ms; /* emphasis: success check, number pop, entrance */
+
+  --kb-ease-out: cubic-bezier(0.22, 1, 0.36, 1); /* move and resize */
+  --kb-ease-swap: ease-in-out; /* text and icon swaps */
+  --kb-ease-pop: cubic-bezier(0.34, 1.36, 0.64, 1); /* pop-in with a small overshoot */
+  --kb-ease-linear: linear; /* spinners and loops */
+
+  --kb-stagger: 40ms;
+  --kb-press-scale: 0.96;
+  --kb-blur-swap: 2px;
+}
+
+/* Route change: fade plus a 6px rise */
+@keyframes kb-route-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+.kb-route {
+  animation: kb-route-in var(--kb-dur-fast) var(--kb-ease-out) both;
+}
+
+/* The event page's one load moment: the card rises in */
+@keyframes kb-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+}
+.kb-rise {
+  animation: kb-rise var(--kb-dur-slow) var(--kb-ease-out) both;
+  animation-delay: var(--kb-rise-delay, 0ms);
+}
+
+/* Text states swap (transitions.dev 04) */
+.t-text-swap {
+  display: inline-block;
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    transform var(--kb-dur-quick) var(--kb-ease-swap),
+    filter var(--kb-dur-quick) var(--kb-ease-swap),
+    opacity var(--kb-dur-quick) var(--kb-ease-swap);
+}
+.t-text-swap.is-exit {
+  transform: translateY(-4px);
+  filter: blur(var(--kb-blur-swap));
+  opacity: 0;
+}
+.t-text-swap.is-enter-start {
+  transform: translateY(4px);
+  filter: blur(var(--kb-blur-swap));
+  opacity: 0;
+  transition: none;
+}
+
+/* Number pop-in (transitions.dev 02) */
+@keyframes t-digit-pop-in {
+  0% {
+    transform: translateY(8px);
+    opacity: 0;
+    filter: blur(var(--kb-blur-swap));
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--kb-dur-slow) var(--kb-ease-pop) both;
+  animation-delay: calc(var(--i, 0) * var(--kb-stagger));
+}
+.t-digit-group.is-animating .t-digit[data-same] {
+  animation: none;
+}
+
+/* Success check (transitions.dev 10) */
+.t-success-check {
+  display: inline-block;
+  transform-origin: center;
+  opacity: 0;
+}
+.t-success-check svg {
+  display: block;
+  overflow: visible;
+}
+.t-success-check svg path {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.t-success-check[data-state="in"] {
+  animation:
+    t-check-fade var(--kb-dur-slow) var(--kb-ease-out) forwards,
+    t-check-rotate var(--kb-dur-slow) var(--kb-ease-out) forwards,
+    t-check-blur var(--kb-dur-slow) var(--kb-ease-out) forwards,
+    t-check-bob var(--kb-dur-slow) var(--kb-ease-pop) forwards;
+}
+.t-success-check[data-state="in"] svg path {
+  animation: t-check-draw var(--kb-dur-slow) var(--kb-ease-out) 80ms forwards;
+}
+@keyframes t-check-fade {
+  to {
+    opacity: 1;
+  }
+}
+@keyframes t-check-rotate {
+  from {
+    transform: rotate(80deg);
+  }
+  to {
+    transform: rotate(0deg);
+  }
+}
+@keyframes t-check-blur {
+  from {
+    filter: blur(8px);
+  }
+  to {
+    filter: blur(0);
+  }
+}
+@keyframes t-check-bob {
+  from {
+    translate: 0 12px;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@keyframes t-check-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* Error shake (transitions.dev 12), played once by toggling .is-shaking */
+@keyframes t-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-8px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
+.is-shaking {
+  animation: t-shake 400ms var(--kb-ease-out);
+}
+
+/* Reduced motion: entrances become a short fade, loops stop on a still frame that still says it. */
+@keyframes kb-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kb-route,
+  .kb-rise {
+    animation: kb-fade-in var(--kb-dur-quick) linear both;
+  }
+  .t-text-swap {
+    transition: none !important;
+  }
+  .t-digit-group .t-digit {
+    animation: none !important;
+  }
+  .t-success-check {
+    animation: none !important;
+    opacity: 1;
+  }
+  .t-success-check svg path {
+    animation: none !important;
+    stroke-dashoffset: 0 !important;
+  }
+  .is-shaking {
+    animation: none;
+  }
+}

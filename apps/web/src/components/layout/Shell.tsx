@@ -1,21 +1,14 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { ChainClock } from "@/components/ChainClock";
-
-import { paths } from "@/config/paths";
-import { siteConfig } from "@/config/site";
+import { Aurora } from "./Aurora";
+import { Header } from "./Header";
 
 export function Shell({ children }: { children: ReactNode }) {
   return (
     <>
-      <header className="kb-page flex flex-wrap items-center justify-between gap-4 py-4">
-        <Link href={paths.home.getHref()} className="type-h2 text-klerosUIComponentsPrimaryText">
-          {siteConfig.name}
-        </Link>
-        <ChainClock />
-      </header>
-      <main className="kb-page flex-1 py-10">{children}</main>
+      <Aurora />
+      <Header />
+      <main className="kb-main kb-page">{children}</main>
     </>
   );
 }
