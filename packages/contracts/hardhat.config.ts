@@ -8,12 +8,12 @@ import "@nomicfoundation/hardhat-viem";
 
 import "./tasks/exportAbis";
 import "./tasks/deployLocal";
+import { localNodeUrl } from "./tasks/localNode";
 import "./tasks/simulateLifecycle";
 
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.mainnet-fork") });
 
-// the node behind the localhost and mainnet-fork networks; set when port 8545 is taken
-const LOCAL_NODE_URL = process.env.LOCAL_NODE_URL || "http://127.0.0.1:8545";
+const LOCAL_NODE_URL = localNodeUrl();
 
 const forkMainnet = process.env.HARDHAT_FORK === "mainnet" && !!process.env.MAINNET_FORK_RPC_URL;
 
