@@ -12,6 +12,9 @@ import "./tasks/simulateLifecycle";
 
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.mainnet-fork") });
 
+// the node behind the localhost and mainnet-fork networks; set when port 8545 is taken
+const LOCAL_NODE_URL = process.env.LOCAL_NODE_URL || "http://127.0.0.1:8545";
+
 const forkMainnet = process.env.HARDHAT_FORK === "mainnet" && !!process.env.MAINNET_FORK_RPC_URL;
 
 // `hardhat test` runs unforked without the URL so the fork suites can skip; a fork node must not start unforked
@@ -51,11 +54,11 @@ const config: HardhatUserConfig = {
       }),
     },
     localhost: {
-      url: "http://127.0.0.1:8545",
+      url: LOCAL_NODE_URL,
       chainId: 31337,
     },
     "mainnet-fork": {
-      url: "http://127.0.0.1:8545",
+      url: LOCAL_NODE_URL,
       chainId: 1,
       // a cold fork cache makes the first writes fetch remote state for minutes
       timeout: 600_000,
