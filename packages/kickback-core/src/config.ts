@@ -1,14 +1,4 @@
-import { kickbackAbi } from "@kickback/contracts";
-import {
-  encodeAbiParameters,
-  getAddress,
-  size,
-  toHex,
-  zeroAddress,
-  type Address,
-  type ContractConstructorArgs,
-  type Hex,
-} from "viem";
+import { encodeAbiParameters, getAddress, size, toHex, zeroAddress, type Address, type Hex } from "viem";
 
 import { renderCase, type MetaEvidenceTemplate } from "./caseText";
 import { DISGUISE_RE, offsetOf } from "./clock";
@@ -428,13 +418,16 @@ export function deploySettings(cfg: Config, owner?: string): KlerosConfig {
   return k;
 }
 
-export type KickbackDeployArgs = ContractConstructorArgs<typeof kickbackAbi>;
+export type KickbackDeployArgs = [
+  depositAmount: bigint,
+  eventName: string,
+  owner: Address,
+  eventStart: number,
+  claimDeadline: number,
+  arbitration: [resolver: Address, extraData: Hex, pieces: readonly string[], slots: Hex, policyURI: string],
+];
 
-/**
- * Constructor arguments for TruthPaysKickback, checked before anything is sent: [depositAmount (wei),
- * eventName, owner, eventStart, claimDeadline, Arbitration]. `templateText` is the case description
- * template's text; `name` names it in messages.
- */
+/** Constructor arguments with numeric Unix timestamps and a positional arbitration tuple. */
 export function deployArgs(
   cfg: Config,
   owner: string,
@@ -448,15 +441,9 @@ export function deployArgs(
     cfg.depositUnits,
     cfg.eventName ?? "Truth Pays",
     checkedAddress(owner),
-    BigInt(cfg.eventStartTs!),
-    BigInt(cfg.claimDeadlineTs!),
-    {
-      disputeResolver: k.disputeResolver,
-      extraData: k.extraData,
-      metaEvidenceTemplate: t.pieces,
-      metaEvidenceSlots: t.slots,
-      policyURI: k.policyURI,
-    },
+    cfg.eventStartTs!,
+    cfg.claimDeadlineTs!,
+    [k.disputeResolver, k.extraData, t.pieces, t.slots, k.policyURI],
   ];
 }
 
@@ -495,8 +482,7 @@ export type EventForm = Partial<Record<EventFieldKey, string>> & {
  */
 export function newEventConfig(form: EventForm, network: NetworkInput, owner: string | undefined): Config {
   const details = eventDetails(form);
-  if (!isAddressStrict(owner))
-    throw new Error("Connect your wallet first: it becomes the owner of the new contract.");
+  if (!isAddressStrict(owner)) throw new Error("Connect your wallet first: it becomes the owner of the new contract.");
   const deposit = String(form.deposit ?? "").trim();
   let wei: bigint;
   try {
