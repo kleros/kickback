@@ -1,16 +1,27 @@
 // On a local chain: a contract deployed from the new-event form with the generic template is read back by readEvent,
 // its case descriptions are the core's (same IPFS path as the contract's caseMetaEvidence), and checkGuests,
-// depositsOverview and buildPayout give the lists the organiser acts on, which the contract then accepts.
+// depositsOverview and buildPayout give the lists the organiser acts on, which the contract then accepts. The legacy
+// core.mjs reads the same chain over ethers, and every list and file it would write must come out byte for byte.
+import { kickbackAbi } from "@kickback/contracts";
+import { JsonRpcProvider } from "ethers";
 import { parseEther, zeroHash, type Address } from "viem";
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 
 import * as core from "../src";
 
 import { chainKit } from "./chain";
 import { read } from "./docs";
+import * as legacy from "./legacy/core.mjs";
 
 const E = (x: string | number) => parseEther(String(x));
 const DAY = 86400;
+// BigInts as text, for comparing the port's and the legacy core's JSON lists
+const plain = (v: unknown) =>
+  JSON.parse(JSON.stringify(v, (_, x: unknown) => (typeof x === "bigint" ? x.toString() : x)));
+const unstamped = (l: object) => {
+  const { generatedAt: _, ...rest } = plain(l) as { generatedAt: string };
+  return rest;
+};
 const GENERIC_TEXT = read(core.GENERIC_METAEVIDENCE_TEMPLATE);
 const GENERIC_POLICY_PATH = core.ipfsPathOf(read(core.GENERIC_POLICY));
 const FORM = {
@@ -29,6 +40,8 @@ test(
   async () => {
     const k = chainKit();
     const { client } = k;
+    const prov = new JsonRpcProvider(k.rpcUrl, undefined, { staticNetwork: true, cacheTimeout: -1 });
+    onTestFinished(() => prov.destroy());
     // owner, ana, ben, cai, dan, eve, gus, sid, pat
     const [OWNER, ANA, BEN, CAI, DAN, EVE, GUS, SID, PAT] = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
     const me = k.addr(OWNER);
@@ -95,6 +108,13 @@ test(
     await expect(core.findDeployBlock(client, k.addr(EVE))).rejects.toMatchObject({ code: "DEPLOY_BLOCK_NOT_FOUND" });
 
     const cfg = core.contractConfig(ev, network, deployBlock);
+    const legacyCfg = legacy.contractConfig(
+      await legacy.readEvent(prov, kick.toLowerCase(), kickbackAbi),
+      network,
+      deployBlock,
+    );
+    expect(core.CHECK_COLUMNS).toEqual(legacy.CHECK_COLUMNS);
+    expect(core.PAYOUT_COLUMNS).toEqual(legacy.PAYOUT_COLUMNS);
     expect(await core.depositsOverview({ client, cfg, scanFrom: deployBlock })).toEqual({
       deposits: [],
       returns: [],
@@ -149,11 +169,24 @@ test(
       });
       expect(warnings).toEqual(r.warnings);
       expect(info[0]).toMatch(/^Columns used: /);
-      // every list writes as CSV with its columns
+      // the legacy core on the same chain state: every CSV and stamped list it would write, byte for byte
+      lr = await legacy.checkGuests({
+        prov,
+        cfg: legacyCfg,
+        abi: kickbackAbi,
+        rows: legacy.parseCsv(guestsCsv),
+        scanFrom: legacyCfg.deployBlock,
+      });
+      expect(lr.snapshotBlock).toBe(r.snapshotBlock);
       for (const key of ["verified", "issues", "toReview", "returns", "claims", "unmatched"] as const)
-        expect(core.parseCsv(core.toCsv(r[key], core.CHECK_COLUMNS[key]))).toHaveLength(r[key].length);
+        expect(core.toCsv(r[key], core.CHECK_COLUMNS[key]), key).toBe(legacy.toCsv(lr[key], legacy.CHECK_COLUMNS[key]));
+      expect(unstamped(r.lists.newStakers)).toEqual(unstamped(lr.lists.newStakers));
+      expect(unstamped(r.lists.refunds)).toEqual(unstamped(lr.lists.refunds));
+      expect(r.warnings).toEqual(lr.warnings);
       return r;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let lr: any;
     let r = await check();
     const wallets = (list: core.StampedList) => list.items.map((i) => i.wallet);
     expect(wallets(r.lists.newStakers)).toEqual([k.addr(ANA), k.addr(CAI), k.addr(DAN)]);
@@ -265,6 +298,20 @@ test(
       extra: core.parseCsv(doorCsv),
       extraName: "door.csv",
     });
+    const lp = await legacy.buildPayout({
+      prov,
+      cfg: legacyCfg,
+      abi: kickbackAbi,
+      checkins: legacy.parseCsv(afterCsv),
+      verified: lr.verified,
+      claims: lr.claims,
+      extra: legacy.parseCsv(doorCsv),
+      extraName: "door.csv",
+    });
+    expect(core.toCsv(p.payoutRows, core.PAYOUT_COLUMNS)).toBe(legacy.toCsv(lp.payoutRows, legacy.PAYOUT_COLUMNS));
+    expect(p.summaryMarkdown).toBe(lp.summaryMarkdown);
+    expect(plain(p.plan)).toEqual(plain(lp.plan));
+    expect(p.attendees.map((x) => x.wallet)).toEqual(lp.attendees.map((x: { wallet: string }) => x.wallet));
     expect(p.door).toEqual({ rows: 2, unmatched: [{ email: "nobody@x.io", wallet: null }] });
     expect([p.plan.attendees, p.plan.share, p.unknown]).toEqual([
       [k.addr(ANA), k.addr(CAI)],

@@ -1,5 +1,6 @@
 // The checkGuests / buildPayout cases of the legacy kickback.test.mjs, against the core on a local chain: what the
-// legacy scripts wrote to files is checkGuests' lists written with toCsv (CHECK_COLUMNS), and its stamped lists.
+// legacy scripts wrote to files is checkGuests' lists written with toCsv (CHECK_COLUMNS), and its stamped lists. Every
+// check over the real chain is also run by the legacy core.mjs over ethers, and its files must come out byte for byte.
 import { kickbackAbi, testTokenAbi, testTokenBytecode, testWalletAbi, testWalletBytecode } from "@kickback/contracts";
 import {
   BaseError,
@@ -14,12 +15,14 @@ import {
   type Address,
   type Hash,
 } from "viem";
-import { beforeAll, describe, expect, test } from "vitest";
+import { JsonRpcProvider } from "ethers";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
 import * as core from "../src";
 
 import { chainKit, type ChainKit } from "./chain";
 import { read } from "./docs";
+import * as legacy from "./legacy/core.mjs";
 
 // Amounts in thousandths of an ETH: U(25) = 0.025 ETH.
 const U = (x: number) => parseEther(String(x)) / 1000n;
@@ -34,9 +37,11 @@ let k: ChainKit;
 let liquid: Address;
 let proxy: Address;
 let TPL: core.CaseTemplate;
+let prov: JsonRpcProvider;
 
 beforeAll(async () => {
   k = chainKit();
+  prov = new JsonRpcProvider(k.rpcUrl, undefined, { staticNetwork: true, cacheTimeout: -1 });
   ({ liquid, proxy } = await k.mocks());
   TPL = core.caseTemplate(
     read(core.DEFAULT_METAEVIDENCE_TEMPLATE),
@@ -49,6 +54,8 @@ beforeAll(async () => {
     }),
   );
 });
+
+afterAll(() => prov.destroy());
 
 const arbitration = () => ({
   disputeResolver: proxy,
@@ -102,6 +109,14 @@ async function smartWalletDeposit(kick: Address, amount: number) {
   return { wallet, hash };
 }
 
+// BigInts as text, for comparing the port's and the legacy core's JSON lists
+const unstamped = (l: object) => {
+  const { generatedAt: _, ...rest } = JSON.parse(
+    JSON.stringify(l, (_k, x: unknown) => (typeof x === "bigint" ? x.toString() : x)),
+  ) as { generatedAt: string };
+  return rest;
+};
+
 const FILE_KEYS = {
   "verified.csv": "verified",
   "issues.csv": "issues",
@@ -133,20 +148,39 @@ async function scenario({
     kleros: { disputeResolver: proxy, arbitrator: liquid },
     ...over,
   };
+  let raw = base;
   let cfg = core.normalizeConfig(base);
-  const config = (o: core.RawConfig = {}) => (cfg = core.normalizeConfig({ ...base, ...o }));
+  const config = (o: core.RawConfig = {}) => (cfg = core.normalizeConfig((raw = { ...base, ...o })));
   let r: core.CheckGuestsResult | null = null;
   const H = "name,email,ticket_name,approval_status,checked_in_at,eth_address,Deposit tx link (Committed Spot only)";
   const verify = async (
     lines: string[],
     { header = H, scanFrom = cfg.deployBlock }: { header?: string; scanFrom?: number } = {},
-  ) =>
-    (r = await core.checkGuests({
+  ) => {
+    const text = [header, ...lines].join("\n");
+    r = await core.checkGuests({
       client: client ?? k.client,
       cfg,
-      rows: core.parseCsv([header, ...lines].join("\n")),
+      rows: core.parseCsv(text),
       ...(scanFrom === undefined ? {} : { scanFrom }),
-    }));
+    });
+    if (!client) {
+      const lr = await legacy.checkGuests({
+        prov,
+        cfg: legacy.normalizeConfig(raw),
+        abi: kickbackAbi,
+        rows: legacy.parseCsv(text),
+        ...(scanFrom === undefined ? {} : { scanFrom }),
+      });
+      expect(lr.snapshotBlock).toBe(r.snapshotBlock);
+      for (const key of Object.values(FILE_KEYS))
+        expect(core.toCsv(r[key], core.CHECK_COLUMNS[key]), key).toBe(legacy.toCsv(lr[key], legacy.CHECK_COLUMNS[key]));
+      for (const key of ["newStakers", "refunds"] as const)
+        expect(unstamped(r.lists[key]), key).toEqual(unstamped(lr.lists[key]));
+      expect(r.warnings).toEqual(lr.warnings);
+    }
+    return r;
+  };
   const result = () => r ?? expect.fail("verify first");
   const readOut = (f: keyof typeof FILE_KEYS) => core.toCsv(result()[FILE_KEYS[f]], core.CHECK_COLUMNS[FILE_KEYS[f]]);
   const csv = (f: keyof typeof FILE_KEYS) => core.parseCsv(readOut(f));
@@ -916,5 +950,35 @@ describe("on a local chain", () => {
         ),
       });
     }
+  });
+
+  test("a staker registered on spare money, with no whole deposit of its own, gets nothing back", async () => {
+    const s = await scenario();
+    const [gil, sid] = [addr(0), addr(1)];
+    await s.pay(1, 25); // a stray from Sid makes the money for Gil's spot
+    await k.kick(s.kAddr, OWNER, "registerStakers", [[gil]]);
+    const txGil = await s.pay(0, 10); // short
+    const r = await s.verify([s.row("Gil", gil, "approved", txGil)]);
+    expect(r.issues.map((i) => [i.name, i.code, i.onchain])).toEqual([["Gil", "AMOUNT_TOO_LOW", "registered"]]);
+    expect(r.unbacked.map((e) => [e.type, e.wallet])).toEqual([["StakerRegistered", gil]]);
+    expect(s.returnsOf()).toEqual([]);
+    expect(r.openUnmatched.map((u) => u.from)).toEqual([sid]);
+  });
+
+  test("the timing and gas constants the core keeps are the contract's", async () => {
+    const { address } = await newKickback(U(25));
+    const constants = {
+      MIN_SETTLEMENT_WINDOW: core.MIN_SETTLEMENT_WINDOW,
+      CHALLENGE_PERIOD: core.CHALLENGE_PERIOD,
+      MATCH_PERIOD: core.MATCH_PERIOD,
+      PAYOUT_GAS: core.PAYOUT_GAS,
+      RULING_ATTENDED: core.RULINGS.attended,
+      RULING_ABSENT: core.RULINGS.absent,
+      SLOT_STAKER: core.SLOT.wallet,
+      SLOT_CONTRACT: core.SLOT.contract,
+      SLOT_STAKER_LOWER: core.SLOT.walletLower,
+    };
+    for (const [name, value] of Object.entries(constants))
+      expect(Number(await k.read<bigint | number>(address, name)), name).toBe(value);
   });
 });

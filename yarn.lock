@@ -2439,6 +2439,7 @@ __metadata:
     "@types/node": "npm:^22.15.30"
     csv-parse: "npm:^5.5.6"
     eslint: "npm:^9.28.0"
+    ethers: "npm:^6.13.5"
     prettier: "npm:^3.7.4"
     typescript: "npm:^5.8.3"
     viem: "npm:^2.55.4"
