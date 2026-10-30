@@ -678,6 +678,8 @@ export async function getLogsChunked<L>(
   step: number = DEFAULT_LOG_CHUNK,
   { retries = 3, delayMs = 1000, minStep = 100 }: ChunkOptions = {},
 ): Promise<L[]> {
+  if (!Number.isInteger(step) || step < 1)
+    throw new Error(`getLogsChunked: the chunk size must be a whole number of blocks, 1 or more (got ${step})`);
   if (toBlock === "latest" && !reader.getBlockNumber)
     throw new Error('getLogsChunked: toBlock "latest" needs getBlockNumber');
   const latest = toBlock === "latest" ? Number(await reader.getBlockNumber!()) : Number(toBlock);

@@ -29,7 +29,7 @@ import {
   type ReturnEvent,
 } from "./deposits";
 import { shortMessage } from "./kickbackError";
-import { detectColumns, fmt, fmtEth, lumaDecision, normAddress, uncell, type Columns } from "./text";
+import { checkedAddress, detectColumns, fmt, fmtEth, lumaDecision, normAddress, uncell, type Columns } from "./text";
 
 export interface ProgressLog {
   info(message: string): void;
@@ -135,6 +135,15 @@ export interface CheckGuestsResult {
   statusOf: Map<string, number>;
   /** the attendance list is not posted yet */
   listOpen: boolean;
+}
+
+/** Throws when a wallet is listed twice or is 0x0: registerStakers and rejectAndRefund would revert the whole batch. */
+export function assertBatchable(wallets: readonly string[]): void {
+  const listed = wallets.map((w) => w.toLowerCase());
+  if (new Set(listed).size !== listed.length || listed.includes(zeroAddress))
+    throw new Error(
+      "Internal check failed: a wallet would be listed twice (or is 0x0). Nothing was written; investigate.",
+    );
 }
 
 const RETURN_EVENTS = ["Rejected", "Refunded", "StakerRegistered"] as const;
@@ -431,12 +440,7 @@ export async function checkGuests({
     if (i.code === "DUPLICATE_WALLET" && i.extra && st(i.wallet) !== undefined)
       giveBack(i, "DUPLICATE_WALLET", freeOf(i), "Second deposit from a wallet that is already counted");
 
-  // A wallet listed twice, or the zero address, would make the batch revert.
-  const listed = [...newStakers, ...refunds].map((v) => v.wallet.toLowerCase());
-  if (new Set(listed).size !== listed.length || listed.includes(zeroAddress))
-    throw new Error(
-      "Internal check failed: a wallet would be listed twice (or is 0x0). Nothing was written; investigate.",
-    );
+  assertBatchable([...newStakers, ...refunds].map((v) => v.wallet));
 
   // Deposits nobody's Luma row points at. A row whose tx came from someone else claims nothing; only a
   // row not checked yet (RPC_ERROR, TX_PENDING, TX_NOT_FOUND) keeps its whole tx out until the next run.
@@ -786,7 +790,7 @@ export async function buildPayout({
   }
 
   // Stakers and the deposit come from the contract (the source of truth)
-  const contractAddr = getAddress(cfg.contract.toLowerCase());
+  const contractAddr = checkedAddress(cfg.contract);
   const read = { address: contractAddr, abi: kickbackAbi } as const;
   const all = await client.readContract({ ...read, functionName: "stakers" });
   const st = await Promise.all(all.map((w) => client.readContract({ ...read, functionName: "status", args: [w] })));
@@ -803,7 +807,7 @@ export async function buildPayout({
     );
   const approved = verified
     .filter((v) => lumaDecision(v.approval) === "approved")
-    .map((v) => getAddress(v.wallet.toLowerCase()));
+    .map((v) => checkedAddress(v.wallet));
   const missing = [...new Set(approved)].filter((w) => !stakerWallets.includes(w));
   if (missing.length)
     log.warn(

@@ -144,7 +144,8 @@ export function detectColumns(headers: readonly string[], overrides: Columns = {
   return { ...cols, ...overrides };
 }
 
-export const TX_HASH_RE = /0x[a-fA-F0-9]{64}/;
+// A hash or address ends where its hex ends or a next "0x" starts: 65 digits are no hash, a hash is no address.
+export const TX_HASH_RE = /0x[a-fA-F0-9]{64}(?!(?!0x)[a-fA-F0-9])/;
 
 export function extractTxHash(value: unknown): string | null {
   const m = String(value ?? "").match(TX_HASH_RE);
@@ -157,13 +158,29 @@ export const extractTxHashes = (value: unknown): string[] => [
 
 /** The first 0x address in a text, checksummed, or null. */
 export function normAddress(value: unknown): Address | null {
-  const m = String(value ?? "").match(/0x[a-fA-F0-9]{40}/);
+  const m = String(value ?? "").match(/0x[a-fA-F0-9]{40}(?!(?!0x)[a-fA-F0-9])/);
   if (!m) return null;
   try {
     return getAddress(m[0].toLowerCase());
   } catch {
     return null;
   }
+}
+
+/**
+ * True for a 0x address whose EIP-55 checksum holds: all lower or all upper case carries none, mixed
+ * case must match it (ethers' isAddress; viem's strict check also refuses all upper case).
+ */
+export function isAddressStrict(value: unknown): value is Address {
+  const s = String(value ?? "");
+  if (!/^0x[0-9a-fA-F]{40}$/.test(s)) return false;
+  const hex = s.slice(2);
+  return hex === hex.toLowerCase() || hex === hex.toUpperCase() || getAddress(s.toLowerCase()) === s;
+}
+/** The checksummed address; throws on a malformed one or a broken checksum (ethers' getAddress). */
+export function checkedAddress(value: unknown): Address {
+  if (!isAddressStrict(value)) throw new Error(`"${String(value ?? "")}" is not a valid address (bad checksum?)`);
+  return getAddress(value.toLowerCase());
 }
 
 /** An exact amount ("0.01", "1.0", "0.0"): always one decimal at least, the form the CSV and summary files use. */

@@ -1,6 +1,7 @@
-import { concat, getAddress, hexToBytes, sha256, stringToBytes, type Hex } from "viem";
+import { concat, hexToBytes, sha256, stringToBytes, type Hex } from "viem";
 
 import { MAX_METAEVIDENCE_BYTES, SLOT } from "./constants";
+import { checkedAddress } from "./text";
 
 const BASE58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 function base58(bytes: Uint8Array): string {
@@ -54,8 +55,8 @@ export interface MetaEvidenceTemplate {
 export function renderCase({ pieces, slots }: MetaEvidenceTemplate, wallet: string, contract: string): string {
   let out = pieces[0] ?? "";
   hexToBytes(slots).forEach((v, i) => {
-    const w = getAddress(wallet.toLowerCase());
-    const value = v === SLOT.wallet ? w : v === SLOT.contract ? getAddress(contract.toLowerCase()) : w.toLowerCase();
+    const w = checkedAddress(wallet);
+    const value = v === SLOT.wallet ? w : v === SLOT.contract ? checkedAddress(contract) : w.toLowerCase();
     out += value + (pieces[i + 1] ?? "");
   });
   return out;

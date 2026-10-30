@@ -2,7 +2,6 @@ import { kickbackAbi } from "@kickback/contracts";
 import {
   encodeAbiParameters,
   getAddress,
-  isAddress,
   size,
   toHex,
   zeroAddress,
@@ -31,7 +30,7 @@ import {
   DEFAULT_METAEVIDENCE_TEMPLATE,
 } from "./constants";
 import { KickbackError } from "./kickbackError";
-import { fmt, parseEthStrict, type Columns } from "./text";
+import { checkedAddress, fmt, isAddressStrict, parseEthStrict, type Columns } from "./text";
 
 export interface KlerosInput {
   disputeResolver?: string;
@@ -155,7 +154,7 @@ export function normalizeConfig(cfg: RawConfig, file = "config.json", { depositC
     throw new Error('"receiver" and "contract" in the config must be the same address (the deployed contract)');
   const logChunk = Number(cfg.logChunk);
   const receiver = cfg.contract || cfg.receiver;
-  if (!receiver || !isAddress(receiver, { strict: false }))
+  if (!receiver || !isAddressStrict(receiver))
     throw new Error(`"contract" in ${file} must be the deposit contract's address`);
   const { chainId: _c, logChunk: _l, deployBlock: _d, ...rest } = cfg;
   return {
@@ -168,7 +167,7 @@ export function normalizeConfig(cfg: RawConfig, file = "config.json", { depositC
     decimals: DECIMALS,
     depositUnits,
     poolCapUnits,
-    receiver: getAddress(receiver.toLowerCase()),
+    receiver: checkedAddress(receiver),
     opensAt: opensAt ?? 0,
     deadline: deadline ?? Infinity,
     eventStartTs,
@@ -293,10 +292,10 @@ export function eventDetails(input: Partial<Record<EventFieldKey, unknown>> = {}
  */
 export function templateValues(cfg: Pick<Config, "depositUnits"> & RawConfig, owner?: string): TemplateValues {
   const organiser =
-    cfg.owner && isAddress(cfg.owner, { strict: false })
-      ? getAddress(cfg.owner.toLowerCase())
+    cfg.owner && isAddressStrict(cfg.owner)
+      ? checkedAddress(cfg.owner)
       : owner && owner !== zeroAddress
-        ? getAddress(owner.toLowerCase())
+        ? checkedAddress(owner)
         : "";
   const values: TemplateValues = {
     eventName: cfg.eventName ?? "Truth Pays",
@@ -422,8 +421,8 @@ export function deploySettings(cfg: Config, owner?: string): KlerosConfig {
     cfg.owner &&
     owner &&
     owner !== zeroAddress &&
-    isAddress(cfg.owner, { strict: false }) &&
-    getAddress(cfg.owner.toLowerCase()) !== getAddress(owner.toLowerCase())
+    isAddressStrict(cfg.owner) &&
+    checkedAddress(cfg.owner) !== checkedAddress(owner)
   )
     throw new Error(`The deploying wallet ${owner} is not the owner in the config (${cfg.owner})`);
   return k;
@@ -448,7 +447,7 @@ export function deployArgs(
   return [
     cfg.depositUnits,
     cfg.eventName ?? "Truth Pays",
-    getAddress(owner.toLowerCase()),
+    checkedAddress(owner),
     BigInt(cfg.eventStartTs!),
     BigInt(cfg.claimDeadlineTs!),
     {
@@ -496,7 +495,7 @@ export type EventForm = Partial<Record<EventFieldKey, string>> & {
  */
 export function newEventConfig(form: EventForm, network: NetworkInput, owner: string | undefined): Config {
   const details = eventDetails(form);
-  if (!isAddress(owner ?? "", { strict: false }))
+  if (!isAddressStrict(owner))
     throw new Error("Connect your wallet first: it becomes the owner of the new contract.");
   const deposit = String(form.deposit ?? "").trim();
   let wei: bigint;
@@ -525,7 +524,7 @@ export function newEventConfig(form: EventForm, network: NetworkInput, owner: st
       deposit,
       eventStart: form.eventStart,
       claimDeadline,
-      owner: getAddress(owner!.toLowerCase()),
+      owner: checkedAddress(owner),
       kleros: { ...(network.kleros ?? {}) },
     },
     "the form",

@@ -1,11 +1,11 @@
 import { kickbackAbi, kickbackFingerprint, kickbackImmutables } from "@kickback/contracts";
-import { getAddress, isAddress, type Address, type Hex, type PublicClient } from "viem";
+import { getAddress, type Address, type Hex, type PublicClient } from "viem";
 
 import { codeFingerprint } from "./caseText";
 import type { Config, EventInfo } from "./config";
 import { isContractCode } from "./deposits";
 import { KickbackError, shortMessage } from "./kickbackError";
-import { fmt } from "./text";
+import { fmt, isAddressStrict } from "./text";
 
 export interface Runtime {
   /** codeFingerprint of the build */
@@ -39,7 +39,7 @@ export async function readEvent(
   address: string | undefined,
   { runtime = KICKBACK_RUNTIME }: { runtime?: Runtime | null } = {},
 ): Promise<EventInfo> {
-  if (!isAddress(address ?? "", { strict: false }))
+  if (!isAddressStrict(address))
     throw new KickbackError(
       `"${address ?? ""}" is not a contract address (0x… with 40 characters after it).`,
       "NOT_KICKBACK",
