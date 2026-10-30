@@ -438,7 +438,13 @@
 }
 .og-ticks {
   display: inline-flex;
-  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.og-ticks .kb-link {
+  white-space: nowrap;
 }
 .og-tick {
   display: inline-flex;

@@ -156,7 +156,15 @@ test("a short payer can be returned from the guests row and sees the dated retur
   });
   await page.goto(`/organise/${event.address}/guests?from=${event.deployBlock}`);
   await wallet.connect("alice");
-  await page.getByRole("link", { name: "Return 0.005 ETH" }).click();
+  const returnLink = page.getByRole("link", { name: "Return 0.005 ETH" });
+  for (const width of [390, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    const link = (await returnLink.boundingBox())!;
+    const row = (await page.getByTestId("guest-row").first().boundingBox())!;
+    expect(link.x + link.width).toBeLessThanOrEqual(row.x + row.width + 0.5);
+    expect(link.height).toBeLessThan(28);
+  }
+  await returnLink.click();
   const dialog = page.getByRole("dialog", { name: "Return stray ETH" });
   await expect(dialog.getByLabel("To wallet")).toHaveValue(new RegExp(`^${guest!}$`, "i"));
   await expect(dialog.getByLabel("Amount, ETH")).toHaveValue("0.005");

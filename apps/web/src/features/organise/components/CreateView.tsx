@@ -315,7 +315,7 @@ export function CreateView({ model }: { model: CreateScreenModel }) {
           title="Deploy event"
           intro="These are the event details you sign."
           figures={[
-            { label: "Event name", value: model.frozen.eventName },
+            { label: "Short name", value: model.frozen.eventName },
             { label: "Deposit", value: ethText(model.frozen.deposit) },
             { label: "Start", value: new Date(model.frozen.start * 1000).toISOString() },
             { label: "Deadline", value: new Date(model.frozen.deadline * 1000).toISOString() },
