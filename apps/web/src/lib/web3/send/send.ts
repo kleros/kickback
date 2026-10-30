@@ -1,6 +1,7 @@
 import { TX_GAS_CAP } from "@kickback/core";
 import {
   isAddressEqual,
+  zeroAddress,
   type Address,
   type Hash,
   type Hex,
@@ -12,18 +13,25 @@ import {
 import { acquireSendLock, releaseSendLock } from "./lock";
 import { learnTxNonce, type SentTx, type SentTxStore } from "./sentTx";
 
+/** A call to `to`, or with `to` omitted a contract creation whose `data` is the bytecode plus its constructor args. */
 export interface TxRequest {
-  to: Address;
+  to?: Address;
   data?: Hex;
   value?: bigint;
 }
 
 /** What the wallet is asked to sign: the request with its gas limit set and the chain pinned. */
-export interface PinnedTxRequest extends Required<TxRequest> {
+export interface PinnedTxRequest {
   account: Address;
+  to?: Address;
+  data: Hex;
+  value: bigint;
   gas: bigint;
   chainId: number;
 }
+
+/** Deploys are recorded under this address until they mine, since the new contract's own is not known before. */
+export const DEPLOY_RECORD_KEY: Address = zeroAddress;
 
 export interface SendWallet {
   /** The account connected right now, or undefined. */
@@ -114,8 +122,9 @@ async function learnTxNonceUntil(
 }
 
 /**
- * Sends one transaction: re-read, dry run, gas = estimate +30% capped at 2^24, the wallet's chain checked
- * last and pinned on the request, then the receipt. Refuses while another send is under way.
+ * Sends one transaction, or deploys a contract when the request has no `to`: re-read, dry run, gas = estimate
+ * +30% capped at 2^24, the wallet's chain checked last and pinned on the request, then the receipt (a deploy's
+ * names `contractAddress`). Refuses while another send is under way.
  */
 export async function sendTx(deps: SendDeps, args: SendArgs): Promise<TransactionReceipt> {
   if (!acquireSendLock()) throw new SendError("busy", "Another action is under way. Wait for it to finish.");
@@ -134,7 +143,11 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
   if (!account) throw new SendError("no-account", "Connect your wallet first. Nothing was sent.");
 
   const request = await prepare();
-  const tx = { account, to: request.to, data: request.data ?? "0x", value: request.value ?? 0n } as const;
+  const data = request.data ?? "0x";
+  if (!request.to && data === "0x")
+    throw new SendError("refused", "There is no contract code to deploy, so nothing was sent.");
+  const tx = { account, ...(request.to ? { to: request.to } : {}), data, value: request.value ?? 0n } as const;
+  const recordKey = request.to ?? DEPLOY_RECORD_KEY;
 
   const stillSame = () => {
     const current = wallet.getAddress();
@@ -187,7 +200,7 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
 
   const waiting = new AbortController();
   if (sent) {
-    const record: SentTx = { hash, account, contract: tx.to, chainId, at: now(), txNonce: null };
+    const record: SentTx = { hash, account, contract: recordKey, chainId, at: now(), txNonce: null };
     sent.save(record);
     void learnTxNonceUntil(client, sent, record, deps.nonceRetryMs ?? DEFAULT_NONCE_RETRY_MS, waiting.signal);
   }
@@ -215,16 +228,23 @@ async function sendLocked(deps: SendDeps, { prepare }: SendArgs): Promise<Transa
   const minedHash = receipt.transactionHash;
   if (minedHash !== hash) {
     if (replacedBecause !== "repriced") {
-      sent?.forget(chainId, tx.to, hash);
+      sent?.forget(chainId, recordKey, hash);
       throw new SendError("replaced", "Your wallet cancelled or replaced this transaction, so it was not done.", hash);
     }
-    const current = sent?.read(chainId, tx.to, account);
+    const current = sent?.read(chainId, recordKey, account);
     if (current?.hash === hash) sent?.save({ ...current, hash: minedHash });
   }
 
   if (receipt.status !== "success") {
-    sent?.forget(chainId, tx.to, minedHash);
+    sent?.forget(chainId, recordKey, minedHash);
     throw new SendError("reverted", "It didn't go through on-chain. Only the network fee was spent.", minedHash);
+  }
+  if (!request.to && !receipt.contractAddress) {
+    throw new SendError(
+      "reverted",
+      "The receipt names no new contract. Check the transaction before trying again.",
+      minedHash,
+    );
   }
   return receipt;
 }

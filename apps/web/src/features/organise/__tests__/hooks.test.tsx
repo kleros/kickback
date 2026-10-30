@@ -1,5 +1,6 @@
 import type { PropsWithChildren } from "react";
 
+import { kickbackBytecode } from "@kickback/contracts";
 import { ipfsCidV0 } from "@kickback/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
@@ -22,10 +23,11 @@ import {
   useSweep,
 } from "../hooks/useActions";
 import { useAttendancePlan } from "../hooks/useAttendancePlan";
-import { useCreateEvent, useDeploy, DEPLOYMENT_SEND_BLOCKER } from "../hooks/useCreateEvent";
+import { useCreateEvent, useDeploy } from "../hooks/useCreateEvent";
 import { useEventOverview } from "../hooks/useEventOverview";
 import { useGuests } from "../hooks/useGuests";
 import { usePayoutActions } from "../hooks/usePayoutActions";
+import { readDeployments, saveDeployment } from "../model/create";
 import { GENERIC_POLICY_TEXT } from "../model/policy";
 import { organiserKey } from "../model/shared";
 
@@ -327,20 +329,34 @@ it("create hook previews without a wallet and tracks policy pin success and erro
   await waitFor(() => expect(result.current.pin.isError).toBe(true));
 });
 
-it("deploy hook reports the shared send limitation without asking for a signature", async () => {
-  const signed = vi.fn();
+it("deploy hook sends the creation code with no recipient and saves the new event from the receipt", async () => {
+  const deployed = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  let request: Awaited<ReturnType<SendArgs["prepare"]>> | undefined;
   mocks.send.mockImplementation(async ({ prepare }: SendArgs) => {
-    await prepare();
-    signed();
-    return receipt;
+    request = await prepare();
+    return { ...receipt, contractAddress: deployed };
   });
+  fake.methods.getBlock.mockResolvedValue({ number: 10n, timestamp: 1n, transactions: [] });
   const { Wrapper } = wrapper();
   const { result } = renderHook(() => useDeploy({ chainId: 1 }), { wrapper: Wrapper });
   expect(result.current.isIdle).toBe(true);
   act(() => result.current.mutate({ form, owner, policyURI }));
-  await waitFor(() => expect(result.current.isError).toBe(true));
-  expect(result.current.error?.message).toBe(DEPLOYMENT_SEND_BLOCKER);
-  expect(signed).not.toHaveBeenCalled();
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(request?.to).toBeUndefined();
+  expect(request?.data?.startsWith(kickbackBytecode)).toBe(true);
+  expect(readDeployments()).toEqual([expect.objectContaining({ address: deployed, chainId: 1, block: 11 })]);
+});
+
+it("deploy hook asks for NEW before a second event from this browser, and refuses another network", async () => {
+  mocks.send.mockImplementation(async ({ prepare }: SendArgs) => prepare());
+  saveDeployment({ address: zeroAddress, chainId: 1, block: 1, name: "Earlier" });
+  const { Wrapper } = wrapper();
+  const { result } = renderHook(() => useDeploy({ chainId: 1 }), { wrapper: Wrapper });
+  act(() => result.current.mutate({ form, owner, policyURI }));
+  await waitFor(() => expect(result.current.error?.message).toContain("Type NEW"));
+  const other = renderHook(() => useDeploy({ chainId: 5 }), { wrapper: Wrapper });
+  act(() => other.result.current.mutate({ form, owner, policyURI, confirmation: "NEW" }));
+  await waitFor(() => expect(other.result.current.error?.message).toContain("cannot deploy"));
 });
 
 it("attendance gates follow chain blocks without rebuilding the uploaded list", async () => {

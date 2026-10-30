@@ -1,5 +1,6 @@
 export { sendLock } from "./lock";
 export {
+  DEPLOY_RECORD_KEY,
   SendError,
   sendTx,
   type PinnedTxRequest,
