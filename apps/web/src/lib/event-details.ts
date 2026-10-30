@@ -9,9 +9,14 @@ export function visibleLink(raw: string | null | undefined) {
   }
 }
 
+/** The place to search on the map: the "(planned: …)" part when the venue text is a sentence around it. */
+export function mapQuery(where: string): string {
+  return /\(planned:\s*(.+)\)\s*$/i.exec(where)?.[1]?.trim() || where;
+}
+
 export function venueMap(where: string | null) {
   try {
-    return where ? mapEmbedUrl(where) : null;
+    return where ? mapEmbedUrl(mapQuery(where)) : null;
   } catch {
     return null;
   }
