@@ -11,6 +11,8 @@ const actions = (): TicketActions => ({
   switchChain: vi.fn(),
   addChain: vi.fn(),
   deposit: vi.fn(),
+  withdraw: vi.fn(),
+  claim: vi.fn(),
   recheck: vi.fn(),
 });
 const VERIFIED = {
@@ -49,7 +51,8 @@ describe("TicketCard", () => {
         .getAllByRole("button")
         .map((b) => b.textContent),
     ).toContain(view.button);
-    for (const line of view.lines) expect(within(card).getByText(line.text, { exact: false })).toBeInTheDocument();
+    for (const line of view.lines.filter((line) => line.text))
+      expect(within(card).getByText(line.text, { exact: false })).toBeInTheDocument();
   });
 
   it("keeps the card at rest within 25 visible words", () => {
@@ -64,6 +67,8 @@ describe("TicketCard", () => {
     ["wrongnet", "switchChain", "Switch to Ethereum"],
     ["addchain", "addChain", "Add Ethereum to your wallet"],
     ["ready", "deposit", "Deposit"],
+    ["withdraw", "withdraw", "Withdraw my deposit"],
+    ["claim", "claim", "Claim"],
   ] as const)("%s presses %s", async (state, action, label) => {
     const a = renderState(state);
     await userEvent.click(screen.getByRole("button", { name: label }));
@@ -126,4 +131,18 @@ describe("TicketCard", () => {
     expect(screen.getByTestId("ticket-status")).not.toHaveClass("is-shaking");
     vi.useRealTimers();
   });
+});
+
+it("renders the exact payout rather than the deposit with a compact long amount", () => {
+  const input = galleryInput("paid-out");
+  render(
+    <TicketCard
+      view={depositState({ ...input, guest: { ...input.guest!, payoutShare: 13333333333333333n } })}
+      amount="0.01"
+      actions={actions()}
+      verified={VERIFIED}
+    />,
+  );
+  expect(document.querySelector(".tk-amount")).toHaveClass("is-precise");
+  expect(document.querySelector(".tk-amount")?.textContent).toBe("0.013333333333333333");
 });

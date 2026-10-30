@@ -29,9 +29,9 @@ for (const width of [375, 1280] as const)
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 
-    // no status line is cut off at this width
+    // No status line or exact amount overflows at this width.
     const clipped = await page
-      .locator(".tk-slot p, .tk-foot, .tk-rcpt .v")
+      .locator(".tk-slot p, .tk-foot, .tk-rcpt .v, .tk-hero")
       .evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
     expect(clipped).toEqual([]);
 

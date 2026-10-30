@@ -7,7 +7,15 @@ import { depositState } from "../model/depositState";
 import { GALLERY_STATES, galleryInput, type GalleryState } from "../model/fixtures";
 
 const noop = () => {};
-const ACTIONS: TicketActions = { connect: noop, switchChain: noop, addChain: noop, deposit: noop, recheck: noop };
+const ACTIONS: TicketActions = {
+  connect: noop,
+  switchChain: noop,
+  addChain: noop,
+  deposit: noop,
+  withdraw: noop,
+  claim: noop,
+  recheck: noop,
+};
 const VERIFIED = {
   contract: "0xd5c6A73c05FA431c748781DaBAA99Fe2590d677D",
   disputeResolver: "0x4B89e798B10478A839Ea0Abcf86C4B94A3C782A4",

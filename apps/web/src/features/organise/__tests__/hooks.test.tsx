@@ -347,15 +347,15 @@ it("deploy hook sends the creation code with no recipient and saves the new even
   expect(readDeployments()).toEqual([expect.objectContaining({ address: deployed, chainId: 1, block: 11 })]);
 });
 
-it("deploy hook asks for NEW before a second event from this browser, and refuses another network", async () => {
+it("deploy hook requires confirmation before a second event and refuses another network", async () => {
   mocks.send.mockImplementation(async ({ prepare }: SendArgs) => prepare());
   saveDeployment({ address: zeroAddress, chainId: 1, block: 1, name: "Earlier" });
   const { Wrapper } = wrapper();
   const { result } = renderHook(() => useDeploy({ chainId: 1 }), { wrapper: Wrapper });
   act(() => result.current.mutate({ form, owner, policyURI }));
-  await waitFor(() => expect(result.current.error?.message).toContain("Type NEW"));
+  await waitFor(() => expect(result.current.error?.message).toContain("Confirm the event details"));
   const other = renderHook(() => useDeploy({ chainId: 5 }), { wrapper: Wrapper });
-  act(() => other.result.current.mutate({ form, owner, policyURI, confirmation: "NEW" }));
+  act(() => other.result.current.mutate({ form, owner, policyURI, confirmed: true }));
   await waitFor(() => expect(other.result.current.error?.message).toContain("cannot deploy"));
 });
 

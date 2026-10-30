@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import type { Address } from "viem";
 import { describe, expect, it, vi } from "vitest";
 
-import { event, guest, plan } from "./fixtures";
+import { event, guest, plan, form as createForm } from "./fixtures";
 import { AttendanceView } from "../components/AttendanceView";
 import { CreateView } from "../components/CreateView";
 import { GuestsView } from "../components/GuestsView";
@@ -196,6 +196,8 @@ const guestRow = (patch: Record<string, unknown> = {}) => ({
   tx: `0x${"ab".repeat(32)}`,
   amount: 10n ** 16n,
   held: 10n ** 16n,
+  returnAmount: null,
+  returnHref: null,
   sentAt: "2026-10-30T10:00",
   explorer: null,
   status: "Deposit found; register the approved guest.",
@@ -227,6 +229,9 @@ const guestsModel = (patch: Partial<GuestsScreenModel> = {}) =>
     done: null,
     register: vi.fn(),
     refund: vi.fn(),
+    frozen: null,
+    close: vi.fn(),
+    confirm: vi.fn(),
     ...patch,
   });
 
@@ -471,10 +476,9 @@ const createModel = (patch: Partial<CreateScreenModel> = {}) =>
     step: "form",
     busy: false,
     deploy: vi.fn(),
-    askNew: false,
-    closeNew: vi.fn(),
-    confirmNew: vi.fn(),
-    newWord: "NEW",
+    frozen: null,
+    close: vi.fn(),
+    confirm: vi.fn(),
     deployed: null,
     previous: [],
     error: null,
@@ -543,13 +547,25 @@ describe("create", () => {
     expect(screen.queryByRole("button", { name: "Deploy" })).toBeNull();
   });
 
-  it("a second event from this browser asks for NEW", async () => {
-    const model = createModel({ askNew: true });
+  it("deployment shows the frozen figures without a typed word", async () => {
+    const model = createModel({
+      frozen: {
+        form: { ...createForm, description: "", links: [], share: "" },
+        owner: guest,
+        eventName: "Dinner",
+        deposit: 10n ** 16n,
+        start: 1000,
+        deadline: 2000,
+      },
+    });
     render(<CreateView model={model} />);
     const dialog = screen.getByRole("dialog");
-    await userEvent.type(within(dialog).getByLabelText("Type NEW to confirm"), "NEW");
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    expect(within(dialog).getByTestId("frozen")).toHaveTextContent("Dinner");
+    expect(within(dialog).getByTestId("frozen")).toHaveTextContent("0.01 ETH");
+    expect(within(dialog).getByTestId("frozen")).toHaveTextContent(guest);
     await userEvent.click(within(dialog).getByRole("button", { name: "Deploy" }));
-    expect(model.confirmNew).toHaveBeenCalledWith("NEW");
+    expect(model.confirm).toHaveBeenCalledOnce();
   });
 });
 
@@ -632,4 +648,33 @@ it("labels both guest and disconnected organiser preview wallets as examples", (
   expect(screen.getByTestId("jurors-preview")).toHaveTextContent(
     "When disconnected, the organiser is also an example wallet.",
   );
+});
+
+it.each(["register", "refund"] as const)(
+  "renders frozen %s wallets and count without a typed word, locking dismissal while busy",
+  async (action) => {
+    const model = guestsModel({ frozen: { action, lists: [], wallets: [guest], total: 10n ** 16n } });
+    const { rerender } = render(<GuestsView model={model} />);
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent(guest);
+    expect(within(dialog).getByTestId("frozen")).toHaveTextContent("Count1");
+    if (action === "refund") expect(within(dialog).getByTestId("frozen")).toHaveTextContent("0.01 ETH");
+    expect(within(dialog).queryByRole("textbox")).toBeNull();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: action === "refund" ? "Refund 1" : "Register 1" }),
+    );
+    expect(model.confirm).toHaveBeenCalledOnce();
+    rerender(<GuestsView model={{ ...model, running: action }} />);
+    expect(within(dialog).getByRole("button", { name: "Close" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(model.close).not.toHaveBeenCalled();
+  },
+);
+
+it("links a short payment to its prefilled return instead of signing on the guests page", () => {
+  const href = `/organise/${guest}/payout?returnTo=${guest}&returnAmount=0.005`;
+  render(
+    <GuestsView model={guestsModel({ rows: [{ ...guestRow(), returnAmount: 5n * 10n ** 15n, returnHref: href }] })} />,
+  );
+  expect(screen.getByRole("link", { name: "Return 0.005 ETH" })).toHaveAttribute("href", href);
 });

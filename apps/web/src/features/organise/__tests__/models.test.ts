@@ -290,3 +290,19 @@ it("keeps refund eligibility when query structural sharing separates equivalent 
   expect(cached.verified[1]).not.toBe(cached.newStakers[0]);
   expect(guestRows([row], cached).find((r) => r.wallet === guest)?.canRefund.enabled).toBe(true);
 });
+
+it("gives a declined verified payer a refund verdict", () => {
+  const declined = { ...checked, approval: "declined", decision: "declined" as const };
+  const [result] = guestRows([row], guestCheck({ verified: [declined], newStakers: [], refunds: [declined] }));
+  expect(result?.status).toBe("Declined on Luma; refund the deposit");
+  expect(result?.canRegister.enabled).toBe(false);
+  expect(result?.canRefund.enabled).toBe(true);
+});
+
+it("offers only the held short payment for return", () => {
+  const [result] = guestRows([
+    { ...row, amount: 5n, held: 3n, code: "AMOUNT_TOO_LOW", canRegister: false, canRefund: false },
+  ]);
+  expect(result?.returnAmount).toBe(3n);
+  expect(guestRows([{ ...row, held: 0n, code: "AMOUNT_TOO_LOW" }])[0]?.returnAmount).toBeNull();
+});

@@ -55,6 +55,9 @@
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
+.tk-amount.is-precise {
+  font-size: clamp(18px, 4.8vw, 28px);
+}
 .tk-unit {
   align-self: flex-end;
   padding-bottom: 9px;

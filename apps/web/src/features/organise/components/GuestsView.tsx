@@ -1,12 +1,14 @@
 "use client";
 
+import Link from "next/link";
+
 import { Button } from "react-aria-components";
 
 import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 
-import { ErrorLine, FilePick } from "./parts";
+import { ConfirmDialog, ErrorLine, FilePick } from "./parts";
 import { useGuestsScreen, type GuestFilter, type GuestsScreenModel } from "../hooks/useGuestsScreen";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { ethText, shortHex, statusTone } from "../model/view";
@@ -49,6 +51,9 @@ function GuestRow({ row, setTick, locked }: { row: Row; setTick: GuestsScreenMod
         <span className="og-ticks">
           {tick("register")}
           {tick("refund")}
+          {row.returnHref && !locked && (
+            <Link className="kb-link" href={row.returnHref}>{`Return ${ethText(row.returnAmount)}`}</Link>
+          )}
         </span>
       </div>
       <Disclosure title="Details">
@@ -147,6 +152,30 @@ export function GuestsView({ model }: { model: GuestsScreenModel }) {
             ))}
           </div>
         </>
+      )}
+      {model.frozen && (
+        <ConfirmDialog
+          isOpen
+          title={model.frozen.action === "register" ? "Register guests" : "Refund guests"}
+          intro="These are the wallets and figures you sign."
+          words={[]}
+          figures={[
+            { label: "Count", value: String(model.frozen.wallets.length) },
+            ...(model.frozen.action === "refund" ? [{ label: "Total ETH", value: ethText(model.frozen.total) }] : []),
+          ]}
+          extra={
+            <ul className="og-mono" style={{ overflowWrap: "anywhere" }}>
+              {model.frozen.wallets.map((wallet) => (
+                <li key={wallet}>{wallet}</li>
+              ))}
+            </ul>
+          }
+          action={`${model.frozen.action === "register" ? "Register" : "Refund"} ${model.frozen.wallets.length}`}
+          busy={locked}
+          error={model.error?.text ?? null}
+          onClose={model.close}
+          onConfirm={() => void model.confirm()}
+        />
       )}
       <ErrorLine error={model.error} />
       {model.done && (

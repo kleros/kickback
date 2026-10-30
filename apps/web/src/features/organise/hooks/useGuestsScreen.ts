@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-import type { Config } from "@kickback/core";
+import type { Config, StampedList } from "@kickback/core";
+import { formatEther } from "viem";
 
 import { useSendBusy } from "@/lib/web3/send";
+
+import { paths } from "@/config/paths";
 
 import { useRegisterStakers, useRejectAndRefund } from "./useActions";
 import { useGuests } from "./useGuests";
@@ -27,7 +30,20 @@ export function useGuestsScreen(cfg: Config, scope: EventScope) {
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   const [done, setDone] = useState<string | null>(null);
 
-  const rows = guests.rows;
+  const inFlight = useRef(false);
+  const [frozen, setFrozen] = useState<{
+    action: "register" | "refund";
+    lists: StampedList[];
+    wallets: string[];
+    total: bigint;
+  } | null>(null);
+  const rows = guests.rows.map((row) => ({
+    ...row,
+    returnHref:
+      row.returnAmount === null
+        ? null
+        : `${paths.organiseEvent.getHref(scope.address, cfg.deployBlock, "payout")}${cfg.deployBlock === undefined ? "?" : "&"}${new URLSearchParams({ returnTo: row.wallet, returnAmount: formatEther(row.returnAmount) })}`,
+  }));
   const toRegister = rows.filter((r) => r.tick === "register").length;
   const toRefund = rows.filter((r) => r.tick === "refund").length;
   const counts: Record<GuestFilter, number> = {
@@ -46,12 +62,33 @@ export function useGuestsScreen(cfg: Config, scope: EventScope) {
           : true,
   );
 
-  const run = async (action: "register" | "refund") => {
+  const open = (action: "register" | "refund") => {
+    if (busy || inFlight.current) return;
+    setError(null);
+    try {
+      const lists = guests
+        .selectedBatches(action)
+        .map((list) => ({ ...list, items: list.items.map((item) => ({ ...item })) }));
+      const wallets = lists.flatMap((list) => list.items.map((item) => item.wallet));
+      if (!wallets.length) return;
+      setFrozen({
+        action,
+        lists,
+        wallets,
+        total: lists.reduce((sum, list) => sum + BigInt(list.deposit) * BigInt(list.items.length), 0n),
+      });
+    } catch (caught) {
+      setError({ text: errorMessage(caught), at: Date.now() });
+    }
+  };
+  const run = async () => {
+    if (!frozen || busy || inFlight.current) return;
+    inFlight.current = true;
+    const { action, lists } = frozen;
     setError(null);
     setDone(null);
     setRunning(action);
     try {
-      const lists = guests.selectedBatches(action);
       const mutation = action === "register" ? register : refund;
       await runGuestBatches(
         lists,
@@ -59,10 +96,12 @@ export function useGuestsScreen(cfg: Config, scope: EventScope) {
         (remaining) => guests.refreshBatches(remaining, action),
       );
       const total = lists.reduce((sum, list) => sum + list.items.length, 0);
+      setFrozen(null);
       setDone(action === "register" ? `Registered ${total}.` : `Refunded ${total}.`);
     } catch (caught) {
       setError({ text: errorMessage(caught), at: Date.now() });
     } finally {
+      inFlight.current = false;
       setRunning(null);
     }
   };
@@ -92,8 +131,13 @@ export function useGuestsScreen(cfg: Config, scope: EventScope) {
     busy,
     error,
     done,
-    register: () => void run("register"),
-    refund: () => void run("refund"),
+    frozen,
+    close: () => {
+      if (!busy && !inFlight.current) setFrozen(null);
+    },
+    confirm: run,
+    register: () => open("register"),
+    refund: () => open("refund"),
   };
 }
 

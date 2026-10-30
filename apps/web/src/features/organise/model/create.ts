@@ -206,3 +206,16 @@ export async function pinGenericPolicy(transport: {
     throw new Error("The pinned policy did not match; do not deploy. Try pinning it again.");
   return uri;
 }
+
+export function freezeDeployment(input: unknown, network: NetworkInput, owner: Address) {
+  const form = parseCreateForm(input);
+  const config = createConfig(form, network, owner);
+  return {
+    form,
+    owner,
+    eventName: config.eventName!,
+    deposit: config.depositUnits,
+    start: config.eventStartTs!,
+    deadline: config.claimDeadlineTs!,
+  };
+}

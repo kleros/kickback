@@ -76,7 +76,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         clock={event.clock}
         court={COURT}
         onDeposit={backToCard}
-        depositOpen={controller.view.key !== "closed"}
+        depositOpen={controller.depositOpen}
       />
     </>
   );

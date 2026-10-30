@@ -61,7 +61,6 @@ export const TYPED_WORDS = {
   pay: "PAY",
   sweep: "SWEEP",
   cancel: "CANCEL",
-  another: "NEW",
 } as const;
 
 /** The case jurors read, as its question then its paragraphs; text that is not the case JSON is shown whole. */

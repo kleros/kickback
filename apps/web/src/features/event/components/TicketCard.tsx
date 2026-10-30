@@ -20,6 +20,8 @@ export interface TicketActions {
   switchChain: () => void;
   addChain: () => void;
   deposit: () => void;
+  withdraw: () => void;
+  claim: () => void;
   recheck: () => void;
 }
 
@@ -65,7 +67,7 @@ function Line({ line, onRecheck }: { line: StatusLine; onRecheck: () => void }) 
       {line.text}
       {line.link && (
         <>
-          {" · "}
+          {line.text ? " · " : ""}
           <Link className="kb-link" href={line.link.href} target="_blank" rel="noopener noreferrer">
             {line.link.label}
           </Link>
@@ -100,6 +102,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
   { view, amount, actions, verified, lumaUrl, entrance = false },
   ref,
 ) {
+  const shownAmount = view.amount ?? amount;
   const done = view.key === "done" || view.key === "already";
   const shaking = useShake(view.shake ? `${view.key}:${view.lines[0]?.text}` : undefined);
 
@@ -108,6 +111,8 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     switch: actions.switchChain,
     "add-chain": actions.addChain,
     deposit: actions.deposit,
+    withdraw: actions.withdraw,
+    claim: actions.claim,
     copy: () => {},
     none: () => {},
   }[view.action];
@@ -127,7 +132,11 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         <TextSwap>{view.label}</TextSwap>
       </div>
       <div className="tk-hero">
-        <NumberPop value={amount} still={!entrance} className="tk-amount" />
+        <NumberPop
+          value={shownAmount}
+          still={!entrance}
+          className={shownAmount.length > 10 ? "tk-amount is-precise" : "tk-amount"}
+        />
         <span className="tk-unit">ETH</span>
         {done && (
           <span className="tk-done t-success-check" data-state="in" aria-hidden>

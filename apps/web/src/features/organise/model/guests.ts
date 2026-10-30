@@ -56,6 +56,7 @@ export function guestRows(deposits: readonly OverviewRow[], check?: CheckGuestsR
       name: r.name,
       code: r.code,
       status: r.onchain,
+      declined: r.decision === "declined",
       register: canRegister,
       refund:
         canRefund ||
@@ -83,6 +84,7 @@ export function guestRows(deposits: readonly OverviewRow[], check?: CheckGuestsR
       name: "",
       code: r.code as IssueCode,
       status: r.status,
+      declined: false,
       register: !check && r.canRegister,
       refund: !check && r.canRefund,
       auto: null,
@@ -98,11 +100,13 @@ export function guestRows(deposits: readonly OverviewRow[], check?: CheckGuestsR
       unknown: "Could not read wallet status; check again.",
     };
     const status =
-      r.code === "VERIFIED" && r.status && chainStatus[r.status]
-        ? chainStatus[r.status]!
-        : r.status === "paid"
-          ? "Paid out"
-          : (ISSUE_TEXT[r.code as IssueCode] ?? "Could not verify this payment; check again.");
+      r.declined && r.refund
+        ? "Declined on Luma; refund the deposit"
+        : r.code === "VERIFIED" && r.status && chainStatus[r.status]
+          ? chainStatus[r.status]!
+          : r.status === "paid"
+            ? "Paid out"
+            : (ISSUE_TEXT[r.code as IssueCode] ?? "Could not verify this payment; check again.");
     const canRegister = gate(
       r.register
         ? null
@@ -123,6 +127,10 @@ export function guestRows(deposits: readonly OverviewRow[], check?: CheckGuestsR
       tx: r.tx,
       amount: deposit?.amount ?? null,
       held: deposit?.held ?? null,
+      returnAmount:
+        (r.code === "AMOUNT_TOO_LOW" || deposit?.code === "AMOUNT_TOO_LOW") && deposit && deposit.held > 0n
+          ? deposit.held
+          : null,
       sentAt: deposit?.sentAt ?? null,
       explorer: deposit?.explorer ?? null,
       status,

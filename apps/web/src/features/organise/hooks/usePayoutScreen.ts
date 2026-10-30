@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { parseEther, type Address } from "viem";
 
@@ -33,7 +33,7 @@ const parseAmount = (text: string): bigint | undefined => {
 const asAddress = (text: string) => (/^0x[0-9a-fA-F]{40}$/.test(text.trim()) ? (text.trim() as Address) : undefined);
 
 /** The payout tab: release, then the rare actions under one More menu, each with a typed or filled confirm. */
-export function usePayoutScreen(scope: EventScope, deposit: bigint) {
+export function usePayoutScreen(scope: EventScope, deposit: bigint, prefill?: { to: string; amount: string }) {
   const actions = usePayoutActions(scope);
   const [frozen, setFrozen] = useState<Frozen | null>(null);
   const [fields, setFields] = useState({ to: "", amount: "", guest: "", token: "" });
@@ -108,6 +108,18 @@ export function usePayoutScreen(scope: EventScope, deposit: bigint) {
     else if (action === "refund") setFrozen({ action, spare: data.spare });
     else setFrozen({ action });
   };
+
+  const openedPrefill = useRef<string>();
+  const prefillTo = prefill?.to;
+  const prefillAmount = prefill?.amount;
+  useEffect(() => {
+    if (!data || !prefillTo || !prefillAmount || busy) return;
+    const key = `${scope.chainId}:${scope.address}:${prefillTo}:${prefillAmount}`;
+    if (openedPrefill.current === key || !asAddress(prefillTo) || (parseAmount(prefillAmount) ?? 0n) <= 0n) return;
+    openedPrefill.current = key;
+    setFields({ to: prefillTo, amount: prefillAmount, guest: "", token: "" });
+    setFrozen({ action: "refund", spare: data.spare });
+  }, [data, prefillTo, prefillAmount, scope.chainId, scope.address, busy]);
 
   const dialogGate: Gate | null =
     frozen?.action === "returnToken"

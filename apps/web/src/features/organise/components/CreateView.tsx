@@ -15,7 +15,7 @@ import { BrowserEvents } from "./BrowserEvents";
 import { ConfirmDialog, ErrorLine, Primary } from "./parts";
 import { useCreateScreen, type CreateFormValues, type CreateScreenModel } from "../hooks/useCreateScreen";
 import { createSharePreview } from "../model/sharePreview";
-import { caseView, shortHex } from "../model/view";
+import { caseView, ethText, shortHex } from "../model/view";
 
 export interface FieldSpec {
   name: string;
@@ -309,18 +309,31 @@ export function CreateView({ model }: { model: CreateScreenModel }) {
           </div>
         </div>
       </div>
-      {model.askNew && (
+      {model.frozen && (
         <ConfirmDialog
           isOpen
-          title="Create another event"
-          intro="This browser already created an event. Type NEW to deploy a separate one."
-          figures={[]}
-          words={[model.newWord]}
+          title="Deploy event"
+          intro="These are the event details you sign."
+          figures={[
+            { label: "Event name", value: model.frozen.eventName },
+            { label: "Deposit", value: ethText(model.frozen.deposit) },
+            { label: "Start", value: new Date(model.frozen.start * 1000).toISOString() },
+            { label: "Deadline", value: new Date(model.frozen.deadline * 1000).toISOString() },
+            {
+              label: "Owner",
+              value: (
+                <span className="og-mono" style={{ overflowWrap: "anywhere" }}>
+                  {model.frozen.owner}
+                </span>
+              ),
+            },
+          ]}
+          words={[]}
           action="Deploy"
-          busy={working}
+          busy={working || model.busy}
           error={model.error?.text ?? null}
-          onClose={model.closeNew}
-          onConfirm={(typed) => model.confirmNew(typed[0] ?? "")}
+          onClose={model.close}
+          onConfirm={() => void model.confirm()}
         />
       )}
     </div>

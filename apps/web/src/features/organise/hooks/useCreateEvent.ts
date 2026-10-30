@@ -25,7 +25,7 @@ export interface DeployInput {
   form: unknown;
   owner: Address;
   policyURI: string;
-  confirmation?: string;
+  confirmed?: boolean;
 }
 export function useDeploy(network: NetworkInput) {
   const client = usePublicClient({ chainId: Number(network.chainId) });
@@ -38,8 +38,8 @@ export function useDeploy(network: NetworkInput) {
         prepare: async () => {
           if (!client) throw new Error("The network connection is unavailable.");
           if (Number(network.chainId) !== DEFAULT_CHAIN_ID) throw new Error("This app cannot deploy on that network.");
-          if (readDeployments().length && input.confirmation !== "NEW")
-            throw new Error("Type NEW to create another event from this browser.");
+          if (readDeployments().length && !input.confirmed)
+            throw new Error("Confirm the event details before deploying another event.");
           const block = await client.getBlock();
           const { args } = await prepareEventDeployment(
             input.form,

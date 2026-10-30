@@ -87,6 +87,15 @@ test.describe("organiser", () => {
     await shoot(page, "create");
 
     await page.getByRole("button", { name: "Deploy" }).click();
+    const deployDialog = page.getByRole("dialog", { name: "Deploy event" });
+    await expect(deployDialog.getByTestId("frozen")).toContainText("Rehearsal");
+    await expect(deployDialog.getByTestId("frozen")).toContainText("0.01 ETH");
+    await expect(deployDialog.getByTestId("frozen")).toContainText("Start");
+    await expect(deployDialog.getByTestId("frozen")).toContainText("Deadline");
+    await expect(deployDialog.getByTestId("frozen")).toContainText(new RegExp(wallet.address!, "i"));
+    await expect(deployDialog.getByRole("textbox")).toHaveCount(0);
+    await expect(page.getByTestId("deployed")).toHaveCount(0);
+    await deployDialog.getByRole("button", { name: "Deploy", exact: true }).click();
     await expect(page.getByTestId("deployed")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId("browser-events")).toContainText("Rehearsal");
     await shoot(page, "create-deployed");
@@ -139,6 +148,12 @@ test.describe("organiser", () => {
       .getByRole("checkbox", { name: /^Refund/ })
       .check();
     await page.getByRole("button", { name: "Refund 1", exact: true }).click();
+    const refundDialog = page.getByRole("dialog", { name: "Refund guests" });
+    await expect(refundDialog).toContainText(new RegExp(c!, "i"));
+    await expect(refundDialog.getByTestId("frozen")).toContainText("Count1");
+    await expect(refundDialog.getByTestId("frozen")).toContainText("0.01 ETH");
+    await expect(refundDialog.getByRole("textbox")).toHaveCount(0);
+    await refundDialog.getByRole("button", { name: "Refund 1", exact: true }).click();
     await expect(page.getByTestId("done")).toHaveText("Refunded 1.", { timeout: 30_000 });
     await expect(row(page, c!)).toContainText("Refunded");
 
@@ -149,6 +164,12 @@ test.describe("organiser", () => {
       .getByRole("checkbox", { name: /^Register/ })
       .check();
     await page.getByRole("button", { name: "Register 2", exact: true }).click();
+    const registerDialog = page.getByRole("dialog", { name: "Register guests" });
+    await expect(registerDialog).toContainText(new RegExp(a!, "i"));
+    await expect(registerDialog).toContainText(new RegExp(b!, "i"));
+    await expect(registerDialog.getByTestId("frozen")).toContainText("Count2");
+    await expect(registerDialog.getByRole("textbox")).toHaveCount(0);
+    await registerDialog.getByRole("button", { name: "Register 2", exact: true }).click();
     await expect(page.getByTestId("done")).toHaveText("Registered 2.", { timeout: 30_000 });
     await expect(row(page, a!)).toContainText("Registered");
 
@@ -157,7 +178,8 @@ test.describe("organiser", () => {
       .check();
     await deposit(event.address, late!);
     await page.getByRole("button", { name: "Register 1", exact: true }).click();
-    await expect(page.getByTestId("error")).toContainText("The contract changed since the check");
+    await page.getByRole("dialog").getByRole("button", { name: "Register 1", exact: true }).click();
+    await expect(page.getByRole("dialog").getByTestId("error")).toContainText("The contract changed since the check");
     await shoot(page, "guests-refused");
   });
 

@@ -12,13 +12,15 @@ import {
   type EventInfo,
 } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
-import { getAbiItem, getAddress, zeroAddress, type Address, type Hash } from "viem";
+import { getAbiItem, zeroAddress, type Address } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 
 import { DEFAULT_CHAIN_ID, isLocalChainEnabled } from "@/config/chains";
 import { isKnownResolverOn } from "@/config/kleros";
+
+import { foldGuestLogs, type WalletDeposits } from "../model/guestLogs";
 
 export type RefusalReason = "not-address" | "no-contract" | "not-kickback" | "look-alike";
 
@@ -62,6 +64,7 @@ export function useEvent(contract: string) {
     queryKey: eventKey(contract),
     enabled: client !== undefined,
     staleTime: STALE_TIME.live,
+    refetchInterval: 10_000,
     retry: (count, error) => !(error instanceof EventRefused) && count < 2,
     queryFn: async () => {
       let info: EventInfo;
@@ -108,14 +111,6 @@ export function usePreviewShare(contract: Address | undefined, attend: number | 
   });
 }
 
-export interface WalletDeposits {
-  deposited: bigint;
-  txHash: Hash;
-  block: bigint;
-  /** Block of the contract's Rejected refund, if any. */
-  refundedBlock?: bigint;
-}
-
 export interface EventDeposits {
   /** Wallets with a deposit. */
   guests: number;
@@ -125,10 +120,12 @@ export interface EventDeposits {
 
 const DEPOSITED = getAbiItem({ abi: kickbackAbi, name: "Deposited" });
 const REJECTED = getAbiItem({ abi: kickbackAbi, name: "Rejected" });
+const REFUNDED = getAbiItem({ abi: kickbackAbi, name: "Refunded" });
+const PAYOUT = getAbiItem({ abi: kickbackAbi, name: "Payout" });
 
 export const depositsKey = (contract: string) => ["event-deposits", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
-/** Every Deposited and Rejected event of the contract, from `fromBlock` (or its deploy block, searched). */
+/** Deposit and payment logs, from `fromBlock` or the searched deploy block. */
 export function useEventDeposits(contract: Address | undefined, fromBlock: number | undefined) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
 
@@ -142,25 +139,18 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
       const logs = await getLogsChunked(
         {
           getLogs: ({ fromBlock: a, toBlock: b }) =>
-            client!.getLogs({ address: contract!, events: [DEPOSITED, REJECTED], fromBlock: a, toBlock: b }),
+            client!.getLogs({
+              address: contract!,
+              events: [DEPOSITED, REJECTED, REFUNDED, PAYOUT],
+              fromBlock: a,
+              toBlock: b,
+            }),
           getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
         },
         from,
       );
-      const byWallet = new Map<string, WalletDeposits>();
-      for (const log of logs) {
-        if (log.eventName === "Deposited") {
-          const from = getAddress(log.args.from!).toLowerCase();
-          const seen = byWallet.get(from);
-          if (seen) seen.deposited += log.args.amount!;
-          else
-            byWallet.set(from, { deposited: log.args.amount!, txHash: log.transactionHash!, block: log.blockNumber! });
-        } else {
-          const seen = byWallet.get(getAddress(log.args.wallet!).toLowerCase());
-          if (seen) seen.refundedBlock = log.blockNumber!;
-        }
-      }
-      return { guests: byWallet.size, byWallet };
+      const byWallet = foldGuestLogs(logs);
+      return { guests: [...byWallet.values()].filter((wallet) => wallet.txHash !== undefined).length, byWallet };
     },
   });
 }

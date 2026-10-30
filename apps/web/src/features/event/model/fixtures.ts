@@ -24,6 +24,13 @@ export const GALLERY_STATES = [
   "replaced",
   "refunded",
   "short",
+  "withdraw",
+  "claim",
+  "paid-out",
+  "not-attended",
+  "returned",
+  "withdrawn",
+  "checking",
 ] as const;
 
 export type GalleryState = (typeof GALLERY_STATES)[number];
@@ -70,6 +77,28 @@ export function galleryInput(state: GalleryState): DepositInput {
     sent: { data: "0xd0e30db0", value: b.amount.toString(), outcome: "pending", hash: TX, at: NOW_MS - waited },
   });
   switch (state) {
+    case "checking":
+      return { ...b, chainNow: undefined };
+    case "withdraw":
+      return { ...b, claimDeadline: b.chainNow! - 1, guest: { status: 1, owed: 0n, attended: false, payoutShare: 0n } };
+    case "claim":
+      return { ...b, guest: { status: 2, owed: b.amount, attended: true, payoutShare: b.amount } };
+    case "paid-out":
+      return {
+        ...b,
+        phase: 2,
+        guest: { status: 2, owed: 0n, attended: true, payoutShare: 13333333333333333n },
+        history: { deposited: b.amount, payoutTx: TX },
+      };
+    case "not-attended":
+      return { ...b, phase: 2, guest: { status: 1, owed: 0n, attended: false, payoutShare: b.amount } };
+    case "returned":
+      return {
+        ...b,
+        history: { deposited: 0n, returned: { amount: parseEther("0.005"), at: NOW_MS / 1000 - 86_400 } },
+      };
+    case "withdrawn":
+      return { ...b, guest: { status: 2, owed: 0n, attended: false, payoutShare: 0n } };
     case "rest":
       return { ...b, wallet: { ...b.wallet, ...disconnected }, history: undefined };
     case "nowallet":

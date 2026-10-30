@@ -13,15 +13,16 @@ import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
-import { SendError, useSentTx } from "@/lib/web3/send";
+import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import { useDeposit } from "./useDeposit";
+import { useGuestMoney } from "./useGuestMoney";
 import { useBlockTime, useEventDeposits, type KickbackEvent } from "../api/useEvent";
 import { chainName } from "../model/chainNames";
-import { depositState, type DepositInput, type DepositView } from "../model/depositState";
+import { depositState, depositsOpen, type DepositInput, type DepositView } from "../model/depositState";
 import { dayText } from "../model/when";
 
 const hasInjectedWallet = () => typeof window !== "undefined" && "ethereum" in window && !!window.ethereum;
@@ -73,6 +74,9 @@ export interface DepositController {
   switchChain: () => void;
   addChain: () => void;
   deposit: () => void;
+  withdraw: () => void;
+  claim: () => void;
+  depositOpen: boolean;
   recheck: () => void;
   wallet?: Address;
 }
@@ -95,6 +99,10 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
   const deposits = useEventDeposits(event.contract, fromBlock);
   const mine = address ? deposits.data?.byWallet.get(address.toLowerCase()) : undefined;
   const depositedAt = useBlockTime(mine?.block);
+  const returnedAt = useBlockTime(mine?.returned?.block);
+  const money = useGuestMoney(event.contract, event.depositAmount);
+  const busy = useSendBusy();
+  const phase = money.query.data?.phase ?? event.phase;
   const refundedAt = useBlockTime(mine?.refundedBlock);
   const balance = useBalance({
     address,
@@ -115,6 +123,8 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
       ? mine
         ? {
             deposited: mine.deposited,
+            returned: mine.returned ? { amount: mine.returned.amount, at: returnedAt.data } : undefined,
+            payoutTx: mine.payoutTx,
             txHash: mine.txHash,
             at: depositedAt.data,
             refundedAt: mine.refundedBlock === undefined ? undefined : (refundedAt.data ?? chainTime?.now),
@@ -125,7 +135,11 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
   const view = depositState({
     amount: event.depositAmount,
     eventStart: event.eventStart,
-    phase: event.phase,
+    phase,
+    claimDeadline: event.claimDeadline,
+    guest: money.query.data,
+    moneySend: money.send,
+    busy,
     chainNow: chainTime?.now,
     chain: { id: DEFAULT_CHAIN_ID, name: DEFAULT_CHAIN.name },
     wallet: {
@@ -158,6 +172,9 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
   return {
     view,
     wallet: address,
+    depositOpen: depositsOpen(phase, event.eventStart, chainTime?.now),
+    withdraw: money.withdraw,
+    claim: money.claim,
     connect: () => {
       setAsked(true);
       void open({ view: "Connect" });

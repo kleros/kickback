@@ -1,5 +1,7 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
+
 import { Button, Menu, MenuItem, MenuTrigger, Popover, Text } from "react-aria-components";
 
 import { ChevronIcon } from "@/components/ui/icons";
@@ -271,6 +273,10 @@ export function PayoutScreen() {
 }
 
 function PayoutLoaded({ scope, deposit, released }: { scope: EventScope; deposit: bigint; released: boolean }) {
-  const model = usePayoutScreen(scope, deposit);
+  const search = useSearchParams();
+  const model = usePayoutScreen(scope, deposit, {
+    to: search.get("returnTo") ?? "",
+    amount: search.get("returnAmount") ?? "",
+  });
   return <PayoutView model={model} released={released} />;
 }

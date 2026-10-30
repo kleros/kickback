@@ -5,6 +5,21 @@ import { agoText, DEPOSIT_STATES, depositState, ethText, waitText } from "../dep
 import { baseInput, FIXTURE, GALLERY_STATES, galleryInput, type GalleryState } from "../fixtures";
 
 const EXPECTED: Record<GalleryState, { key: string; stage?: number; button: string; lines: string[] }> = {
+  withdraw: {
+    key: "withdraw",
+    button: "Withdraw my deposit",
+    lines: ["The list never came.", "Your deposit returns in full."],
+  },
+  claim: { key: "claim", button: "Claim", lines: ["0.01 ETH ready to claim."] },
+  "paid-out": { key: "paid-out", button: "Paid out", lines: ["Paid out 0.013333333333333333 ETH", ""] },
+  "not-attended": {
+    key: "not-attended",
+    button: "Not on the attendance list",
+    lines: ["Contesting opens in a later release."],
+  },
+  returned: { key: "returned", button: "Returned", lines: ["0.005 ETH returned on 3 Nov"] },
+  withdrawn: { key: "withdrawn", button: "Deposit withdrawn", lines: ["Your deposit was returned in full."] },
+  checking: { key: "checking", button: "Checking deposits", lines: ["Reading the event's clock."] },
   rest: { key: "rest", button: "Connect wallet", lines: ["26 guests deposited"] },
   nowallet: {
     key: "nowallet",
@@ -123,8 +138,12 @@ describe("depositState", () => {
     expect(depositState({ ...b, phase: 1 }).lines[0]!.text).toBe("The attendance list is out.");
   });
 
-  it("does not close before chain time is known", () => {
-    expect(depositState({ ...baseInput(), chainNow: undefined }).key).toBe("ready");
+  it("does not enable deposits before chain time is known", () => {
+    expect(depositState({ ...baseInput(), chainNow: undefined })).toMatchObject({
+      key: "checking",
+      action: "none",
+      disabled: true,
+    });
   });
 
   it("asks for the QR code rather than approval when there is no injected wallet", () => {

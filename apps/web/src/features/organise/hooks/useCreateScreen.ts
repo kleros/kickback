@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { buildEventInfo, ipfsCidV0, COVER_MIMES, MAX_COVER_BYTES, type EventInfoLink } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
@@ -16,9 +16,8 @@ import { paths } from "@/config/paths";
 
 import { useCreateEvent } from "./useCreateEvent";
 import { errorMessage } from "./useGuestsScreen";
-import { createEventSchema, readDeployments } from "../model/create";
+import { createEventSchema, freezeDeployment, readDeployments } from "../model/create";
 import { GENERIC_POLICY_TEXT } from "../model/policy";
-import { TYPED_WORDS } from "../model/view";
 
 /** The form as typed: every field a string, so fields added later slot in without a new shape. */
 export type CreateFormValues = Record<string, string>;
@@ -138,7 +137,9 @@ export function useCreateScreen() {
     return () => URL.revokeObjectURL(url);
   }, [cover]);
   const [touched, setTouched] = useState(false);
-  const [askNew, setAskNew] = useState(false);
+  const [frozen, setFrozen] = useState<ReturnType<typeof freezeDeployment> | null>(null);
+  const inFlight = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
   const [deployed, setDeployed] = useState<DeployedEvent | null>(null);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
 
@@ -170,24 +171,26 @@ export function useCreateScreen() {
           ? { enabled: false, lockedReason: previewError }
           : { enabled: true, lockedReason: null };
 
-  const step = create.pin.isPending ? "pinning" : create.deploy.isPending ? "deploying" : deployed ? "done" : "form";
+  const step = create.deploy.isPending ? "deploying" : submitting ? "pinning" : deployed ? "done" : "form";
   const previous = (create.deployments.data ?? []).filter((row) => row.chainId === DEFAULT_CHAIN_ID);
 
-  const run = async (confirmation?: string) => {
+  const run = async () => {
+    if (!frozen || busy || inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
     setError(null);
     try {
-      if (!owner) throw new Error("Connect your wallet first.");
       const policyURI = await create.pin.mutateAsync();
       const receipt = await create.deploy.mutateAsync({
-        form: createFormInput(form, cover),
-        owner,
+        form: frozen.form,
+        owner: frozen.owner,
         policyURI,
-        confirmation,
+        confirmed: true,
       });
       const address = receipt.contractAddress!;
       const block = Number(receipt.blockNumber);
       const origin = typeof window === "undefined" ? "" : window.location.origin;
-      setAskNew(false);
+      setFrozen(null);
       setDeployed({
         address,
         block,
@@ -196,6 +199,9 @@ export function useCreateScreen() {
       });
     } catch (caught) {
       setError({ text: errorMessage(caught), at: Date.now() });
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
     }
   };
 
@@ -217,15 +223,19 @@ export function useCreateScreen() {
     deploy: () => {
       setTouched(true);
       if (!valid || !deployGate.enabled) return;
-      if (previous.length) setAskNew(true);
-      else void run();
+      if (!owner || busy || inFlight.current) return;
+      setError(null);
+      try {
+        setFrozen(freezeDeployment(createFormInput(form, cover), network, owner));
+      } catch (caught) {
+        setError({ text: errorMessage(caught), at: Date.now() });
+      }
     },
-    askNew,
-    closeNew: () => {
-      if (step === "form") setAskNew(false);
+    frozen,
+    close: () => {
+      if (!busy && !inFlight.current) setFrozen(null);
     },
-    confirmNew: (typed: string) => void run(typed),
-    newWord: TYPED_WORDS.another,
+    confirm: run,
     deployed,
     previous,
     error,
