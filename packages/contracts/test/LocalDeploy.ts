@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { expect } from "chai";
@@ -8,6 +9,7 @@ import { getAddress, parseEther } from "viem";
 import { genericCaseTemplateText, genericPolicyText, truthPaysCaseTemplateText } from "../generated/docs";
 import { kickbackAbi, kickbackFingerprint, kickbackImmutables } from "../generated/index";
 import { DAY, deployLocalEvent, ipfsPathOf, renderCase } from "../local";
+import { deployAndSeed } from "../tasks/deployLocal";
 import { fingerprint } from "../tasks/exportAbis";
 
 const doc = (name: string) => readFileSync(path.join(__dirname, "..", "docs", name), "utf8");
@@ -65,5 +67,36 @@ describe("deployLocalEvent", function () {
     expect(meta.aliases[walletClient!.account.address.toLowerCase()]).to.equal(
       "Organiser (the deposit contract's owner wallet)",
     );
+  });
+
+  it("deploy-local seeds accounts 1-4 and writes the six fields the app reads", async function () {
+    const publicClient = await hre.viem.getPublicClient();
+    const [owner, ...guests] = await hre.viem.getWalletClients();
+    const dir = mkdtempSync(path.join(tmpdir(), "kickback-localhost-"));
+    try {
+      const file = path.join(dir, "localhost.json");
+      const out = await deployAndSeed({ publicClient, owner: owner!, guests, file });
+      const written = JSON.parse(readFileSync(file, "utf8"));
+      expect(written).to.deep.equal(out);
+      expect(Object.keys(written).sort()).to.deep.equal(
+        ["arbitrator", "chainId", "deployBlock", "disputeResolver", "event", "owner"].sort(),
+      );
+      expect(written.chainId).to.equal(31337);
+      expect(written.owner).to.equal(getAddress(owner!.account.address));
+      expect(written.deployBlock).to.be.a("number");
+
+      const deposits = await publicClient.getContractEvents({
+        address: out.event as `0x${string}`,
+        abi: kickbackAbi,
+        eventName: "Deposited",
+        fromBlock: BigInt(out.deployBlock),
+      });
+      expect(deposits.map((l) => getAddress(l.args.from!))).to.deep.equal(
+        guests.slice(0, 4).map((g) => getAddress(g.account.address)),
+      );
+      expect(await publicClient.getBalance({ address: out.event as `0x${string}` })).to.equal(4n * parseEther("0.01"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
