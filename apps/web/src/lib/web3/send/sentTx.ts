@@ -1,4 +1,4 @@
-import { isAddressEqual, type Address, type Hash, type PublicClient } from "viem";
+import { isAddress, isAddressEqual, type Address, type Hash, type PublicClient } from "viem";
 
 /**
  * The last transaction this browser sent to a contract, saved as soon as the wallet gave its hash, so a reload
@@ -14,6 +14,9 @@ export interface SentTx {
   /** The wallet's nonce for it; a later transaction using this nonce means this one was replaced. */
   nonce: number | null;
 }
+
+/** Milliseconds between sending and `now`, either way round: `at` is the laptop clock, which can be set back. */
+const ageOf = (record: SentTx, now: number) => Math.abs(now - record.at);
 
 export type SentTxOutcome = "pending" | "mined" | "failed" | "replaced" | "dropped";
 
@@ -39,11 +42,15 @@ const isSentTx = (value: unknown): value is SentTx => {
     typeof record.hash === "string" &&
     /^0x[0-9a-fA-F]{64}$/.test(record.hash) &&
     typeof record.account === "string" &&
+    isAddress(record.account, { strict: false }) &&
     typeof record.contract === "string" &&
-    typeof record.chainId === "number" &&
-    typeof record.at === "number"
+    isAddress(record.contract, { strict: false }) &&
+    Number.isSafeInteger(record.chainId) &&
+    Number.isFinite(record.at)
   );
 };
+
+const isNonce = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
 
 /**
  * `storage` is localStorage in the browser. What this tab sent is also held in memory, for a browser that
@@ -55,7 +62,7 @@ export function createSentTxStore(storage: KeyValue | undefined): SentTxStore {
   const readStored = (key: string): SentTx | null => {
     try {
       const value: unknown = JSON.parse(storage?.getItem(key) ?? "null");
-      return isSentTx(value) ? { ...value, nonce: Number.isInteger(value.nonce) ? value.nonce : null } : null;
+      return isSentTx(value) ? { ...value, nonce: isNonce(value.nonce) ? value.nonce : null } : null;
     } catch {
       return null;
     }
@@ -114,7 +121,7 @@ export function classifySentTx(record: SentTx, reads: SentTxReads, now: number):
   if (record.nonce !== null && reads.nonceNow !== null && reads.nonceNow > record.nonce) {
     return reads.txKnown === false ? "replaced" : "pending";
   }
-  if (now - record.at > DROPPED_AFTER_MS) return reads.txKnown === false ? "dropped" : "pending";
+  if (ageOf(record, now) > DROPPED_AFTER_MS) return reads.txKnown === false ? "dropped" : "pending";
   return "pending";
 }
 
@@ -140,7 +147,7 @@ export async function checkSentTx(client: SentTxClient, record: SentTx, now: num
     const nonceNow =
       record.nonce === null ? null : await client.getTransactionCount({ address: record.account, blockTag: "latest" });
     const nonceUsed = record.nonce !== null && nonceNow !== null && nonceNow > record.nonce;
-    if (!nonceUsed && now - record.at <= DROPPED_AFTER_MS) return "pending";
+    if (!nonceUsed && ageOf(record, now) <= DROPPED_AFTER_MS) return "pending";
 
     // the nonce moved on: it may be this very transaction that just mined
     const again = nonceUsed ? await orNull(client.getTransactionReceipt({ hash: record.hash })) : null;
