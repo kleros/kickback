@@ -116,7 +116,7 @@ export type VerifyConfig = Pick<
   chainName?: string;
 };
 
-// viem throws where ethers returned null
+// viem throws TransactionReceiptNotFoundError / TransactionNotFoundError for an unknown hash
 const orNull = async <T>(p: Promise<T>): Promise<T | null> => {
   try {
     return await p;

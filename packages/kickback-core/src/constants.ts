@@ -14,7 +14,7 @@ export const DECIMALS = 18;
 /** Public RPC that answers eth_getLogs on old block ranges in 5,000-block chunks. */
 export const DEFAULT_RPC = "https://rpc.mevblocker.io";
 export const DEFAULT_LOG_CHUNK = 5000;
-/** A deposit above this is almost surely a stale amount (e.g. "25" from the USDC days). */
+/** A deposit above this per guest is almost surely a typo. */
 export const MAX_DEPOSIT_ETH = "1";
 
 // The next four must match the contract.

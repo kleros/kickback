@@ -600,23 +600,19 @@ describe("on a local chain", () => {
     // 25 USDC sent to the deposit address instead of ETH
     const usdc = await k.deploy(testTokenAbi, testTokenBytecode, []);
     await k.mined(
-      await k
-        .wallet(OWNER)
-        .writeContract({
-          address: usdc,
-          abi: testTokenAbi,
-          functionName: "mint",
-          args: [addr(3), 25_000_000n],
-        } as never),
-    );
-    const txUsdc = await k
-      .wallet(G(3))
-      .writeContract({
+      await k.wallet(OWNER).writeContract({
         address: usdc,
         abi: testTokenAbi,
-        functionName: "transfer",
-        args: [s.kAddr, 25_000_000n],
-      } as never);
+        functionName: "mint",
+        args: [addr(3), 25_000_000n],
+      } as never),
+    );
+    const txUsdc = await k.wallet(G(3)).writeContract({
+      address: usdc,
+      abi: testTokenAbi,
+      functionName: "transfer",
+      args: [s.kAddr, 25_000_000n],
+    } as never);
     await k.mined(txUsdc);
     // a contract sending the deposit with no ETH address on Luma, and a Safe-like wallet whose owner states it
     const relay = await smartWalletDeposit(s.kAddr, 25);

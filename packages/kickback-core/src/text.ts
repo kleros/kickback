@@ -166,7 +166,7 @@ export function normAddress(value: unknown): Address | null {
   }
 }
 
-/** An exact amount ("0.01", "1.0", "0.0"): always one decimal at least, as the legacy files wrote it. */
+/** An exact amount ("0.01", "1.0", "0.0"): always one decimal at least, the form the CSV and summary files use. */
 export const fmt = (units: bigint, decimals = DECIMALS): string => {
   const s = formatUnits(units, decimals);
   return s.includes(".") ? s : `${s}.0`;
@@ -184,7 +184,7 @@ export function fmtEth(units: bigint, digits = 6): string {
   return short || whole !== "0" ? `~${whole}${short ? "." + short : ""} ETH` : `${exact} ETH`;
 }
 
-/** Parses an ETH amount the way ethers' parseEther does: throws on an empty, malformed or over-precise text. */
+/** An ETH amount in wei; throws on an empty, malformed or over-precise text (viem's parseEther reads "" as 0). */
 export function parseEthStrict(text: string): bigint {
   const m = /^(-?)(\d*)\.?(\d*)$/.exec(text);
   if (!m || (!m[2] && !m[3])) throw new Error(`invalid ETH amount "${text}"`);
