@@ -121,16 +121,17 @@ export interface EventDeposits {
 const DEPOSITED = getAbiItem({ abi: kickbackAbi, name: "Deposited" });
 const REJECTED = getAbiItem({ abi: kickbackAbi, name: "Rejected" });
 const REFUNDED = getAbiItem({ abi: kickbackAbi, name: "Refunded" });
+const REGISTERED = getAbiItem({ abi: kickbackAbi, name: "StakerRegistered" });
 const PAYOUT = getAbiItem({ abi: kickbackAbi, name: "Payout" });
 
 export const depositsKey = (contract: string) => ["event-deposits", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
 /** Deposit and payment logs, from `fromBlock` or the searched deploy block. */
-export function useEventDeposits(contract: Address | undefined, fromBlock: number | undefined) {
+export function useEventDeposits(contract: Address | undefined, fromBlock: number | undefined, depositAmount: bigint) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
 
   return useQuery<EventDeposits>({
-    queryKey: [...depositsKey(contract ?? ""), fromBlock],
+    queryKey: [...depositsKey(contract ?? ""), fromBlock, depositAmount.toString()],
     enabled: client !== undefined && contract !== undefined,
     staleTime: STALE_TIME.live,
     refetchInterval: 30_000,
@@ -141,7 +142,7 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
           getLogs: ({ fromBlock: a, toBlock: b }) =>
             client!.getLogs({
               address: contract!,
-              events: [DEPOSITED, REJECTED, REFUNDED, PAYOUT],
+              events: [DEPOSITED, REJECTED, REFUNDED, REGISTERED, PAYOUT],
               fromBlock: a,
               toBlock: b,
             }),
@@ -149,8 +150,12 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
         },
         from,
       );
-      const byWallet = foldGuestLogs(logs);
-      return { guests: [...byWallet.values()].filter((wallet) => wallet.txHash !== undefined).length, byWallet };
+      const byWallet = foldGuestLogs(logs, depositAmount);
+      return {
+        guests: new Set(logs.filter((log) => log.eventName === "Deposited").map((log) => log.args.from?.toLowerCase()))
+          .size,
+        byWallet,
+      };
     },
   });
 }

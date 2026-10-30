@@ -96,7 +96,7 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
   const onChain = connected && chainId === DEFAULT_CHAIN_ID;
 
   const { data: chainTime } = useChainTime();
-  const deposits = useEventDeposits(event.contract, fromBlock);
+  const deposits = useEventDeposits(event.contract, fromBlock, event.depositAmount);
   const mine = address ? deposits.data?.byWallet.get(address.toLowerCase()) : undefined;
   const depositedAt = useBlockTime(mine?.block);
   const returnedAt = useBlockTime(mine?.returned?.block);

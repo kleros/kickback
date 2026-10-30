@@ -1,44 +1,121 @@
-import { readEvent } from "@kickback/core";
-import type { PublicClient } from "viem";
+// @vitest-environment node
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import { kickbackAbi } from "@kickback/contracts";
+import { decodeFunctionData, encodeFunctionResult, type Hex } from "viem";
 import { afterEach, expect, it, vi } from "vitest";
 
+import { DEFAULT_CHAIN } from "@/config/chains";
+
+import { createEventCardClient, EVENT_CARD_MAX_RESPONSE_BYTES, EVENT_CARD_TIMEOUT_MS } from "../eventCardClient";
 import { eventCardMetadata, GENERIC_EVENT_CARD, readEventCard } from "../openGraph";
 
-vi.mock("@kickback/core", async (original) => ({
-  ...(await original<typeof import("@kickback/core")>()),
-  readEvent: vi.fn(),
-}));
-afterEach(() => vi.resetAllMocks());
-
-it("reads event title, date and deposit server-side through the supplied client", async () => {
-  const event = {
-    contract: "0x1111111111111111111111111111111111111111",
-    eventName: "Dinner 🎉",
-    depositAmount: 10000000000000000n,
-    eventStart: 1793802600,
-    claimDeadline: 1794802600,
-    owner: "0x1111111111111111111111111111111111111111",
-    disputeResolver: "0x2222222222222222222222222222222222222222",
-    arbitrator: "0x3333333333333333333333333333333333333333",
-    policyURI: "/ipfs/policy",
-    phase: 0,
-    metaEvidenceTemplate: { pieces: ["Old event without details"], slots: "0x" },
-  } as const;
-  vi.mocked(readEvent).mockResolvedValue({
-    ...event,
-    metaEvidenceTemplate: { pieces: [...event.metaEvidenceTemplate.pieces], slots: "0x" },
-  });
-  const client = {} as PublicClient;
-  const card = await readEventCard(client, event.contract);
-  expect(readEvent).toHaveBeenCalledWith(client, event.contract);
-  expect(card).toEqual({ title: "Dinner 🎉", date: "2026-11-04", deposit: "Refundable deposit 0.01 ETH" });
-  expect(eventCardMetadata(card, event.contract)).toMatchObject({
-    title: "Dinner 🎉 | Kickback",
-    description: "Dinner 🎉. 2026-11-04. Refundable deposit 0.01 ETH.",
-    openGraph: { images: [{ url: `/event/${event.contract}/opengraph-image`, width: 1200, height: 630 }] },
-  });
+const publicClient = createEventCardClient(DEFAULT_CHAIN);
+const contract = "0x1111111111111111111111111111111111111111";
+const code = readFileSync(
+  resolve("../../packages/contracts/deployments-live/truth-pays-mainnet/runtime-code.hex"),
+  "utf8",
+).trim();
+const values = {
+  eventName: "Dinner 🎉",
+  depositAmount: 10000000000000000n,
+  eventStart: 1793802600n,
+  claimDeadline: 1794802600n,
+  owner: contract,
+  disputeResolver: contract,
+  arbitrator: contract,
+  policyURI: "/ipfs/policy",
+  phase: 0,
+  metaEvidenceTemplate: [["Old event without details"], "0x"],
+};
+const rpc = vi.fn(async (_url: unknown, init?: RequestInit) => {
+  const body = JSON.parse(String(init?.body));
+  const name =
+    body.method === "eth_call"
+      ? decodeFunctionData({ abi: kickbackAbi, data: body.params[0].data }).functionName
+      : undefined;
+  const result = name
+    ? encodeFunctionResult({
+        abi: kickbackAbi,
+        functionName: name,
+        result: values[name as keyof typeof values],
+      } as never)
+    : code;
+  return Response.json({ jsonrpc: "2.0", id: body.id, result });
 });
-it("uses the generic card if the contract or RPC read fails", async () => {
-  vi.mocked(readEvent).mockRejectedValue(new Error("offline"));
-  expect(await readEventCard({} as PublicClient, "invalid")).toEqual(GENERIC_EVENT_CARD);
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.clearAllMocks();
+  vi.useRealTimers();
+});
+
+it("reads event details and metadata through the supplied client", async () => {
+  vi.stubGlobal("fetch", rpc);
+  const card = await readEventCard(publicClient, contract);
+  expect(rpc.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).method)).toEqual([
+    "eth_getCode",
+    ...Array(10).fill("eth_call"),
+  ]);
+  expect(card).toEqual({ title: "Dinner 🎉", date: "2026-11-04", deposit: "Refundable deposit 0.01 ETH" });
+  expect(eventCardMetadata(card, contract).openGraph.images[0]?.url).toBe(`/event/${contract}/opengraph-image`);
+});
+
+it("rejects unknown bytecode before executing any getters", async () => {
+  const readContract = vi.fn();
+  const getCode = vi.fn(async (): Promise<Hex> => "0x1234");
+  expect(await readEventCard({ getCode, readContract }, contract)).toEqual(GENERIC_EVENT_CARD);
+  expect(getCode).toHaveBeenCalledOnce();
+  expect(readContract).not.toHaveBeenCalled();
+});
+
+it.each(["code", "getter"])("falls back when a %s response exceeds the size limit", async (stage) => {
+  const cancel = vi.fn();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (stage === "getter" && body.method === "eth_getCode") return rpc(url, init);
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new Uint8Array(EVENT_CARD_MAX_RESPONSE_BYTES + 1));
+          },
+          cancel,
+        }),
+      );
+    }),
+  );
+  expect(await readEventCard(publicClient, contract)).toEqual(GENERIC_EVENT_CARD);
+  expect(cancel).toHaveBeenCalled();
+});
+
+it.each(["code", "getter"])("times out and aborts a stalled %s body without retrying", async (stage) => {
+  vi.useFakeTimers();
+  const signals: AbortSignal[] = [];
+  const fetchMock = vi.fn(async (url, init) => {
+    const body = JSON.parse(String(init?.body));
+    if (stage === "getter" && body.method === "eth_getCode") return rpc(url, init);
+    signals.push(init.signal);
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          init.signal.addEventListener("abort", () => controller.error(new Error("aborted")));
+        },
+      }),
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const reading = readEventCard(publicClient, contract);
+  await vi.advanceTimersByTimeAsync(EVENT_CARD_TIMEOUT_MS);
+  expect(await reading).toEqual(GENERIC_EVENT_CARD);
+  expect(signals.length).toBeGreaterThan(0);
+  expect(signals.every((signal) => signal.aborted)).toBe(true);
+  expect(fetchMock).toHaveBeenCalledTimes(stage === "code" ? 1 : 11);
+});
+
+it("skips RPC reads for malformed addresses", async () => {
+  vi.stubGlobal("fetch", rpc);
+  expect(await readEventCard(publicClient, "invalid")).toEqual(GENERIC_EVENT_CARD);
+  expect(rpc).not.toHaveBeenCalled();
 });

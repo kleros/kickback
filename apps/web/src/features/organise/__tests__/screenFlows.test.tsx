@@ -1,7 +1,9 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { getAddress } from "viem";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { cfg, guest, owner, scope, stamp, row, checked, guestCheck } from "./fixtures";
+import { GuestsView } from "../components/GuestsView";
 import { useAttendanceScreen } from "../hooks/useAttendanceScreen";
 import { useGuestsScreen } from "../hooks/useGuestsScreen";
 import { usePayoutScreen } from "../hooks/usePayoutScreen";
@@ -188,4 +190,27 @@ it("counts and filters only eligible action rows, including a declined payer and
   act(() => result.current.setFilter("refund"));
   expect(result.current.rows).toHaveLength(1);
   expect(result.current.rows.every((r) => r.canRefund.enabled)).toBe(true);
+});
+
+it("distinguishes five refundable guests from the one selected refund", () => {
+  const approved = Array.from({ length: 4 }, (_, i) => ({
+    ...checked,
+    email: `${i}@example.com`,
+    wallet: getAddress(`0x${String(i + 4).repeat(40)}`),
+    tx: `0x${String(i + 4).repeat(64)}`,
+  }));
+  const declined = { ...checked, email: "declined@example.com", decision: "declined" as const };
+  mocks.rows = guestRows(
+    [...approved, declined].map((r) => ({ ...row, from: getAddress(r.wallet), tx: r.tx })),
+    guestCheck({ verified: [...approved, declined], newStakers: approved, refunds: [declined] }),
+  );
+  const { result } = renderHook(() => useGuestsScreen(cfg, scope));
+  expect(result.current.counts.refund).toBe(5);
+  expect(result.current.toRefund).toBe(1);
+  act(() => result.current.setFilter("refund"));
+  expect(result.current.rows).toHaveLength(5);
+  expect(result.current.rows.every((r) => r.canRefund.enabled)).toBe(true);
+  render(<GuestsView model={result.current} />);
+  expect(screen.getByRole("button", { name: "Refundable 5" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Refund 1" })).toBeInTheDocument();
 });

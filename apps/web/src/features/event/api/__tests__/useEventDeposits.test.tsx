@@ -42,7 +42,7 @@ it("requests and folds Refunded and Payout logs, then dates the actual return bl
   }
   const { result } = renderHook(
     () => {
-      const deposits = useEventDeposits(contract, 1);
+      const deposits = useEventDeposits(contract, 1, 10000000000000000n);
       const mine = deposits.data?.byWallet.get(wallet);
       const time = useBlockTime(mine?.returned?.block);
       return { deposits, mine, time };
@@ -54,4 +54,23 @@ it("requests and folds Refunded and Payout logs, then dates the actual return bl
   expect(result.current.deposits.data?.byWallet.get(contract)?.payoutTx).toBe(tx);
   expect(result.current.deposits.data?.guests).toBe(1);
   expect(client.getBlock).toHaveBeenCalledWith({ blockNumber: 11n });
+});
+
+it("reads registration logs so a later payment cannot replace the staked receipt", async () => {
+  const extra: Hash = `0x${"cd".repeat(32)}`;
+  const amount = 10000000000000000n;
+  client.getLogs.mockImplementation(async ({ events }: { events: AbiEvent[] }) =>
+    [
+      { eventName: "Deposited", args: { from: wallet, amount }, blockNumber: 10n, transactionHash: tx },
+      { eventName: "StakerRegistered", args: { staker: wallet }, blockNumber: 11n, transactionHash: tx },
+      { eventName: "Deposited", args: { from: wallet, amount }, blockNumber: 12n, transactionHash: extra },
+    ].filter((log) => events.some((event) => event.name === log.eventName)),
+  );
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function Wrapper({ children }: PropsWithChildren) {
+    return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+  }
+  const { result } = renderHook(() => useEventDeposits(contract, 1, amount), { wrapper: Wrapper });
+  await waitFor(() => expect(result.current.isSuccess).toBe(true));
+  expect(result.current.data?.byWallet.get(wallet)?.txHash).toBe(tx);
 });

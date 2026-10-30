@@ -1,5 +1,13 @@
-import { eventDetailsFromCase, fmtEth, readEvent, renderCase } from "@kickback/core";
-import { zeroAddress } from "viem";
+import {
+  codeFingerprint,
+  eventDetailsFromCase,
+  fmtEth,
+  isAddressStrict,
+  KICKBACK_RUNTIME,
+  readEvent,
+  renderCase,
+} from "@kickback/core";
+import { getAddress, zeroAddress } from "viem";
 
 export const GENERIC_EVENT_CARD = {
   title: "Kickback",
@@ -9,7 +17,11 @@ export const GENERIC_EVENT_CARD = {
 
 export async function readEventCard(client: Parameters<typeof readEvent>[0], contract: string) {
   try {
-    const event = await readEvent(client, contract);
+    if (!isAddressStrict(contract)) return GENERIC_EVENT_CARD;
+    const code = await client.getCode({ address: getAddress(contract.toLowerCase()) });
+    if (!code || codeFingerprint(code, KICKBACK_RUNTIME.immutables) !== KICKBACK_RUNTIME.sha256)
+      return GENERIC_EVENT_CARD;
+    const event = await readEvent({ getCode: async () => code, readContract: client.readContract }, contract);
     const details = eventDetailsFromCase(renderCase(event.metaEvidenceTemplate, zeroAddress, event.contract));
     return {
       title: details.title || event.eventName,

@@ -74,7 +74,7 @@ export interface DepositInput {
   history?: {
     deposited: bigint;
     txHash?: Hash;
-    /** Unix seconds of the first deposit. */
+    /** Unix seconds of the receipt deposit. */
     at?: number;
     /** Unix seconds the contract returned the deposit (Rejected). */
     refundedAt?: number;
@@ -186,10 +186,12 @@ export function depositState(input: DepositInput): DepositView {
     wallet: wallet.address!,
     when: when === undefined ? undefined : input.dayText(when),
   });
+  const returnedText = (returned: NonNullable<NonNullable<DepositInput["history"]>["returned"]>) =>
+    `${ethText(returned.amount)} ETH returned${returned.at === undefined ? "" : ` on ${input.dayText(returned.at)}`}`;
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
     label: "Deposited",
-    lines: [],
+    lines: history?.returned ? [{ text: returnedText(history.returned) }] : [],
     receipt: receipt(tx, when),
     action: "copy",
     button: "Copy transaction link",
@@ -280,13 +282,15 @@ export function depositState(input: DepositInput): DepositView {
     return readOnly("not-attended", "Not on the attendance list", [{ text: "Contesting opens in a later release." }]);
   if (guest?.status === 2 && input.phase === 0)
     return readOnly("withdrawn", "Deposit withdrawn", [{ text: "Your deposit was returned in full." }]);
+  if (connected && guest?.status === 1 && history && history.deposited >= amount && history.txHash)
+    return done(history.txHash, history.at ?? input.chainNow ?? 0);
   if (connected && history?.returned)
     return readOnly(
       "returned",
       "Returned",
       [
         {
-          text: `${ethText(history.returned.amount)} ETH returned${history.returned.at === undefined ? "" : ` on ${input.dayText(history.returned.at)}`}`,
+          text: returnedText(history.returned),
         },
       ],
       history.returned.amount,

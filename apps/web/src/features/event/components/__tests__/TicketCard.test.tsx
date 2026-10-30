@@ -146,3 +146,12 @@ it("renders the exact payout rather than the deposit with a compact long amount"
   expect(document.querySelector(".tk-amount")).toHaveClass("is-precise");
   expect(document.querySelector(".tk-amount")?.textContent).toBe("0.013333333333333333");
 });
+
+it("shows return details alongside the deposit receipt", () => {
+  const view = depositState(galleryInput("already"));
+  view.lines = [{ text: "0.005 ETH returned" }];
+  render(<TicketCard view={view} amount="0.01" actions={actions()} verified={VERIFIED} />);
+  expect(screen.getByText("0.005 ETH returned")).toBeInTheDocument();
+  expect(screen.getByTestId("ticket-status")).toHaveClass("has-receipt-note");
+  expect(screen.getByRole("button", { name: "Copy transaction link" })).toBeInTheDocument();
+});

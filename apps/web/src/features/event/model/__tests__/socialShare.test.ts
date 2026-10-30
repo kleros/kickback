@@ -7,7 +7,8 @@ const guest = "https://kickback.test/event/0x123?from=42&x=1";
 
 describe.each(["Going 🎉 & bringing friends", "x".repeat(280)])("share URLs for %s", (text) => {
   const urls = shareUrls(text, luma, guest);
-  it("encodes X text", () => expect(urls.X).toBe(`https://x.com/intent/post?text=${encodeURIComponent(text)}`));
+  it("encodes X text", () =>
+    expect(urls.X).toBe(`https://x.com/intent/post?text=${encodeURIComponent(`${text} ${luma}`)}`));
   it("encodes Farcaster text and embed", () =>
     expect(urls.Farcaster).toBe(
       `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(luma)}`,
@@ -42,4 +43,13 @@ it("keeps Luma query parameters and rejects look-alike or unsafe registration ho
   ]) {
     expect(lumaShareLink(url)).toBe("");
   }
+});
+
+it.each([luma, ""])("includes the share destination on X without duplicating it: %s", (registration) => {
+  const destination = registration || guest;
+  expect(new URL(shareUrls("See you there!", registration, guest).X).searchParams.get("text")).toBe(
+    `See you there! ${destination}`,
+  );
+  const filled = `See you at ${destination}!`;
+  expect(new URL(shareUrls(filled, registration, guest).X).searchParams.get("text")).toBe(filled);
 });

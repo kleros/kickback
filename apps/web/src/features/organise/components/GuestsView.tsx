@@ -16,7 +16,7 @@ import { ethText, shortHex, statusTone } from "../model/view";
 const FILTERS: { key: GuestFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "register", label: "To register" },
-  { key: "refund", label: "To refund" },
+  { key: "refund", label: "Refundable" },
   { key: "look", label: "Needs a look" },
 ];
 

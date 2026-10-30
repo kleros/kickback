@@ -145,7 +145,11 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         )}
       </div>
       <hr className="tk-hair" />
-      <div className={`tk-slot${shaking ? " is-shaking" : ""}`} aria-live="polite" data-testid="ticket-status">
+      <div
+        className={`tk-slot${shaking ? " is-shaking" : ""}${view.receipt && view.lines.length ? " has-receipt-note" : ""}`}
+        aria-live="polite"
+        data-testid="ticket-status"
+      >
         {view.receipt ? (
           <>
             <div className="tk-rcpt">
@@ -178,9 +182,10 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
               </span>
             </div>
           </>
-        ) : (
-          view.lines.map((line, i) => <Line key={i} line={line} onRecheck={actions.recheck} />)
-        )}
+        ) : null}
+        {view.lines.map((line, i) => (
+          <Line key={i} line={line} onRecheck={actions.recheck} />
+        ))}
       </div>
       <div className="tk-btn">
         {view.action === "copy" && view.receipt ? (

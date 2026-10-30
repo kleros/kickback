@@ -567,7 +567,8 @@ export function pairReturns(
     deposit,
     prefer = new Set(),
     stakers = new Set(),
-  }: { deposit: bigint; prefer?: ReadonlySet<string>; stakers?: ReadonlySet<string> },
+    preferLatest = false,
+  }: { deposit: bigint; prefer?: ReadonlySet<string>; stakers?: ReadonlySet<string>; preferLatest?: boolean },
 ): { byDeposit: Map<string, DepositPairing>; unbacked: ReturnEvent[]; unpaired: (ReturnEvent & { left: bigint })[] } {
   type Item = { block: number; logIndex: number; dep?: DepositPairing; ev?: ReturnEvent };
   const byDeposit = new Map<string, DepositPairing>();
@@ -605,7 +606,7 @@ export function pairReturns(
     const free = (s: DepositPairing) => s.remaining - (s === staked ? deposit : 0n);
     const stakeOne = () => {
       const ok = deps.filter((s) => s.remaining >= deposit);
-      return ok.find(preferred) ?? ok[0] ?? null;
+      return ok.find(preferred) ?? (preferLatest ? ok.at(-1) : ok[0]) ?? null;
     };
     for (const it of list) {
       if (it.dep) {

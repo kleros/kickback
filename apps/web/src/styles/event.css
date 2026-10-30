@@ -18,7 +18,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ---------- the ticket: one footprint across every state ---------- */
 .kb-ticket {
   --kb-edge: linear-gradient(
     135deg,
@@ -90,6 +89,10 @@
   color: var(--kb-text-2);
   font-size: 14px;
   line-height: 20px;
+}
+.tk-slot.has-receipt-note {
+  height: auto;
+  min-height: 52px;
 }
 .tk-slot p {
   overflow: hidden;

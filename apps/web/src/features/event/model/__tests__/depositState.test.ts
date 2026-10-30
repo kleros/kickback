@@ -266,3 +266,15 @@ it("keeps legacy pending records blocking without claiming they are deposits", (
   expect(view.action).toBe("none");
   expect(view.lines[0]?.text).toBe("An earlier transaction is still confirming.");
 });
+
+it("keeps a registered surplus payer's receipt with a secondary return line", () => {
+  const input = galleryInput("already");
+  const view = depositState({
+    ...input,
+    guest: { status: 1, owed: 0n, attended: false, payoutShare: 0n },
+    history: { ...input.history!, deposited: input.amount, returned: { amount: parseEther("0.005") } },
+  });
+  expect(view.key).toBe("already");
+  expect(view.receipt?.tx).toBe(FIXTURE.tx);
+  expect(view.lines).toContainEqual({ text: "0.005 ETH returned" });
+});

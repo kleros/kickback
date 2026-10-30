@@ -6,7 +6,7 @@ export function shareUrls(text: string, luma: string, guestLink: string) {
   const e = encodeURIComponent;
   const url = luma || guestLink;
   return {
-    X: `https://x.com/intent/post?text=${e(text)}`,
+    X: `https://x.com/intent/post?text=${e(text.includes(url) ? text : `${text} ${url}`)}`,
     Farcaster: `https://farcaster.xyz/~/compose?text=${e(text)}${luma ? `&embeds[]=${e(luma)}` : ""}`,
     LinkedIn: `https://www.linkedin.com/sharing/share-offsite/?url=${e(url)}`,
     Telegram: `https://t.me/share/url?url=${e(url)}&text=${e(text)}`,

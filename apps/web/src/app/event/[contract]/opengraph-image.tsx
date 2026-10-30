@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 
+import { ogText } from "@/features/event/model/ogText";
 import { serverEventCard } from "@/features/event/operations/serverEventCard";
 
 export const runtime = "nodejs";
@@ -37,11 +38,11 @@ export default async function OpenGraphImage({ params }: { params: { contract: s
             maxHeight: 210,
           }}
         >
-          {card.title}
+          {ogText(card.title)}
         </div>
-        <div style={{ display: "flex", fontSize: 28, maxHeight: 72, overflow: "hidden" }}>{card.date}</div>
+        <div style={{ display: "flex", fontSize: 28, maxHeight: 72, overflow: "hidden" }}>{ogText(card.date)}</div>
       </div>
-      <div style={{ display: "flex", fontSize: 36 }}>{card.deposit}</div>
+      <div style={{ display: "flex", fontSize: 36 }}>{ogText(card.deposit)}</div>
     </div>,
     size,
   );
