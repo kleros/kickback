@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import type { BuildPayoutResult, Config } from "@kickback/core";
+import type { BuildPayoutResult, Config, RegistrationRow } from "@kickback/core";
 
 import { useSendBusy } from "@/lib/web3/send";
 
@@ -18,6 +18,14 @@ export interface LoadedFile {
   text: string;
   rows: number;
 }
+
+/** Only what buildPayout reads; the check's rows carry bigints, which a query key cannot hold. */
+const registration = (row: RegistrationRow): RegistrationRow => ({
+  wallet: row.wallet,
+  name: row.name,
+  email: row.email,
+  approval: row.approval,
+});
 
 const rowCount = (text: string) => Math.max(0, text.trim().split(/\r?\n/).length - 1);
 
@@ -46,8 +54,8 @@ export function useAttendanceScreen(cfg: Config, scope: EventScope) {
       ? {
           checkinCsv: checkin?.text ?? null,
           ...(door ? { doorCsv: door.text } : {}),
-          verified: check?.verified,
-          claims: check?.claims,
+          verified: check?.verified.map(registration),
+          claims: check?.claims.map(registration),
         }
       : null;
   const plan = useAttendancePlan(cfg, input, TYPED_WORDS.post, TYPED_WORDS.noShow);

@@ -24,3 +24,12 @@ export const organiserKey = (scope: EventScope) => ["organise", scope.chainId, s
 export function configKey(value: unknown): string {
   return JSON.stringify(value, (_, item: unknown) => (typeof item === "bigint" ? item.toString() : item));
 }
+
+/**
+ * placeholderData for a query keyed by block: the previous block's answer stays on screen while the next one
+ * loads, but never another event's.
+ */
+export const sameEventPlaceholder =
+  (scope: EventScope) =>
+  <T>(previous: T | undefined, query?: { queryKey: readonly unknown[] }) =>
+    query && configKey(query.queryKey.slice(0, 3)) === configKey(organiserKey(scope)) ? previous : undefined;

@@ -13,7 +13,7 @@ import { paths } from "@/config/paths";
 import { BrowserEvents } from "./BrowserEvents";
 import { ConfirmDialog, ErrorLine, Primary } from "./parts";
 import { useCreateScreen, type CreateFormValues, type CreateScreenModel } from "../hooks/useCreateScreen";
-import { shortHex } from "../model/view";
+import { caseView, shortHex } from "../model/view";
 
 export interface FieldSpec {
   name: string;
@@ -113,7 +113,17 @@ export function JurorsPreview({
     <GlassCard as="section" className="og-card" data-testid="jurors-preview">
       <h2 className="og-h2">What jurors will read</h2>
       {text ? (
-        <p className="og-preview">{text}</p>
+        <div className="og-preview" data-testid="case-text">
+          {caseView(text).map((part, i) =>
+            i === 0 ? (
+              <p key={i} className="og-case-q">
+                {part}
+              </p>
+            ) : (
+              <p key={i}>{part}</p>
+            ),
+          )}
+        </div>
       ) : (
         <p className="og-note">Fill in the form to see the case jurors would read about a challenged guest.</p>
       )}
@@ -209,7 +219,7 @@ export function CreateView({ model }: { model: CreateScreenModel }) {
               <GlassCard className="og-card">
                 <CreateForm values={model.form} errors={model.errors} onChange={model.setField} disabled={working} />
               </GlassCard>
-              <div className="flex flex-col gap-2 og-thumb">
+              <div className="flex flex-col gap-2">
                 <Primary gate={model.deployGate} onPress={model.deploy} pending={working} busy={model.busy}>
                   {label}
                 </Primary>

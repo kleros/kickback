@@ -17,7 +17,17 @@ const tabName = (route: string) => {
 
 export type OverviewData = ReturnType<typeof overviewModel> & { verifiedKleros: boolean };
 
-export function OverviewView({ data, court }: { data: OverviewData; court: string }) {
+export function OverviewView({
+  data,
+  court,
+  connected = true,
+  from,
+}: {
+  data: OverviewData;
+  court: string;
+  connected?: boolean;
+  from?: number;
+}) {
   const { nextStep, counts, phase, deadlines } = data;
   const when =
     phase === "Deposits open" || phase === "Waiting for the event"
@@ -44,8 +54,8 @@ export function OverviewView({ data, court }: { data: OverviewData; court: strin
         {nextStep.actionRoute && (
           <div className="og-actions">
             <Link
-              href={nextStep.actionRoute}
-              className={nextStep.lockedReason ? "kb-btn is-quiet" : "kb-btn"}
+              href={from === undefined ? nextStep.actionRoute : `${nextStep.actionRoute}?from=${from}`}
+              className={nextStep.lockedReason || !connected ? "kb-btn is-quiet" : "kb-btn"}
               data-testid="next-action"
             >
               {nextStep.lockedReason ? `Open ${tabName(nextStep.actionRoute)}` : nextStep.title}
@@ -79,7 +89,7 @@ export function OverviewView({ data, court }: { data: OverviewData; court: strin
 }
 
 export function OverviewScreen({ court }: { court: string }) {
-  const { overview } = useOrganiserEvent();
+  const { overview, connected, scope } = useOrganiserEvent();
   if (!overview.data) return <p className="og-note">Reading the event…</p>;
-  return <OverviewView data={overview.data} court={court} />;
+  return <OverviewView data={overview.data} court={court} connected={connected} from={scope.deployBlock} />;
 }

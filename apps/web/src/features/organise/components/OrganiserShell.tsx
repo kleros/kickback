@@ -58,7 +58,6 @@ export function ShellView({
               {shortHex(address)}
               <CopyButton value={address} label="Copy contract address" />
             </span>
-            {data && <span className="og-note">Deposits close {data.deadlines.depositsClose.text}</span>}
           </div>
         </div>
         <div className="og-nav-scroll">

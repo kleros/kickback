@@ -63,3 +63,19 @@ export const TYPED_WORDS = {
   cancel: "CANCEL",
   another: "NEW",
 } as const;
+
+/** The case jurors read, as its question then its paragraphs; text that is not the case JSON is shown whole. */
+export function caseView(text: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object") {
+      const { title, question, description } = parsed as Record<string, unknown>;
+      const head = typeof question === "string" && question ? question : typeof title === "string" ? title : "";
+      const body = typeof description === "string" ? description.split(/\n\s*\n/).filter(Boolean) : [];
+      if (head || body.length) return [head, ...body];
+    }
+  } catch {
+    // not JSON: shown as it is
+  }
+  return [text];
+}
