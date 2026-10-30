@@ -1,0 +1,297 @@
+/* Three durations for one-shot motion, never a fourth; a loop, a spinner's turn, a nudge
+   and the reduced-motion fade each have their own token. */
+:root {
+  --kb-dur-echo: 100ms; /* hover, press: a state echo */
+  --kb-dur-enter: 250ms; /* enter, exit, expand */
+  --kb-dur-structural: 400ms; /* structural moves: reorder, spawn, collapse */
+  --kb-dur-loop: 1.6s; /* one cycle of an indeterminate loop */
+  --kb-dur-nudge: 2s; /* one burst of an attention nudge and its hold */
+  --kb-dur-spin: 1s; /* one turn of a spinner */
+  --kb-dur-reduced-fade: 150ms; /* the in-place fade that stands in for a move under reduced motion */
+  --kb-ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  --kb-ease-exit: cubic-bezier(0.4, 0, 1, 1);
+  --kb-ease-structural: cubic-bezier(0.2, 0, 0, 1);
+  /* Loading tiers. Under 300ms: render nothing. */
+  --kb-skeleton-min: 300ms;
+  --kb-narrative-min: 2000ms;
+  --kb-ease-spring: var(--kb-ease-structural);
+}
+/* A curve, not a duration: a settling spring (4.6 % overshoot) for a check popping in and the market pin landing.
+   A var() is valid at parse time, so without linear() support it would compute to ease, hence the feature query. */
+@supports (animation-timing-function: linear(0, 1)) {
+  :root {
+    --kb-ease-spring: linear(
+      0,
+      0.043,
+      0.148,
+      0.283,
+      0.428,
+      0.567,
+      0.691,
+      0.795,
+      0.878,
+      0.942,
+      0.987,
+      1.017,
+      1.035,
+      1.044,
+      1.046,
+      1.044,
+      1.039,
+      1.032,
+      1.026,
+      1.019,
+      1.014,
+      1.009,
+      1.005,
+      1.002,
+      1
+    );
+  }
+}
+.kb-echo {
+  transition:
+    background-color var(--kb-dur-echo) var(--kb-ease-enter),
+    border-color var(--kb-dur-echo) var(--kb-ease-enter),
+    color var(--kb-dur-echo) var(--kb-ease-enter),
+    box-shadow var(--kb-dur-echo) var(--kb-ease-enter);
+}
+.kb-enter {
+  animation: kbFadeUp var(--kb-dur-enter) var(--kb-ease-enter) both;
+}
+.kb-exit {
+  animation: kbFadeOut var(--kb-dur-enter) var(--kb-ease-exit) both;
+}
+.kb-structural {
+  transition:
+    transform var(--kb-dur-structural) var(--kb-ease-structural),
+    height var(--kb-dur-structural) var(--kb-ease-structural),
+    opacity var(--kb-dur-structural) var(--kb-ease-structural);
+}
+@keyframes kbFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kbFadeIn {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes kbFadeOut {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* Motion that teaches structure: a dependent block grows out of its origin. */
+@keyframes kbSpawn {
+  from {
+    opacity: 0;
+    transform: scaleY(0.2) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kb-spawn {
+  transform-origin: top center;
+  animation: kbSpawn var(--kb-dur-structural) var(--kb-ease-structural) both;
+}
+/* A panel arriving as its context changes: the preview swapping views. */
+@keyframes kbRise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kb-rise {
+  animation: kbRise var(--kb-dur-enter) var(--kb-ease-enter) both;
+}
+/* A bar rising from the bottom edge, and sinking back to it. */
+@keyframes kbLiftIn {
+  from {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes kbLiftOut {
+  to {
+    opacity: 0;
+    transform: translateY(100%);
+  }
+}
+/* A disclosure opens by grid rows, the one height-class animation allowed, as its content rises in;
+   closing, the content fades first and the rows then fold. Markup: .kb-disclosure > div (min-h-0, overflow hidden) > content. */
+.kb-disclosure {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--kb-dur-enter) var(--kb-ease-structural) var(--kb-dur-echo);
+}
+.kb-disclosure[data-open] {
+  grid-template-rows: 1fr;
+  transition-delay: 0s;
+}
+.kb-disclosure > div > * {
+  transition:
+    opacity var(--kb-dur-enter) var(--kb-ease-enter),
+    transform var(--kb-dur-enter) var(--kb-ease-enter);
+}
+.kb-disclosure:not([data-open]) > div > * {
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity var(--kb-dur-echo) var(--kb-ease-exit),
+    transform var(--kb-dur-echo) var(--kb-ease-exit);
+}
+/* Tailwind v4's rotate-180 sets the rotate property, not transform */
+.kb-chevron {
+  transition:
+    transform var(--kb-dur-enter) var(--kb-ease-structural),
+    rotate var(--kb-dur-enter) var(--kb-ease-structural);
+}
+/* A typed estimate landing: the value pill settles into its new place over the thumb. */
+@keyframes kbPillCommit {
+  from {
+    opacity: 0.6;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.kb-pill-commit {
+  transform-origin: 50% 100%;
+  animation: kbPillCommit var(--kb-dur-enter) var(--kb-ease-spring) both;
+}
+/* A colour swatch is small, so it grows on hover rather than lifting. */
+.kb-swatch {
+  transition:
+    transform var(--kb-dur-echo) var(--kb-ease-enter),
+    border-color var(--kb-dur-echo) var(--kb-ease-enter);
+}
+.kb-swatch:hover {
+  transform: scale(1.22);
+}
+.kb-swatch-well {
+  transition: transform var(--kb-dur-echo) var(--kb-ease-enter);
+}
+.kb-swatch-well:hover {
+  transform: translateY(-1px);
+}
+/* Press: border luminance + a 1px inner glow. No scale: at 3px radius a scale
+   transform reads as a wobble. */
+.kb-pressable {
+  transition:
+    border-color var(--kb-dur-echo) var(--kb-ease-enter),
+    box-shadow var(--kb-dur-echo) var(--kb-ease-enter);
+}
+.kb-pressable:active {
+  border-color: var(--kb-accent);
+  box-shadow: inset 0 0 0 1px var(--kb-accent);
+}
+/* Icon state tweens: two defined endpoints, never a bespoke timeline. */
+@keyframes kbDraw {
+  from {
+    stroke-dashoffset: var(--kb-draw-len, 24);
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+@keyframes kbSpinDash {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.kb-icon-draw path,
+.kb-icon-draw polyline {
+  stroke-dasharray: var(--kb-draw-len, 24);
+  animation: kbDraw var(--kb-dur-enter) var(--kb-ease-enter) both;
+}
+.kb-icon-pending {
+  animation: kbSpinDash var(--kb-dur-spin) linear infinite;
+  transform-origin: 50% 50%;
+}
+/* A cue, three bursts of lift (--kb-nudge-lift), drop (--kb-nudge-drop) and settle, each followed by a hold.
+   Literal curves: Chromium ignores var() in a keyframe's timing function; they are --kb-ease-enter and --kb-ease-exit. */
+@keyframes kbNudgeDown {
+  0% {
+    transform: none;
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  12.5% {
+    transform: translateY(calc(-1 * var(--kb-nudge-lift, 3px)));
+    animation-timing-function: cubic-bezier(0.4, 0, 1, 1);
+  }
+  25% {
+    transform: translateY(var(--kb-nudge-drop, 6px));
+    animation-timing-function: cubic-bezier(0, 0, 0.2, 1);
+  }
+  40%,
+  100% {
+    transform: none;
+  }
+}
+.kb-nudge-down {
+  animation: kbNudgeDown var(--kb-dur-nudge) linear var(--kb-dur-enter) 3;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --kb-dur-echo: 1ms;
+    --kb-dur-enter: 1ms;
+    --kb-dur-structural: 1ms;
+    --kb-ease-spring: linear;
+  }
+  .kb-enter,
+  .kb-spawn,
+  .kb-rise,
+  .kb-icon-draw path,
+  .kb-icon-draw polyline {
+    animation: kbFadeIn var(--kb-dur-reduced-fade) linear both;
+  }
+  .kb-exit {
+    animation: kbFadeOut var(--kb-dur-reduced-fade) linear both;
+  }
+  .kb-spawn {
+    transform: none;
+  }
+  .kb-swatch:hover,
+  .kb-swatch-well:hover {
+    transform: none;
+  }
+  .kb-icon-pending {
+    animation: none;
+    opacity: 0.6;
+  }
+  .kb-nudge-down {
+    animation: none;
+  }
+  .kb-skeleton {
+    animation: none;
+  }
+  /* the library's loading Button scales its symbol */
+  .animate-breathing {
+    animation: none;
+  }
+  * {
+    scroll-behavior: auto !important;
+  }
+}

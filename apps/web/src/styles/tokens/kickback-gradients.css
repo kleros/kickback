@@ -1,0 +1,132 @@
+/* One gradient axis: secondary purple -> primary blue. Every gradient in the
+   product is a slice, rotation or opacity of this axis. Two axes would read as
+   two brands. Gradients carry data or mark the single most important action;
+   they never fill a surface. */
+:root {
+  --kb-grad-from: #9013fe;
+  --kb-grad-to: #009aff;
+  --kb-grad-axis: linear-gradient(90deg, var(--kb-grad-from) 0%, var(--kb-grad-to) 100%);
+  --kb-grad-axis-v: linear-gradient(180deg, var(--kb-grad-from) 0%, var(--kb-grad-to) 100%);
+  --kb-grad-wash: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--kb-grad-from) 12%, transparent) 0%,
+    color-mix(in oklch, var(--kb-grad-to) 12%, transparent) 100%
+  );
+  --kb-grad-wash-strong: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--kb-grad-from) 15%, transparent) 0%,
+    color-mix(in oklch, var(--kb-grad-to) 15%, transparent) 100%
+  );
+  --kb-grad-wash-faint: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--kb-grad-from) 8%, transparent) 0%,
+    color-mix(in oklch, var(--kb-grad-to) 8%, transparent) 100%
+  );
+}
+:root.dark,
+.dark {
+  --kb-grad-from: #b45fff;
+  --kb-grad-to: #6cc5ff;
+}
+/* Gradient BORDER, not gradient fill: masked so the 3px radius survives. */
+.kb-grad-border {
+  position: relative;
+  border-radius: var(--kb-radius);
+  z-index: 0;
+}
+.kb-grad-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: var(--kb-gradient-border-width);
+  background: var(--kb-grad-axis);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: -1;
+}
+.kb-grad-border-strong::before {
+  padding: var(--kb-gradient-border-width-strong);
+}
+.kb-grad-border-quiet::before {
+  opacity: 0.5;
+}
+/* Scarcity is the hierarchy: at most ONE of these per screen. */
+.kb-grad-fill {
+  background: var(--kb-grad-axis);
+  color: var(--kb-text-inverse);
+  border: none;
+}
+.kb-grad-text {
+  background: var(--kb-grad-axis);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+/* Gradients that carry a value */
+.kb-grad-track {
+  background: var(--kb-grad-axis);
+  border-radius: var(--kb-radius);
+}
+.kb-grad-wash {
+  background: var(--kb-grad-wash);
+}
+/* Dark-mode raised surface: authored, not derived */
+.kb-raised {
+  background: var(--kb-surface-raised);
+  border: 1px solid var(--kb-border);
+  border-radius: var(--kb-radius);
+  box-shadow: var(--kb-raise);
+  position: relative;
+}
+.kb-raised::after {
+  content: "";
+  position: absolute;
+  inset: -24px -24px auto -24px;
+  height: 80px;
+  background: var(--kb-raise-glow);
+  opacity: var(--kb-raise-glow-opacity);
+  pointer-events: none;
+  z-index: -1;
+  border-radius: inherit;
+}
+/* Tier-2 loading: a skeleton shaped like its content, shimmering along the axis */
+.kb-skeleton {
+  background: var(--kb-surface-tint);
+  border-radius: var(--kb-radius);
+  position: relative;
+  overflow: hidden;
+}
+.kb-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in oklch, var(--kb-grad-from) 18%, transparent) 40%,
+    color-mix(in oklch, var(--kb-grad-to) 18%, transparent) 60%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: kbShimmer 1.2s var(--kb-ease-enter) infinite;
+}
+@keyframes kbShimmer {
+  to {
+    transform: translateX(100%);
+  }
+}
+/* Marketing surfaces only, never behind a form */
+.kb-mesh {
+  background:
+    radial-gradient(40% 60% at 15% 20%, color-mix(in oklch, var(--kb-grad-from) 28%, transparent) 0%, transparent 70%),
+    radial-gradient(45% 55% at 85% 30%, color-mix(in oklch, var(--kb-grad-to) 26%, transparent) 0%, transparent 70%),
+    var(--kb-surface-sunken);
+}
