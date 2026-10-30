@@ -27,14 +27,18 @@ export function uploadedPolicyPath(answer: unknown): string {
   throw new Error("The pin service did not return a policy address; try again.");
 }
 
+export async function pinFile(file: Blob, filename: string, fetcher: typeof fetch = globalThis.fetch) {
+  const body = new FormData();
+  body.append("data", file, filename);
+  const response = await fetcher(`${KLEROS_IPFS_UPLOAD}?operation=file&pinToGraph=false`, { method: "POST", body });
+  if (!response.ok) throw new Error("Could not pin the file; try again.");
+  return uploadedPolicyPath(await response.json());
+}
+
 export function policyTransport(fetcher: typeof fetch = globalThis.fetch) {
   return {
     async upload(text: string) {
-      const body = new FormData();
-      body.append("data", new Blob([text], { type: "text/markdown" }), "attendance-policy.generic.md");
-      const response = await fetcher(`${KLEROS_IPFS_UPLOAD}?operation=file&pinToGraph=false`, { method: "POST", body });
-      if (!response.ok) throw new Error("Could not pin the policy; try again.");
-      return uploadedPolicyPath(await response.json());
+      return pinFile(new Blob([text], { type: "text/markdown" }), "attendance-policy.generic.md", fetcher);
     },
     async fetch(uri: string) {
       if (!isIpfsPath(uri)) throw new Error("Invalid policy address.");

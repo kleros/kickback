@@ -67,6 +67,7 @@ describe("caseTemplate", function () {
     expect([...used].sort()).to.deep.equal([
       "contract",
       "deposit",
+      "eventInfo",
       "eventLink",
       "eventName",
       "eventTitle",
@@ -80,6 +81,18 @@ describe("caseTemplate", function () {
       "wallet",
       "walletLower",
     ]);
+  });
+
+  it("fixes event info to a CIDv0 path or none without adding runtime slots", function () {
+    const infoPath = ipfsPathOf("event info");
+    const withInfo = caseTemplate(genericCaseTemplateText, values({ eventInfo: infoPath }));
+    const withoutInfo = caseTemplate(genericCaseTemplateText, values());
+    expect(JSON.parse(withInfo.sample).description).to.include(`event page details: ${infoPath}`);
+    expect(JSON.parse(withoutInfo.sample).description).to.include("event page details: none");
+    expect(withInfo.slots).to.equal(withoutInfo.slots);
+    expect(() => caseTemplate(genericCaseTemplateText, values({ eventInfo: "https://evil.com" }))).to.throw(
+      "info path",
+    );
   });
 
   it("every field at its longest (3-byte characters, or quotes JSON doubles) is escaped and still fits", function () {

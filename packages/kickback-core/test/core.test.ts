@@ -373,7 +373,7 @@ test("the generic case description is valid ERC-1497 once filled in: it names th
   // the template's placeholders are all known ones; it uses every runtime value and the organiser
   const used = new Set([...GENERIC_TEXT.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]));
   expect([...used].sort()).toEqual([
-    "contract", "deposit", "eventLink", "eventName", "eventTitle", "eventWhen", "eventWhere", "explorer", "hosts", "owner", "ownerLower",
+    "contract", "deposit", "eventInfo", "eventLink", "eventName", "eventTitle", "eventWhen", "eventWhere", "explorer", "hosts", "owner", "ownerLower",
     "policyURI", "wallet", "walletLower",
   ]); // prettier-ignore
   // every field at its longest (3-byte characters, or quotes that JSON doubles) still fits the contract

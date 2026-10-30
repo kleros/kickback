@@ -1,5 +1,41 @@
+import process from "node:process";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  async headers() {
+    const rpcUrls = [
+      "https://rpc.mevblocker.io",
+      "https://ethereum-sepolia-rpc.publicnode.com",
+      process.env.NEXT_PUBLIC_MAINNET_RPC,
+      process.env.NEXT_PUBLIC_SEPOLIA_RPC,
+      process.env.NEXT_PUBLIC_LOCAL_RPC_URL || "http://127.0.0.1:8545",
+    ];
+    const rpcOrigins = rpcUrls.filter(Boolean).map((value) => new URL(value).origin);
+    const csp = [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "frame-src https://www.google.com",
+      "img-src 'self' data: blob: https://cdn.kleros.link",
+      "font-src 'self' data: https://fonts.reown.com",
+      "style-src 'self' 'unsafe-inline'",
+      `script-src 'self' 'unsafe-inline'${process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : ""}`,
+      `connect-src 'self' ${[...new Set(rpcOrigins)].join(" ")} https://cdn.kleros.link https://kleros-api.netlify.app https://*.walletconnect.com https://*.walletconnect.org wss://*.walletconnect.com wss://*.walletconnect.org https://*.reown.com wss://*.reown.com https://api.web3modal.org`,
+    ].join("; ");
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: csp },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+      { source: "/api/preview/image", headers: [{ key: "Content-Security-Policy", value: "default-src 'none'" }] },
+    ];
+  },
   images: {
     remotePatterns: [],
   },

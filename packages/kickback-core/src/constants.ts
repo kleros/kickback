@@ -67,7 +67,7 @@ export const CHALLENGE_STATE = { None: 0, Waiting: 1, Disputed: 2, Resolved: 3 }
 
 /** Values the contract writes into each case: the challenged wallet, itself, and the wallet in lower case. */
 export const SLOT = { wallet: 1, contract: 2, walletLower: 3 } as const;
-/** One IPFS block: the CIDv0 formula (here and in the contract) needs the text to fit in one. */
+/** One 256 KiB IPFS block; contract metaevidence must fit in one. */
 export const MAX_METAEVIDENCE_BYTES = 262_144;
 /** The contract keeps abi.encode(pieces, slots) as contract code (24 KB limit). */
 export const MAX_TEMPLATE_BYTES = 24_575;
