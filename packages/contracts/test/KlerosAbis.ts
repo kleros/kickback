@@ -1,7 +1,18 @@
 import { expect } from "chai";
-import { toEventSelector, toFunctionSelector, type AbiEvent, type AbiFunction } from "viem";
+import hre from "hardhat";
+import {
+  getAddress,
+  parseEther,
+  parseEventLogs,
+  toEventSelector,
+  toFunctionSelector,
+  type AbiEvent,
+  type AbiFunction,
+} from "viem";
 
 import { disputeResolverAbi, disputeResolverEventLayouts, klerosLiquidAbi } from "../abis/kleros";
+import { mockArbitrableProxyAbi, mockKlerosLiquidAbi } from "../generated/index";
+import { DAY, deployMockKleros, klerosExtraData } from "../local";
 
 const selectors = (abi: readonly (AbiFunction | AbiEvent)[]) =>
   Object.fromEntries(
@@ -51,6 +62,82 @@ describe("Kleros ABIs", function () {
         expect(toEventSelector(event)).to.equal(topic);
         expect(event.inputs.filter((i) => i.indexed).length + 1).to.equal(Number(topics));
       }
+    }
+  });
+
+  it("decodes the Contribution and RulingFunded logs the mock Dispute Resolver emits", async function () {
+    const publicClient = await hre.viem.getPublicClient();
+    const [deployer, funder] = await hre.viem.getWalletClients();
+    const { arbitrator, disputeResolver } = await deployMockKleros({ walletClient: deployer!, publicClient });
+    const extra = klerosExtraData();
+    const wait = async (hash: `0x${string}`) => publicClient.waitForTransactionReceipt({ hash });
+    const fee = await publicClient.readContract({
+      address: arbitrator,
+      abi: klerosLiquidAbi,
+      functionName: "arbitrationCost",
+      args: [extra],
+    });
+    await wait(
+      await deployer!.writeContract({
+        address: disputeResolver,
+        abi: mockArbitrableProxyAbi,
+        functionName: "createDispute",
+        args: [extra, "/ipfs/meta", 2n],
+        value: fee,
+      }),
+    );
+    const local = 0n;
+    const id = await publicClient.readContract({
+      address: disputeResolver,
+      abi: disputeResolverAbi,
+      functionName: "disputes",
+      args: [local],
+    });
+    const disputeID = id[3];
+    await wait(
+      await deployer!.writeContract({
+        address: arbitrator,
+        abi: mockKlerosLiquidAbi,
+        functionName: "startAppealPeriod",
+        args: [disputeID, 2n, BigInt(3 * DAY)],
+      }),
+    );
+    const cost = await publicClient.readContract({
+      address: arbitrator,
+      abi: klerosLiquidAbi,
+      functionName: "appealCost",
+      args: [disputeID, extra],
+    });
+    // ruling 1 lost the vote: the loser stake multiplier (2x) is added to the appeal cost
+    const total = 3n * cost;
+    const receipt = await wait(
+      await funder!.writeContract({
+        address: disputeResolver,
+        abi: disputeResolverAbi,
+        functionName: "fundAppeal",
+        args: [local, 1n],
+        value: parseEther("1"),
+      }),
+    );
+    const logs = parseEventLogs({ abi: disputeResolverAbi, logs: receipt.logs, strict: true });
+    const contribution = logs.find((l) => l.eventName === "Contribution");
+    const funded = logs.find((l) => l.eventName === "RulingFunded");
+    expect(contribution?.args).to.deep.equal({
+      localDisputeID: local,
+      round: 0n,
+      ruling: 1n,
+      contributor: getAddress(funder!.account.address),
+      amount: total,
+    });
+    expect(funded?.args).to.deep.equal({ localDisputeID: local, round: 0n, ruling: 1n });
+    // the 4-topic layouts are the exported ABI's own indexing
+    for (const [name, log] of [
+      ["Contribution", contribution!],
+      ["RulingFunded", funded!],
+    ] as const) {
+      expect(log.topics.length).to.equal(4);
+      const [again] = parseEventLogs({ abi: [disputeResolverEventLayouts[name][4]], logs: [log], strict: true });
+      expect(again?.args).to.deep.equal(log.args);
     }
   });
 });
