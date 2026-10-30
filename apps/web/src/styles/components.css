@@ -9,7 +9,7 @@ html {
   scroll-padding-top: calc(var(--kb-header-h) + 16px);
 }
 body {
-  background: var(--kb-bg);
+  /* transparent: the aurora sits at z-index -1, under any body background */
   min-height: 100dvh;
   font-size: 16px;
   line-height: 1.4;

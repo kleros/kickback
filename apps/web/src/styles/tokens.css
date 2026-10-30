@@ -35,10 +35,10 @@
   --kb-band: rgba(255, 255, 255, 0.5);
 
   /* aurora: light needs about double the dark alpha to read */
-  --kb-aurora-violet: rgba(122, 60, 255, 0.3);
-  --kb-aurora-blue: rgba(72, 114, 255, 0.32);
-  --kb-aurora-cyan: rgba(56, 189, 248, 0.2);
-  --kb-aurora-tint: 22%;
+  --kb-aurora-violet: rgba(122, 60, 255, 0.4);
+  --kb-aurora-blue: rgba(72, 114, 255, 0.42);
+  --kb-aurora-cyan: rgba(56, 189, 248, 0.28);
+  --kb-aurora-tint: 30%;
 
   --kb-focus: #3150dc;
 
