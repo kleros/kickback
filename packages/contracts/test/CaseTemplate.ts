@@ -43,6 +43,25 @@ const tiny = (over: Record<string, unknown> = {}) =>
 
 // Ported from kickback-legacy test/core.test.mjs (caseTemplate / templateValues), plus each check caseTemplate makes.
 describe("caseTemplate", function () {
+  for (const [eth, expected] of [
+    ["0", "0.0 ETH"],
+    ["1", "1.0 ETH"],
+    ["42", "42.0 ETH"],
+    ["0.01", "0.01 ETH"],
+    ["1.000000000000000001", "1.000000000000000001 ETH"],
+    ["0.000000000000000001", "0.000000000000000001 ETH"],
+  ] as const) {
+    it(`formats ${eth} ETH with the exact deposit text used in legacy case metadata`, function () {
+      const actualValues = { ...values(), deposit: templateValues({ depositUnits: parseEther(eth) }).deposit! };
+      const text = tiny({ description: "Deposit: {{deposit}}" });
+      const actual = caseTemplate(text, actualValues);
+      const expectedTemplate = caseTemplate(text, { ...actualValues, deposit: expected });
+      expect(actualValues.deposit).to.equal(expected);
+      expect(actual).to.deep.equal(expectedTemplate);
+      expect(ipfsPathOf(actual.sample)).to.equal(ipfsPathOf(expectedTemplate.sample));
+    });
+  }
+
   it("the generic template uses every deploy-time value and the organiser", function () {
     const used = new Set([...genericCaseTemplateText.matchAll(/\{\{(\w+)\}\}/g)].map((m) => m[1]));
     expect([...used].sort()).to.deep.equal([

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { expect } from "chai";
 
+import { kickbackAbi, kickbackBytecode, kickbackFingerprint, kickbackImmutables } from "../generated/index";
 import { fingerprint } from "../tasks/exportAbis";
 import { LIVE_DIR, liveBuild, verifiedSource } from "../scripts/liveBuild";
 
@@ -10,6 +11,22 @@ const read = (file: string) => readFileSync(path.join(LIVE_DIR, file), "utf8").t
 
 describe("TruthPaysKickback is the live mainnet build", () => {
   const live = liveBuild();
+
+  it("exports the live ABI to consumers", () => {
+    expect(kickbackAbi).to.deep.equal(live.abi);
+  });
+
+  it("exports the live creation bytecode to consumers", () => {
+    expect(kickbackBytecode).to.equal(live.bytecode);
+  });
+
+  it("exports the live immutable ranges to consumers", () => {
+    expect(kickbackImmutables).to.deep.equal(live.immutables);
+  });
+
+  it("exports the live runtime fingerprint to consumers", () => {
+    expect(kickbackFingerprint).to.equal(fingerprint(live.deployedBytecode, live.immutables));
+  });
 
   it("has the source Etherscan verified", () => {
     expect(readFileSync(path.join(__dirname, "..", "contracts", "TruthPaysKickback.sol"), "utf8")).to.equal(

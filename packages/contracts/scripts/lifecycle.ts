@@ -97,14 +97,12 @@ export type LifecycleOptions = {
   log?: (line: string) => void;
 };
 
-/**
- * The 31 steps of kickback-legacy test/fork.e2e.mjs: deploy, deposits, curation, the list, challenges, Kleros
- * cases, payouts, settlement and sweep, then the cancel path and the emergencyWithdraw path from a snapshot.
- * Every touched balance is checked to the wei. `local` uses MockKleros (rulings via giveFinalRuling); `fork`
- * uses mainnet's Dispute Resolver and KlerosLiquid, impersonating KlerosLiquid to call Resolver.rule.
- * The chain is reverted to its starting snapshot at the end.
- */
+/** On-chain lifecycle with hand-written registration, refund and attendance lists; no off-chain verification.
+ * Checks touched balances to the wei and reverts the scenarios to their starting snapshot. */
 export async function runLifecycle({ provider, mode, log = () => {} }: LifecycleOptions): Promise<StepResult[]> {
+  log(
+    "On-chain lifecycle only: guest deposit verification, verification reruns and payout-plan generation are not exercised.",
+  );
   const transport = custom(provider);
   const pub = createPublicClient({ transport });
   const wallet = createWalletClient({ transport });
@@ -116,9 +114,9 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
 
   // ------------------------------------------------------------------ accounts
   const derive = (name: string) => privateKeyToAddress(keccak256(toHex(`kickback lifecycle ${name}`)));
-  const names = ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "gW", "gCopy", "gStray", "gHelper"] as const;
+  const names = ["g1", "g2", "g3", "g4", "g5", "g6", "g7", "g8", "gW", "gStray", "gHelper"] as const;
   const acct = Object.fromEntries(names.map((n) => [n, derive(n)])) as Record<(typeof names)[number], Address>;
-  const { g1, g2, g3, g4, g5, g6, g7, g8, gW, gCopy, gStray, gHelper } = acct;
+  const { g1, g2, g3, g4, g5, g6, g7, g8, gW, gStray, gHelper } = acct;
   const OWNER = mode === "fork" ? getAddress(liveEvent.owner) : derive("owner");
   for (const a of [...Object.values(acct), OWNER]) {
     await test.impersonateAccount({ address: a });
@@ -263,13 +261,14 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
   let share = 0n;
   let each = 0n;
   let deployBlock = 0n;
+  // The attendee list is hand-written, not generated from check-in data.
   const plan = { attendees: [g1, g2, g3, g4], stakers: 7n, share: 0n };
 
   try {
     try {
       // ================================================================ main lifecycle
       scenario = "lifecycle";
-      for (const a of [g1, g2, g3, g4, g5, g6, g7, g8, gW, gCopy, gStray, OWNER, LIQUID]) await track(a);
+      for (const a of [g1, g2, g3, g4, g5, g6, g7, g8, gW, gStray, OWNER, LIQUID]) await track(a);
 
       await step(`deploy TruthPaysKickback from the owner (${OWNER})`, async () => {
         const r = await send(
@@ -336,7 +335,7 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         },
       );
 
-      // what kickback-core checkGuests would derive from the Luma CSV for these deposits
+      // Registration and refund lists are hand-written fixtures, not deposit-verification output.
       const newStakers = [g1, g2, g3, g4, g5, g6, g7];
       const refunds = [g8];
       const returns: [Address, bigint][] = [
@@ -344,38 +343,33 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         [g6, DEP],
       ];
       const unmatched: [Address, bigint][] = [[gStray, DEP]];
-      await step(
-        `${HAND_LISTED}Deposited logs match the lists: 7 to register, 1 to decline, 2 returns, 1 stray`,
-        async () => {
-          const logs = await pub.getContractEvents({
-            address: K,
-            abi: kickbackAbi,
-            eventName: "Deposited",
-            fromBlock: deployBlock,
-          });
-          const byTx = new Map(logs.map((l) => [l.transactionHash, l.args]));
-          const expect: [string, Address, bigint][] = [
-            ["g1", g1, DEP],
-            ["g2", g2, DEP],
-            ["g3", g3, DEP],
-            ["g4", g4, DEP],
-            ["g5", g5, DEP],
-            ["g6", g6, DEP],
-            ["g6b", g6, DEP],
-            ["g7", g7, DEP],
-            ["g8", g8, DEP],
-            ["gW", gW, DEP / 2n],
-            ["stray", gStray, DEP],
-          ];
-          for (const [key, from, amount] of expect) {
-            const a = byTx.get(tx[key]!);
-            assert(a && getAddress(a.from!) === from && a.amount === amount, `Deposited for ${key}`);
-          }
-          // the copycat's row points at Ben's transaction: Ben's wallet sent it, so it is not the copycat's deposit
-          equal(getAddress(byTx.get(tx.g2!)!.from!) === gCopy, false, "copied tx link");
-          return `register ${newStakers.length}, decline ${refunds.length}, return ${returns.length}, stray ${unmatched.length}`;
-        },
-      );
+      await step(`${HAND_LISTED}Deposited logs match the hand-written registration and refund lists`, async () => {
+        const logs = await pub.getContractEvents({
+          address: K,
+          abi: kickbackAbi,
+          eventName: "Deposited",
+          fromBlock: deployBlock,
+        });
+        const byTx = new Map(logs.map((l) => [l.transactionHash, l.args]));
+        const expect: [string, Address, bigint][] = [
+          ["g1", g1, DEP],
+          ["g2", g2, DEP],
+          ["g3", g3, DEP],
+          ["g4", g4, DEP],
+          ["g5", g5, DEP],
+          ["g6", g6, DEP],
+          ["g6b", g6, DEP],
+          ["g7", g7, DEP],
+          ["g8", g8, DEP],
+          ["gW", gW, DEP / 2n],
+          ["stray", gStray, DEP],
+        ];
+        for (const [key, from, amount] of expect) {
+          const a = byTx.get(tx[key]!);
+          assert(a && getAddress(a.from!) === from && a.amount === amount, `Deposited for ${key}`);
+        }
+        return `register ${newStakers.length}, decline ${refunds.length}, return ${returns.length}, stray ${unmatched.length}`;
+      });
 
       await step("registerStakers from the owner", async () => {
         await send(
@@ -418,23 +412,20 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         equal(await pub.getBalance({ address: K }), DEP * 7n, "contract balance");
         equal(await kick().read.spare(), 0n, "spare");
       });
-      await step(
-        `${HAND_LISTED}chain state matches the lists: nothing left to register, refund or return`,
-        async () => {
-          const c = kick();
-          for (const a of newStakers) equal(await c.read.status([a]), 1, `status(${a})`);
-          equal(await c.read.status([g8]), 3, "status(g8)");
-          const refundedTo = (
-            await pub.getContractEvents({ address: K, abi: kickbackAbi, eventName: "Refunded", fromBlock: deployBlock })
-          ).map((l) => [getAddress(l.args.to!), l.args.amount]);
-          equal(
-            JSON.stringify(refundedTo, (_k, v) => (typeof v === "bigint" ? String(v) : v)),
-            JSON.stringify([...returns, ...unmatched], (_k, v) => (typeof v === "bigint" ? String(v) : v)),
-            "Refunded events",
-          );
-          equal(await c.read.spare(), 0n, "spare");
-        },
-      );
+      await step(`${HAND_LISTED}registered statuses and Refunded events match the hand-written lists`, async () => {
+        const c = kick();
+        for (const a of newStakers) equal(await c.read.status([a]), 1, `status(${a})`);
+        equal(await c.read.status([g8]), 3, "status(g8)");
+        const refundedTo = (
+          await pub.getContractEvents({ address: K, abi: kickbackAbi, eventName: "Refunded", fromBlock: deployBlock })
+        ).map((l) => [getAddress(l.args.to!), l.args.amount]);
+        equal(
+          JSON.stringify(refundedTo, (_k, v) => (typeof v === "bigint" ? String(v) : v)),
+          JSON.stringify([...returns, ...unmatched], (_k, v) => (typeof v === "bigint" ? String(v) : v)),
+          "Refunded events",
+        );
+        equal(await c.read.spare(), 0n, "spare");
+      });
       S1 = await test.snapshot();
 
       await step("postAttendance refused before eventStart (TooEarly)", async () => {
@@ -451,18 +442,15 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
         assert(t >= EVENT_START, "chain time before eventStart");
         return `chain time ${new Date(Number(t) * 1000).toISOString()}`;
       });
-      await step(
-        `${HAND_LISTED}payout plan: Ana, Ben, Cai, Dev checked in; share = previewShare(4) = pool / 4`,
-        async () => {
-          plan.share = await kick().read.previewShare([BigInt(plan.attendees.length)]);
-          equal(plan.share, (DEP * plan.stakers) / 4n, "share");
-          const stakers = await kick().read.stakerCount();
-          equal(stakers, plan.stakers, "stakers");
-          const noShows = newStakers.filter((a) => !plan.attendees.includes(a));
-          equal(BigInt(noShows.length), stakers - BigInt(plan.attendees.length), "no-shows");
-          return `share ${formatEther(plan.share)} ETH, no-shows ${noShows.length}`;
-        },
-      );
+      await step(`${HAND_LISTED}previewShare for the hand-written attendee list equals pool / 4`, async () => {
+        plan.share = await kick().read.previewShare([BigInt(plan.attendees.length)]);
+        equal(plan.share, (DEP * plan.stakers) / 4n, "share");
+        const stakers = await kick().read.stakerCount();
+        equal(stakers, plan.stakers, "stakers");
+        const noShows = newStakers.filter((a) => !plan.attendees.includes(a));
+        equal(BigInt(noShows.length), stakers - BigInt(plan.attendees.length), "no-shows");
+        return `share ${formatEther(plan.share)} ETH, no-shows ${noShows.length}`;
+      });
       await step("postAttendance with A, B, C (Eve, Fay, Gus) left off", async () => {
         await send(
           "postAttendance",
@@ -692,7 +680,7 @@ export async function runLifecycle({ provider, mode, log = () => {} }: Lifecycle
       await step("final balances to the wei: everyone on the final list got pool / 6", async () => {
         // KlerosLiquid keeps the two arbitration fees
         credit(LIQUID, fee * 2n);
-        await assertLedger(Object.entries({ g1, g2, g3, g4, g5, g6, g7, g8, gW, gCopy, gStray, OWNER, LIQUID }));
+        await assertLedger(Object.entries({ g1, g2, g3, g4, g5, g6, g7, g8, gW, gStray, OWNER, LIQUID }));
         const total = share + each;
         equal(total, (DEP * 7n) / 6n, "per attendee");
         return `per attendee ${formatEther(total)} ETH; C lost the deposit and the fee; the owner paid B's fee ${formatEther(fee)}`;

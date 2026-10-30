@@ -5,7 +5,7 @@ import { HAND_LISTED, LIFECYCLE_STEPS, runLifecycle } from "../scripts/lifecycle
 
 task(
   "simulate-lifecycle",
-  "Runs the 31-step event lifecycle against the connected node (MockKleros locally, mainnet Kleros on a fork), then reverts it",
+  "Runs the 31-step on-chain lifecycle with hand-written lists (MockKleros locally, mainnet Kleros on a fork), then reverts it",
 ).setAction(async (_args, hre) => {
   const mode = hre.network.name === "mainnet-fork" ? "fork" : "local";
   const results = await runLifecycle({

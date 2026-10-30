@@ -113,9 +113,10 @@ export function templateValues(cfg: TemplateConfig, owner?: string): Record<stri
     : isAddr(owner) && owner!.toLowerCase() !== zero
       ? getAddress(owner!.toLowerCase())
       : "";
+  const deposit = formatEther(cfg.depositUnits);
   const values: Record<string, string> = {
     eventName: cfg.eventName ?? "Truth Pays",
-    deposit: `${formatEther(cfg.depositUnits)} ETH`,
+    deposit: `${deposit.includes(".") ? deposit : `${deposit}.0`} ETH`,
     policyURI: cfg.kleros?.policyURI ?? "",
     owner: organiser,
     ownerLower: organiser.toLowerCase(),
