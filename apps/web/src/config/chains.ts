@@ -1,12 +1,13 @@
-import { hardhat, mainnet, type Chain } from "viem/chains";
+import { hardhat, mainnet, sepolia, type Chain } from "viem/chains";
 
 /**
  * Which chain the app runs against, from NEXT_PUBLIC_CHAIN:
  * - `mainnet`: Ethereum, the live event.
  * - `hardhat`: a local Hardhat node (chainId 31337).
  * - `mainnet-fork`: a local node forking Ethereum, so it answers as chainId 1.
+ * - `sepolia`: the Sepolia testnet (11155111), with mock Kleros contracts.
  */
-export const CHAIN_MODES = ["mainnet", "hardhat", "mainnet-fork"] as const;
+export const CHAIN_MODES = ["mainnet", "hardhat", "mainnet-fork", "sepolia"] as const;
 
 export type ChainMode = (typeof CHAIN_MODES)[number];
 
@@ -33,16 +34,23 @@ export const mainnetRpcUrl = (mode: ChainMode, override: string | undefined): st
 
 export const MAINNET_RPC_URL = mainnetRpcUrl(CHAIN_MODE, mainnetRpcOverride);
 
+export const SEPOLIA_DEFAULT_RPC = "https://ethereum-sepolia-rpc.publicnode.com";
+
+export const SEPOLIA_RPC_URL = process.env.NEXT_PUBLIC_SEPOLIA_RPC || SEPOLIA_DEFAULT_RPC;
+
 const LOCAL_NODE = /^https?:\/\/(127\.0\.0\.1|localhost)([:/]|$)/;
 
 export const isLocalChainEnabled = CHAIN_MODE === "hardhat";
 
+export const isSepolia = CHAIN_MODE === "sepolia";
+
+const mainnetOnLocalNode = !isLocalChainEnabled && !isSepolia && LOCAL_NODE.test(MAINNET_RPC_URL);
+
 /** A local node answering as chainId 1: any wallet but the dev wallet would send to the real Ethereum instead. */
-export const isDevWalletOnly =
-  CHAIN_MODE === "mainnet-fork" || (!isLocalChainEnabled && LOCAL_NODE.test(MAINNET_RPC_URL));
+export const isDevWalletOnly = CHAIN_MODE === "mainnet-fork" || mainnetOnLocalNode;
 
 /** Hardhat unlocks its accounts, so the dev wallet works wherever the chain is a local node. */
-export const isDevWalletEnabled = isLocalChainEnabled || LOCAL_NODE.test(MAINNET_RPC_URL);
+export const isDevWalletEnabled = isLocalChainEnabled || mainnetOnLocalNode;
 
 // a send on a fork can take longer than viem's default while the node fetches remote state,
 // and a send that times out client-side may still mine
@@ -61,7 +69,9 @@ export const LOCAL_CHAIN = withRpc(hardhat, LOCAL_RPC_URL);
 
 export const MAINNET_CHAIN = withRpc(mainnet, MAINNET_RPC_URL);
 
-export const DEFAULT_CHAIN = isLocalChainEnabled ? LOCAL_CHAIN : MAINNET_CHAIN;
+export const SEPOLIA_CHAIN = withRpc(sepolia, SEPOLIA_RPC_URL);
+
+export const DEFAULT_CHAIN = isLocalChainEnabled ? LOCAL_CHAIN : isSepolia ? SEPOLIA_CHAIN : MAINNET_CHAIN;
 
 export const DEFAULT_CHAIN_ID = DEFAULT_CHAIN.id;
 

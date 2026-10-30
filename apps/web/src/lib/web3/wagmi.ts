@@ -1,14 +1,14 @@
-import { hardhat, mainnet, type AppKitNetwork } from "@reown/appkit/networks";
+import { hardhat, mainnet, sepolia, type AppKitNetwork } from "@reown/appkit/networks";
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { cookieStorage, createStorage } from "wagmi";
 
-import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID, isLocalChainEnabled, MAINNET_DEFAULT_RPC } from "@/config/chains";
+import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID, isLocalChainEnabled, isSepolia, MAINNET_DEFAULT_RPC } from "@/config/chains";
 import { env } from "@/config/env";
 import { transports } from "@/config/rpc";
 
 /** The one network the app runs on, chosen by NEXT_PUBLIC_CHAIN, with the RPC `config/chains` gave it. */
 export const defaultNetwork: AppKitNetwork = {
-  ...(isLocalChainEnabled ? hardhat : mainnet),
+  ...(isLocalChainEnabled ? hardhat : isSepolia ? sepolia : mainnet),
   rpcUrls: DEFAULT_CHAIN.rpcUrls,
 };
 

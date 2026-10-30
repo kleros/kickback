@@ -6,6 +6,7 @@ import type { Address } from "viem";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { fromBlockFor } from "@/config/event";
+import { courtName } from "@/config/kleros";
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 
 import { EventHead } from "./EventHead";
@@ -18,8 +19,7 @@ import { useDepositState } from "../hooks/useDepositState";
 import { ethText } from "../model/depositState";
 import { shareExample } from "../model/share";
 
-const SEPOLIA = 11_155_111;
-export const COURT = (DEFAULT_CHAIN_ID as number) === SEPOLIA ? "Test court (Sepolia)" : "Kleros Court";
+const COURT = courtName(DEFAULT_CHAIN_ID);
 
 function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const ticket = useRef<HTMLElement>(null);

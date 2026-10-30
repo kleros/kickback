@@ -98,6 +98,34 @@ describe("chain per mode", () => {
   });
 });
 
+describe("sepolia mode", () => {
+  it("NEXT_PUBLIC_CHAIN=sepolia selects chainId 11155111 on the public Sepolia RPC, no dev wallet", async (t) => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN", "sepolia");
+    const chains = await import("../chains");
+    t.expect(chains.CHAIN_MODE).toBe("sepolia");
+    t.expect(chains.DEFAULT_CHAIN_ID).toBe(11155111);
+    t.expect(chains.isSepolia).toBe(true);
+    t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual([chains.SEPOLIA_DEFAULT_RPC]);
+    t.expect(chains.isDevWalletEnabled).toBe(false);
+    t.expect(chains.isDevWalletOnly).toBe(false);
+  });
+
+  it("NEXT_PUBLIC_SEPOLIA_RPC replaces the default, and a local mainnet override does not leak in", async (t) => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN", "sepolia");
+    vi.stubEnv("NEXT_PUBLIC_SEPOLIA_RPC", "https://sepolia.example.org/rpc");
+    vi.stubEnv("NEXT_PUBLIC_MAINNET_RPC", "http://127.0.0.1:8545");
+    const chains = await import("../chains");
+    t.expect(chains.DEFAULT_CHAIN.rpcUrls.default.http).toEqual(["https://sepolia.example.org/rpc"]);
+    t.expect(chains.isDevWalletEnabled).toBe(false);
+    t.expect(chains.isDevWalletOnly).toBe(false);
+  });
+
+  it("other modes are not Sepolia", async (t) => {
+    vi.stubEnv("NEXT_PUBLIC_CHAIN", "mainnet");
+    t.expect((await import("../chains")).isSepolia).toBe(false);
+  });
+});
+
 describe("rpcTimeoutMs", () => {
   it("waits longer on a local node, whose forked state can take its time to fetch", async (t) => {
     const { rpcTimeoutMs } = await import("../chains");
