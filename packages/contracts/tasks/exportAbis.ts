@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { task } from "hardhat/config";
+import type { HardhatRuntimeEnvironment } from "hardhat/types";
 
 import { LIVE_DIR, liveBuild } from "../scripts/liveBuild";
 
@@ -15,13 +16,17 @@ export function fingerprint(code: string, immutables: [number, number][]): `0x${
   return `0x${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
-task(
-  "export-abis",
-  "Writes generated/index.ts: ABIs, the live build of TruthPaysKickback and its code fingerprint",
-).setAction(async (_args, hre) => {
+export async function exportAbis(
+  hre: HardhatRuntimeEnvironment,
+  {
+    sepoliaFile = path.join(__dirname, "..", "deployments-live", "sepolia.json"),
+    outputDir = path.join(__dirname, "..", "generated"),
+  } = {},
+) {
   await hre.run("compile", { quiet: true });
   const live = liveBuild();
   const deployment = JSON.parse(readFileSync(path.join(LIVE_DIR, "deployment.json"), "utf8"));
+  const sepolia = existsSync(sepoliaFile) ? JSON.parse(readFileSync(sepoliaFile, "utf8")) : null;
 
   const mocks: string[] = [];
   for (const name of MOCKS) {
@@ -39,7 +44,7 @@ task(
     );
   }
 
-  const file = path.join(__dirname, "..", "generated", "index.ts");
+  const file = path.join(outputDir, "index.ts");
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(
     file,
@@ -65,12 +70,14 @@ task(
       `  policyURI: "${deployment.constructor.policyURI}",`,
       "} as const;",
       "",
+      `export const testnets = ${JSON.stringify({ sepolia })} as const;`,
+      "",
       ...mocks,
     ].join("\n"),
   );
   console.log("Wrote %s", path.relative(process.cwd(), file));
 
-  const docs = path.join(__dirname, "..", "generated", "docs.ts");
+  const docs = path.join(outputDir, "docs.ts");
   const text = (name: string) => JSON.stringify(readFileSync(path.join(__dirname, "..", "docs", name), "utf8"));
   writeFileSync(
     docs,
@@ -87,4 +94,10 @@ task(
     ].join("\n"),
   );
   console.log("Wrote %s", path.relative(process.cwd(), docs));
-});
+}
+
+task("export-abis", "Writes generated/index.ts: ABIs, live bytecode, fingerprint and testnet deployments").setAction(
+  async (_args, hre) => {
+    await exportAbis(hre);
+  },
+);

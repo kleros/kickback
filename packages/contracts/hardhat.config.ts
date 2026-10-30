@@ -8,10 +8,12 @@ import "@nomicfoundation/hardhat-viem";
 
 import "./tasks/exportAbis";
 import "./tasks/deployLocal";
+import "./tasks/deploySepolia";
 import { localNodeUrl } from "./tasks/localNode";
 import "./tasks/simulateLifecycle";
 
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.mainnet-fork") });
+dotenv.config({ path: path.join(__dirname, "..", "..", ".env.sepolia") });
 
 const LOCAL_NODE_URL = localNodeUrl();
 
@@ -40,6 +42,11 @@ const config: HardhatUserConfig = {
   },
   mocha: { timeout: 600_000 },
   networks: {
+    sepolia: {
+      url: process.env.SEPOLIA_RPC_URL || "",
+      chainId: 11155111,
+      accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
+    },
     hardhat: {
       // the release-payouts gas cap test sends one transaction near EIP-7825's 2^24 limit
       blockGasLimit: 36_000_000,

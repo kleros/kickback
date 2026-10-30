@@ -2,8 +2,26 @@
   "$schema": "https://turborepo.dev/schema.json",
   "extends": ["//"],
   "tasks": {
-    "build": { "outputs": ["artifacts/**", "generated/**"], "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"] },
-    "test": { "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"], "passThroughEnv": ["LOCAL_NODE_URL"] },
-    "check-types": { "env": ["HARDHAT_FORK"] }
+    "build": {
+      "outputs": ["artifacts/**", "generated/**"],
+      "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"],
+      "passThroughEnv": ["SEPOLIA_RPC_URL", "DEPLOYER_PRIVATE_KEY"]
+    },
+    "test": {
+      "env": ["HARDHAT_FORK", "MAINNET_FORK_BLOCK"],
+      "passThroughEnv": ["LOCAL_NODE_URL", "SEPOLIA_RPC_URL", "DEPLOYER_PRIVATE_KEY"]
+    },
+    "check-types": {
+      "env": ["HARDHAT_FORK"],
+      "passThroughEnv": ["SEPOLIA_RPC_URL", "DEPLOYER_PRIVATE_KEY"]
+    },
+    "deploy:sepolia": {
+      "cache": false,
+      "passThroughEnv": ["SEPOLIA_RPC_URL", "DEPLOYER_PRIVATE_KEY"]
+    },
+    "deploy:sepolia:event": {
+      "cache": false,
+      "passThroughEnv": ["SEPOLIA_RPC_URL", "DEPLOYER_PRIVATE_KEY"]
+    }
   }
 }

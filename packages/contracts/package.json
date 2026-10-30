@@ -44,7 +44,9 @@
     "format:ts": "prettier --write \"**/*.{ts,mts,mjs,cjs,json,md}\"",
     "format": "yarn format:ts",
     "format:check": "prettier --check \"**/*.{ts,mts,mjs,cjs,json,md}\"",
-    "check-types": "yarn build && tsc --noEmit"
+    "check-types": "yarn build && tsc --noEmit",
+    "deploy:sepolia": "hardhat deploy-sepolia-kleros --network sepolia",
+    "deploy:sepolia:event": "hardhat deploy-sepolia-kleros --network sepolia --event"
   },
   "devDependencies": {
     "@kickback/eslint-config": "workspace:*",

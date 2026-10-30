@@ -64,7 +64,11 @@ export async function deployMockKleros(clients: Clients) {
       chain,
     }),
   );
-  return { arbitrator: arbitrator.address, disputeResolver: disputeResolver.address };
+  return {
+    arbitrator: arbitrator.address,
+    disputeResolver: disputeResolver.address,
+    receipts: { arbitrator: arbitrator.receipt, disputeResolver: disputeResolver.receipt },
+  };
 }
 
 /** Deploys TruthPaysKickback from the live build's creation code. */
@@ -175,13 +179,14 @@ export async function deployLocalEvent(options: DeployLocalEventOptions) {
     disputeResolver: options.disputeResolver ?? mocks!.disputeResolver,
     eventStart: options.eventStart ?? now + BigInt(3 * DAY),
   });
-  const { event, deployBlock } = await deployKickback(options, built.args);
+  const { event, deployBlock, receipt } = await deployKickback(options, built.args);
   const arbitrator = await publicClient.readContract({ address: event, abi: kickbackAbi, functionName: "arbitrator" });
   return {
     event,
     disputeResolver: built.args[5].disputeResolver,
     arbitrator: getAddress(arbitrator),
     deployBlock,
+    receipt,
     ...built,
   };
 }
