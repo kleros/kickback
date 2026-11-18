@@ -10,7 +10,6 @@ import "./tasks/exportAbis";
 import "./tasks/deployLocal";
 import "./tasks/deploySepolia";
 import { localNodeUrl } from "./tasks/localNode";
-import "./tasks/simulateLifecycle";
 
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.mainnet-fork") });
 dotenv.config({ path: path.join(__dirname, "..", "..", ".env.sepolia") });
@@ -29,7 +28,7 @@ const config: HardhatUserConfig = {
     compilers: [
       {
         version: "0.8.28",
-        // the settings the live contract was verified with on Etherscan
+        // Solidity 0.8.28, optimizer 200, EVM paris: the settings the contracts are verified with on Etherscan
         settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris" },
       },
     ],
@@ -48,10 +47,8 @@ const config: HardhatUserConfig = {
       accounts: process.env.DEPLOYER_PRIVATE_KEY ? [process.env.DEPLOYER_PRIVATE_KEY] : [],
     },
     hardhat: {
-      // the release-payouts gas cap test sends one transaction near EIP-7825's 2^24 limit
-      blockGasLimit: 36_000_000,
-      // the ported contract suite uses an owner and 159 guests; the first 20 accounts are Hardhat's defaults
-      accounts: { count: 160 },
+      // the contract suite uses an owner, an organiser and 38 guests; the first 20 accounts are Hardhat's defaults
+      accounts: { count: 40 },
       ...(forkMainnet && {
         chainId: 1,
         forking: {

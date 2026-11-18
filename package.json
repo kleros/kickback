@@ -23,8 +23,6 @@
     "local-node:contracts": "yarn workspace @kickback/contracts start",
     "local-node:contracts:mainnet-fork": "yarn workspace @kickback/contracts start:mainnet-fork",
     "local-node:deploy": "yarn workspace @kickback/contracts deploy:local",
-    "simulate:lifecycle": "yarn workspace @kickback/contracts simulate:lifecycle",
-    "simulate:lifecycle:mainnet-fork": "yarn workspace @kickback/contracts simulate:lifecycle:mainnet-fork",
     "---": "-------------------------------------------------------------------------------------------",
     "test:e2e": "yarn workspace web test:e2e",
     "test:fork": "yarn workspace @kickback/contracts test:fork && yarn workspace web test:fork",

@@ -42,7 +42,7 @@ describe("local node address", function () {
       for (const name of [...(t.env ?? []), ...(t.passThroughEnv ?? [])]) declared.add(name);
     const files = [
       path.join(PKG, "hardhat.config.ts"),
-      ...["tasks", "scripts", "local", "abis", "test"].flatMap((d) => sources(path.join(PKG, d))),
+      ...["tasks", "local", "abis", "test"].flatMap((d) => sources(path.join(PKG, d))),
     ];
     const read = new Set<string>();
     for (const f of files)

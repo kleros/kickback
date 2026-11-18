@@ -37,16 +37,14 @@
     "start": "yarn build && yarn local-node",
     "start:mainnet-fork": "yarn build && yarn local-node:mainnet-fork",
     "deploy:local": "hardhat deploy-local --network localhost",
-    "simulate:lifecycle": "hardhat simulate-lifecycle --network localhost",
-    "simulate:lifecycle:mainnet-fork": "hardhat simulate-lifecycle --network mainnet-fork",
     "lint": "eslint . --max-warnings 0",
     "format:sol": "prettier --write \"contracts/test/**/*.sol\"",
     "format:ts": "prettier --write \"**/*.{ts,mts,mjs,cjs,json,md}\"",
     "format": "yarn format:ts",
     "format:check": "prettier --check \"**/*.{ts,mts,mjs,cjs,json,md}\"",
     "check-types": "yarn build && tsc --noEmit",
-    "deploy:sepolia": "hardhat deploy-sepolia-kleros --network sepolia",
-    "deploy:sepolia:event": "hardhat deploy-sepolia-kleros --network sepolia --event"
+    "deploy:sepolia": "hardhat deploy-sepolia --network sepolia",
+    "deploy:sepolia:event": "hardhat deploy-sepolia --network sepolia --event"
   },
   "devDependencies": {
     "@kickback/eslint-config": "workspace:*",

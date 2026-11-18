@@ -1,48 +1,51 @@
-import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 import { task } from "hardhat/config";
 import type { HardhatRuntimeEnvironment } from "hardhat/types";
 
-import { LIVE_DIR, liveBuild } from "../scripts/liveBuild";
-
+/** The protocol: the factory organisers create events from, the fixed event code each event clones, the case writer. */
+const PROTOCOL = ["PresenceFactory", "PresenceEvent", "PresenceCaseWriter"] as const;
 /** Test stand-ins the app and the simulations deploy on a local chain. */
 const MOCKS = ["MockKlerosLiquid", "MockArbitrableProxy", "TestWallet", "GasBurners", "TestToken"] as const;
 
-export function fingerprint(code: string, immutables: [number, number][]): `0x${string}` {
-  const bytes = Buffer.from(code.replace(/^0x/, ""), "hex");
-  for (const [start, length] of immutables) bytes.fill(0, start, start + length);
-  return `0x${createHash("sha256").update(bytes).digest("hex")}`;
+export const DEPLOYMENTS_DIR = path.join(__dirname, "..", "deployments-live");
+
+/** One file per network in deployments-live/ (the file name is the network key, e.g. ethereum.json). */
+export function readDeployments(dir = DEPLOYMENTS_DIR) {
+  const out: Record<string, unknown> = {};
+  if (!existsSync(dir)) return out;
+  for (const f of readdirSync(dir)
+    .filter((f) => f.endsWith(".json"))
+    .sort())
+    out[f.replace(/\.json$/, "")] = JSON.parse(readFileSync(path.join(dir, f), "utf8"));
+  return out;
 }
+
+const idOf = (name: string) => name[0]!.toLowerCase() + name.slice(1);
 
 export async function exportAbis(
   hre: HardhatRuntimeEnvironment,
-  {
-    sepoliaFile = path.join(__dirname, "..", "deployments-live", "sepolia.json"),
-    outputDir = path.join(__dirname, "..", "generated"),
-  } = {},
+  { deploymentsDir = DEPLOYMENTS_DIR, outputDir = path.join(__dirname, "..", "generated") } = {},
 ) {
   await hre.run("compile", { quiet: true });
-  const live = liveBuild();
-  const deployment = JSON.parse(readFileSync(path.join(LIVE_DIR, "deployment.json"), "utf8"));
-  const sepolia = existsSync(sepoliaFile) ? JSON.parse(readFileSync(sepoliaFile, "utf8")) : null;
-
-  const mocks: string[] = [];
-  for (const name of MOCKS) {
+  const lines: string[] = [];
+  for (const name of [...PROTOCOL, ...MOCKS]) {
     let artifact;
     try {
       artifact = await hre.artifacts.readArtifact(name);
     } catch {
+      if ((PROTOCOL as readonly string[]).includes(name)) throw new Error(`${name} did not compile`);
       continue;
     }
-    const id = name[0]!.toLowerCase() + name.slice(1);
-    mocks.push(
-      `export const ${id}Abi = ${JSON.stringify(artifact.abi)} as const;`,
-      `export const ${id}Bytecode = "${artifact.bytecode}" as const;`,
+    lines.push(
+      `export const ${idOf(name)}Abi = ${JSON.stringify(artifact.abi)} as const;`,
+      `export const ${idOf(name)}Bytecode = "${artifact.bytecode}" as const;`,
       "",
     );
   }
+  const deployments = readDeployments(deploymentsDir);
+  const { sepolia: sepoliaKleros, ...protocol } = deployments;
 
   const file = path.join(outputDir, "index.ts");
   mkdirSync(path.dirname(file), { recursive: true });
@@ -51,28 +54,13 @@ export async function exportAbis(
     [
       "// Written by `hardhat export-abis`; do not edit.",
       "",
-      "/** TruthPaysKickback v7 as verified on Etherscan: the ABI, creation code and runtime fingerprint of the live build. */",
-      `export const kickbackAbi = ${JSON.stringify(live.abi)} as const;`,
-      `export const kickbackBytecode = "${live.bytecode}" as const;`,
-      "/** [start, length] byte ranges of the immutables in the runtime code, zeroed before fingerprinting */",
-      `export const kickbackImmutables = ${JSON.stringify(live.immutables)} as const;`,
-      "/** SHA-256 of the runtime code with its immutables zeroed: equal for every deployment of this build */",
-      `export const kickbackFingerprint = "${fingerprint(live.deployedBytecode, live.immutables)}" as const;`,
+      ...lines,
+      "/** The protocol on each network it is deployed on (deployments-live/<network>.json), by network key. */",
+      `export const deployments = ${JSON.stringify(protocol)} as const;`,
       "",
-      "/** The Truth Pays event on Ethereum mainnet. */",
-      "export const liveEvent = {",
-      `  chainId: ${deployment.chainId},`,
-      `  address: "${deployment.contract}",`,
-      `  deployBlock: ${deployment.deployBlock},`,
-      `  owner: "${deployment.owner}",`,
-      `  disputeResolver: "${deployment.constructor.disputeResolver}",`,
-      `  arbitrator: "${deployment.constructor.arbitrator}",`,
-      `  policyURI: "${deployment.constructor.policyURI}",`,
-      "} as const;",
+      "/** Kleros Court v1 test deployments (no protocol yet): sepolia = KlerosLiquid + Dispute Resolver. */",
+      `export const testnets = ${JSON.stringify({ sepolia: sepoliaKleros ?? null })} as const;`,
       "",
-      `export const testnets = ${JSON.stringify({ sepolia })} as const;`,
-      "",
-      ...mocks,
     ].join("\n"),
   );
   console.log("Wrote %s", path.relative(process.cwd(), file));
@@ -84,19 +72,17 @@ export async function exportAbis(
     [
       "// Written by `hardhat export-abis` from docs/; do not edit.",
       "",
-      "/** The event-neutral juror policy (docs/attendance-policy.generic.md). */",
-      `export const genericPolicyText = ${text("attendance-policy.generic.md")};`,
-      "/** The event-neutral case description template (docs/metaevidence.generic.template.json). */",
-      `export const genericCaseTemplateText = ${text("metaevidence.generic.template.json")};`,
-      "/** The Truth Pays case description template the live event was deployed with (docs/metaevidence.template.json). */",
-      `export const truthPaysCaseTemplateText = ${text("metaevidence.template.json")};`,
+      "/** The jurors' rules every event shares (docs/attendance-policy.md), pinned on IPFS before the protocol is deployed. */",
+      `export const policyText = ${text("attendance-policy.md")};`,
+      "/** The case description template (docs/metaevidence.template.json); the case writer fills it for each case. */",
+      `export const caseTemplateText = ${text("metaevidence.template.json")};`,
       "",
     ].join("\n"),
   );
   console.log("Wrote %s", path.relative(process.cwd(), docs));
 }
 
-task("export-abis", "Writes generated/index.ts: ABIs, live bytecode, fingerprint and testnet deployments").setAction(
+task("export-abis", "Writes generated/index.ts (ABIs, bytecode, deployments) and generated/docs.ts").setAction(
   async (_args, hre) => {
     await exportAbis(hre);
   },

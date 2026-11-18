@@ -1,62 +1,82 @@
 import {
-  encodeAbiParameters,
+  decodeEventLog,
   getAddress,
   parseEther,
+  zeroAddress,
   type Account,
   type Address,
   type Chain,
-  type ContractConstructorArgs,
   type Hex,
   type PublicClient,
+  type TransactionReceipt,
   type Transport,
   type WalletClient,
 } from "viem";
 
-import { genericCaseTemplateText, genericPolicyText } from "../generated/docs";
+import { caseTemplateText, policyText } from "../generated/docs";
 import {
-  kickbackAbi,
-  kickbackBytecode,
   mockArbitrableProxyAbi,
   mockArbitrableProxyBytecode,
   mockKlerosLiquidAbi,
   mockKlerosLiquidBytecode,
+  presenceCaseWriterAbi,
+  presenceCaseWriterBytecode,
+  presenceEventAbi,
+  presenceEventBytecode,
+  presenceFactoryAbi,
+  presenceFactoryBytecode,
 } from "../generated/index";
-import { caseTemplate, ipfsPathOf, templateValues, type CaseTemplate } from "./caseTemplate";
+import {
+  caseTemplate,
+  DEFAULT_PERIODS,
+  ipfsPathOf,
+  klerosExtraData,
+  MIN_SETTLEMENT_WINDOW,
+  type EventConfig,
+} from "./protocol";
 
-export * from "./caseTemplate";
-export { genericCaseTemplateText, genericPolicyText, truthPaysCaseTemplateText } from "../generated/docs";
+export * from "./protocol";
+export { caseTemplateText, policyText } from "../generated/docs";
 
 export const DAY = 86_400;
 export const DEFAULT_DEPOSIT = parseEther("0.01");
-/** KlerosLiquid extra data: abi.encode(court, minJurors); court 0 is the General Court. */
-export const klerosExtraData = (court = 0n, jurors = 3n): Hex =>
-  encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [court, jurors]);
+/** MockKlerosLiquid's fee per juror on a local chain: 3 jurors make a 0.015 ETH challenge deposit. */
+export const LOCAL_FEE_PER_JUROR = parseEther("0.005");
 
-export type KickbackArgs = ContractConstructorArgs<typeof kickbackAbi>;
 export type LocalWalletClient = WalletClient<Transport, Chain | undefined, Account>;
-
 type Clients = { walletClient: LocalWalletClient; publicClient: PublicClient };
 
-async function deploy(
-  { walletClient, publicClient }: Clients,
-  // viem's deployContract generics cannot be satisfied by a union of ABIs, so each caller passes its own
-  send: () => Promise<Hex>,
-) {
-  const hash = await send();
+async function mined({ walletClient, publicClient }: Clients, hash: Hex, what: string) {
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success" || !receipt.contractAddress)
-    throw new Error(`deploy from ${walletClient.account.address} failed (tx ${hash})`);
+  if (receipt.status !== "success") throw new Error(`${what} from ${walletClient.account.address} failed (tx ${hash})`);
+  return receipt;
+}
+
+async function deploy(clients: Clients, what: string, send: () => Promise<Hex>) {
+  const receipt = await mined(clients, await send(), `deploy ${what}`);
+  if (!receipt.contractAddress) throw new Error(`deploy ${what}: no contract address`);
   return { address: getAddress(receipt.contractAddress), receipt };
 }
 
-/** Deploys MockKlerosLiquid and a MockArbitrableProxy (the Dispute Resolver) in front of it. */
-export async function deployMockKleros(clients: Clients) {
+/** Deploys MockKlerosLiquid (fee per juror set) and a MockArbitrableProxy (the Dispute Resolver) in front of it. */
+export async function deployMockKleros(clients: Clients, { feePerJuror = LOCAL_FEE_PER_JUROR } = {}) {
   const { walletClient } = clients;
   const chain = walletClient.chain ?? null;
-  const arbitrator = await deploy(clients, () =>
+  const arbitrator = await deploy(clients, "MockKlerosLiquid", () =>
     walletClient.deployContract({ abi: mockKlerosLiquidAbi, bytecode: mockKlerosLiquidBytecode, chain }),
   );
-  const disputeResolver = await deploy(clients, () =>
+  await mined(
+    clients,
+    await walletClient.writeContract({
+      address: arbitrator.address,
+      abi: mockKlerosLiquidAbi,
+      functionName: "setFeeForJuror",
+      args: [feePerJuror],
+      chain,
+    }),
+    "setFeeForJuror",
+  );
+  const disputeResolver = await deploy(clients, "MockArbitrableProxy", () =>
     walletClient.deployContract({
       abi: mockArbitrableProxyAbi,
       bytecode: mockArbitrableProxyBytecode,
@@ -64,133 +84,150 @@ export async function deployMockKleros(clients: Clients) {
       chain,
     }),
   );
-  return {
-    arbitrator: arbitrator.address,
-    disputeResolver: disputeResolver.address,
-    receipts: { arbitrator: arbitrator.receipt, disputeResolver: disputeResolver.receipt },
-  };
+  return { arbitrator: arbitrator.address, disputeResolver: disputeResolver.address };
 }
 
-/** Deploys TruthPaysKickback from the live build's creation code. */
-export async function deployKickback(clients: Clients, args: KickbackArgs) {
+export type ProtocolSettings = {
+  disputeResolver: Address;
+  extraData?: Hex;
+  /** Defaults to the IPFS path of docs/attendance-policy.md's bytes. */
+  policyURI?: string;
+  /** Defaults to docs/metaevidence.template.json. */
+  templateText?: string;
+  network?: string;
+  explorer?: string;
+  challengePeriod?: bigint;
+  matchPeriod?: bigint;
+};
+
+/** Deploys the case writer (template), the event implementation (Kleros settings), then the factory. */
+export async function deployProtocol(clients: Clients, s: ProtocolSettings) {
   const { walletClient } = clients;
-  const { address, receipt } = await deploy(clients, () =>
+  const chain = walletClient.chain ?? null;
+  const policyURI = s.policyURI ?? ipfsPathOf(policyText);
+  const template = caseTemplate(s.templateText ?? caseTemplateText, {
+    policyURI,
+    network: s.network ?? "Local test chain",
+    explorer: s.explorer ?? "https://etherscan.io",
+  });
+  const writer = await deploy(clients, "PresenceCaseWriter", () =>
     walletClient.deployContract({
-      abi: kickbackAbi,
-      bytecode: kickbackBytecode,
-      args,
-      chain: walletClient.chain ?? null,
+      abi: presenceCaseWriterAbi,
+      bytecode: presenceCaseWriterBytecode,
+      args: [template.pieces, template.slots],
+      chain,
     }),
   );
-  return { event: address, deployBlock: receipt.blockNumber, receipt };
+  const impl = await deploy(clients, "PresenceEvent", () =>
+    walletClient.deployContract({
+      abi: presenceEventAbi,
+      bytecode: presenceEventBytecode,
+      args: [
+        getAddress(s.disputeResolver),
+        s.extraData ?? klerosExtraData(),
+        policyURI,
+        writer.address,
+        s.challengePeriod ?? DEFAULT_PERIODS.challenge,
+        s.matchPeriod ?? DEFAULT_PERIODS.match,
+      ],
+      chain,
+    }),
+  );
+  const factory = await deploy(clients, "PresenceFactory", () =>
+    walletClient.deployContract({
+      abi: presenceFactoryAbi,
+      bytecode: presenceFactoryBytecode,
+      args: [impl.address],
+      chain,
+    }),
+  );
+  return {
+    caseWriter: writer.address,
+    implementation: impl.address,
+    factory: factory.address,
+    deployBlock: writer.receipt.blockNumber,
+    policyURI,
+    template,
+  };
 }
 
-export type EventDetails = {
-  eventTitle: string;
-  eventName: string;
-  eventWhen: string;
-  eventWhere: string;
-  hosts: string;
-  eventLink: string;
-};
+/** The contract address in a createEvent receipt. */
+export function createdEvent(receipt: TransactionReceipt, factory: Address): Address {
+  for (const log of receipt.logs) {
+    if (log.address.toLowerCase() !== factory.toLowerCase()) continue;
+    try {
+      const ev = decodeEventLog({ abi: presenceFactoryAbi, data: log.data, topics: log.topics });
+      if (ev.eventName === "EventCreated") return getAddress(ev.args.eventContract);
+    } catch {
+      // another event of the factory
+    }
+  }
+  throw new Error("no EventCreated in the receipt");
+}
 
-export type LocalEventSettings = {
-  /** The contract's owner, named in each case. */
-  eventInfo?: string;
-  owner: Address;
-  disputeResolver: Address;
-  depositAmount?: bigint;
-  eventStart: bigint;
-  /** Unix seconds; defaults to eventStart + 14 days. */
-  claimDeadline?: bigint;
-  details?: Partial<EventDetails>;
-  /** Template text with {{placeholders}}; defaults to the generic template. */
-  templateText?: string;
-  /** Defaults to the IPFS path of the generic policy's bytes. */
-  policyURI?: string;
-  extraData?: Hex;
-  explorer?: string;
-};
-
-/** Constructor arguments for an event with the generic policy and case template (or the ones given). */
-export function localEventArgs(settings: LocalEventSettings) {
-  const owner = getAddress(settings.owner);
-  const depositAmount = settings.depositAmount ?? DEFAULT_DEPOSIT;
-  const { eventStart } = settings;
-  const claimDeadline = settings.claimDeadline ?? eventStart + BigInt(14 * DAY);
-  const details: EventDetails = {
-    eventTitle: "Kickback local test event",
-    eventName: "Kickback Local",
-    eventWhen: `${new Date(Number(eventStart) * 1000).toISOString().replace("T", " ").slice(0, 16)} UTC`,
-    eventWhere: "Local test venue",
-    hosts: "Kickback local stack",
-    eventLink: "https://luma.com/kickback-local",
-    ...settings.details,
-  };
-  const policyURI = settings.policyURI ?? ipfsPathOf(genericPolicyText);
-  const values = templateValues(
-    {
-      ...details,
-      eventInfo: settings.eventInfo,
-      depositUnits: depositAmount,
-      explorer: settings.explorer ?? "https://etherscan.io",
-      kleros: { policyURI },
-    },
-    owner,
-  );
-  const tpl = caseTemplate(settings.templateText ?? genericCaseTemplateText, values);
-  const template: CaseTemplate = { pieces: tpl.pieces, slots: tpl.slots };
-  const args: KickbackArgs = [
-    depositAmount,
-    details.eventName,
-    owner,
+/** A Config for a local test event: starts in `startIn` seconds and lasts `hours`. */
+export function localEventConfig(
+  now: bigint,
+  { startIn = BigInt(3 * DAY), hours = 4n, ...rest }: Partial<EventConfig> & { startIn?: bigint; hours?: bigint } = {},
+): EventConfig {
+  const eventStart = rest.eventStart ?? now + startIn;
+  const eventEnd = rest.eventEnd ?? eventStart + hours * 3600n;
+  return {
+    name: "Proof of Presence local test",
+    url: "https://luma.com/proof-of-presence-local",
+    token: zeroAddress,
+    depositAmount: DEFAULT_DEPOSIT,
+    capacity: 0,
+    ...rest,
     eventStart,
-    claimDeadline,
-    {
-      disputeResolver: getAddress(settings.disputeResolver),
-      extraData: settings.extraData ?? klerosExtraData(),
-      metaEvidenceTemplate: template.pieces,
-      metaEvidenceSlots: template.slots,
-      policyURI,
-    },
-  ];
-  return { args, owner, template, policyURI, details };
+    eventEnd,
+    claimDeadline: rest.claimDeadline ?? eventEnd + BigInt(MIN_SETTLEMENT_WINDOW) * 2n,
+  };
+}
+
+/** Creates one event from `factory`, organised by the wallet client's account. */
+export async function createEvent(clients: Clients, factory: Address, config: EventConfig) {
+  const { walletClient } = clients;
+  const receipt = await mined(
+    clients,
+    await walletClient.writeContract({
+      address: factory,
+      abi: presenceFactoryAbi,
+      functionName: "createEvent",
+      args: [config],
+      chain: walletClient.chain ?? null,
+    }),
+    "createEvent",
+  );
+  return { event: createdEvent(receipt, factory), deployBlock: receipt.blockNumber, receipt };
 }
 
 export type DeployLocalEventOptions = Clients &
-  Partial<Omit<LocalEventSettings, "owner" | "disputeResolver" | "eventStart">> & {
-    /** Defaults to the wallet client's account. */
-    owner?: Address;
-    /** An existing Dispute Resolver; when unset, mocks are deployed. */
-    disputeResolver?: Address;
-    /** Unix seconds; defaults to the latest block's time + 3 days. */
-    eventStart?: bigint;
+  Partial<EventConfig> & {
+    /** An existing protocol; when unset, the Kleros mocks and the protocol are deployed. */
+    factory?: Address;
+    startIn?: bigint;
+    hours?: bigint;
   };
 
 /**
- * Deploys MockKlerosLiquid + MockArbitrableProxy (unless `disputeResolver` is given) and one
- * TruthPaysKickback with the generic juror policy and case template. Framework-free: any viem clients.
+ * Deploys the Kleros mocks and the protocol (unless `factory` is given), then creates one event.
+ * Framework-free: any viem clients.
  */
 export async function deployLocalEvent(options: DeployLocalEventOptions) {
-  const { walletClient, publicClient } = options;
+  const { walletClient, publicClient, factory: given, ...cfg } = options;
+  const clients = { walletClient, publicClient };
+  let kleros: Awaited<ReturnType<typeof deployMockKleros>> | undefined;
+  let protocol: Awaited<ReturnType<typeof deployProtocol>> | undefined;
+  if (!given) {
+    kleros = await deployMockKleros(clients);
+    protocol = await deployProtocol(clients, { disputeResolver: kleros.disputeResolver });
+  }
+  const factory = given ?? protocol!.factory;
   const now = (await publicClient.getBlock({ blockTag: "latest" })).timestamp;
-  const mocks = options.disputeResolver ? undefined : await deployMockKleros(options);
-  const built = localEventArgs({
-    ...options,
-    owner: options.owner ?? walletClient.account.address,
-    disputeResolver: options.disputeResolver ?? mocks!.disputeResolver,
-    eventStart: options.eventStart ?? now + BigInt(3 * DAY),
-  });
-  const { event, deployBlock, receipt } = await deployKickback(options, built.args);
-  const arbitrator = await publicClient.readContract({ address: event, abi: kickbackAbi, functionName: "arbitrator" });
-  return {
-    event,
-    disputeResolver: built.args[5].disputeResolver,
-    arbitrator: getAddress(arbitrator),
-    deployBlock,
-    receipt,
-    ...built,
-  };
+  const config = localEventConfig(now, cfg);
+  const created = await createEvent(clients, factory, config);
+  return { ...created, factory, config, organiser: getAddress(walletClient.account.address), kleros, protocol };
 }
 
 export type LocalEvent = Awaited<ReturnType<typeof deployLocalEvent>>;
