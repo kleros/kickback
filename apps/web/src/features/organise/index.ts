@@ -20,3 +20,4 @@ export { OverviewScreen } from "./components/OverviewView";
 export { GuestsScreen } from "./components/GuestsView";
 export { AttendanceScreen } from "./components/AttendanceView";
 export { PayoutScreen } from "./components/PayoutView";
+export { useBrowserEvents } from "./hooks/useCreateScreen";

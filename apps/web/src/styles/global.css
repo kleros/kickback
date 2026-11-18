@@ -5,6 +5,7 @@
 @import "./components.css";
 @import "./event.css";
 @import "./organise.css";
+@import "./home.css";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
