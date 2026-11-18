@@ -15,6 +15,10 @@
       "types": "./local/index.ts",
       "default": "./local/index.ts"
     },
+    "./protocol": {
+      "types": "./local/protocol.ts",
+      "default": "./local/protocol.ts"
+    },
     "./kleros": {
       "types": "./abis/kleros.ts",
       "default": "./abis/kleros.ts"

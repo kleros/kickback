@@ -1,4 +1,4 @@
-import { kickbackAbi } from "@kickback/contracts";
+import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import {
   BaseError,
   ContractFunctionRevertedError,
@@ -38,57 +38,51 @@ export const KLEROS_ERRORS: readonly (readonly [RegExp, string])[] = [
 ];
 
 const eth = (x: unknown) => `${fmt(BigInt(x as bigint))} ETH`;
-const REDO_DEPOSITS =
-  'Press "Load deposits" again (and "Check the Luma list" again if you used it), then check the ticked guests before you try again.';
-const REDO_PLAN = "Build the attendance list again.";
 
-/** Plain words for each TruthPaysKickback custom error, from its decoded arguments. */
+/** Plain words for each PresenceEvent / PresenceFactory custom error, from its decoded arguments. */
 export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => string> = {
-  NotOwner: () => "Only the owner wallet can do this. Switch to the owner account in your wallet.",
-  NotPendingOwner: () => "This wallet was not proposed as the new owner.",
+  AlreadyInitialized: () => "This event is already set up.",
+  NotOwner: () => "Only the event's organiser wallet can do this. Switch to that account in your wallet.",
+  NotPendingOwner: () => "This wallet was not proposed as the new organiser.",
   NotOpen: () =>
-    "The attendance list is already posted, or the event is paid out or cancelled, so this is no longer possible.",
-  NotListed: () => "This is only possible after the attendance list is posted and before the payout.",
+    "The event is no longer taking deposits or changes (the list is closed, or it was paid out or cancelled).",
+  NotListed: () => "This is only possible after the attendance list is closed and before the payout.",
+  ZeroAddress: () => "One of the addresses is empty or zero.",
+  BadConfig: ([f]) => `This event setting is not valid: ${String(f)}.`,
+  TooLate: () => "Too late: this window has closed.",
+  TooEarly: () => "Too early: this is not possible yet. Check the times on the page.",
+  Reentrancy: () => "The contract refused a nested call.",
+  AlreadyStaker: ([x]) => `${x} already has a deposit for this event.`,
+  WasRejected: ([x]) => `The organiser turned ${x} away, so it cannot book again.`,
+  EventFull: ([x]) => `The event is full (${String(x)} spots).`,
+  NotAStaker: ([x]) => `${x} has no deposit in this event.`,
+  DuplicateAttendee: ([x]) => `${x} appears twice in the list.`,
+  NoAttendees: () => "The attendance list is empty: add at least one guest who came, or cancel the event.",
+  NothingToWithdraw: () => "There is nothing to withdraw for this wallet.",
+  TransferFailed: ([x]) =>
+    `The transfer to ${x} did not go through (check the token balance and approval, or the receiving wallet refuses payments). Nothing was sent.`,
+  WrongAmount: ([x, y]) => `The amount must be exactly ${eth(x)} (sent ${eth(y)}).`,
+  TokenEvent: () => "This event takes its deposit in a token, not ETH: use the Book button on the event page.",
   AlreadyAttending: ([x]) => `${x} is already on the attendance list.`,
   AlreadyChallenged: ([x]) => `${x} has already challenged.`,
   NoChallenge: ([x]) => `${x} has not challenged.`,
-  WrongChallengeState: ([x]) => `The challenge of ${x} is not in a state that allows this (see the challenge list).`,
-  WrongDeposit: ([x, y]) => `The ETH deposit must be ${eth(x)} (sent ${eth(y)}).`,
+  WrongChallengeState: ([x]) => `The challenge of ${x} is not at a step that allows this.`,
   ArbitrationCostTooHigh: ([x, y]) =>
-    `The Kleros fee went up since the challenge was opened (now ${eth(x)}, the two deposits cover ${eth(y)}), so a dispute cannot be created. Nothing was sent.`,
-  NotRuled: ([x]) => `Kleros has not ruled yet on the challenge of ${x}.`,
+    `The Kleros fee went up since the challenge was opened (now ${eth(x)}, the two deposits cover ${eth(y)}), so no case can be created. Nothing was sent.`,
+  NotRuled: ([x]) => `Kleros has not given its final ruling yet on the challenge of ${x}.`,
   ChallengesPending: ([x]) =>
-    `${x} challenge(s) are still waiting for a match (each has 1 day). Payouts can be released after that.`,
-  InDispute: ([x]) =>
-    `${x} is already in a Kleros case, so the jurors decide. If they did attend, say so in the case (Send evidence): the jury rules attended when the organiser confirms it.`,
+    `${String(x)} challenge(s) still wait for a match. Payouts can be released once their match window is over.`,
   OnlyNumberedRulings: () => "Kleros returned a ruling this contract does not know. Nothing was changed.",
-  NotEnoughGas: () =>
-    "The transaction ran short of gas while paying someone. Nothing changed. Try again, with a higher gas limit in your wallet if it happens again.",
-  Reentrancy: () => "The contract refused a nested call.",
-  NotSettled: () => "Leftovers can only be collected after the payout or a cancellation.",
-  ZeroAddress: () => "One of the addresses is empty, zero, or the contract itself.",
-  ZeroDeposit: () => "The deposit amount is zero.",
-  BadTimes: () => "The settlement deadline must be at least 7 days after the event start.",
-  BadMetaEvidenceTemplate: () =>
-    "The case description template does not fit the contract: it must name the challenged wallet, use only known placeholders and stay under about 24 KB.",
-  TooLate: () =>
-    "Too late: either the 1-day window is over, or the settlement deadline passed (then each guest can withdraw their own deposit).",
-  TooEarly: () =>
-    "Too early: check the times in the status (list opens at the event start; payouts and settling wait for the windows to end).",
-  AlreadyRegistered: ([x]) => `${x} is already registered. ${REDO_DEPOSITS}`,
-  NotAStaker: ([x]) => `${x} is not a registered staker. ${REDO_DEPOSITS}`,
-  CannotReject: ([x]) => `${x} cannot be refunded: they were already refunded or paid out.`,
-  DuplicateAttendee: ([x]) => `${x} appears twice in the attendee list. ${REDO_PLAN}`,
-  NoAttendees: () => "The attendee list is empty.",
-  ShareMismatch: ([x, y]) =>
-    `The payout per person changed (you confirmed ${eth(x)}, it is now ${eth(y)}). ${REDO_PLAN}`,
-  InsufficientBalance: ([x, y]) =>
-    `Not enough spare ETH in the contract for this (needs ${eth(x)} in total, has ${eth(y)}). A deposit may be missing; load the deposits again and check them.`,
-  NothingToClaim: () => "There is nothing to claim for this wallet.",
+  InDispute: ([x]) => `${x} is in a Kleros case, so the jurors decide; this cannot be changed by hand.`,
   NotAppealable: ([x]) => `The challenge of ${x} is not in a Kleros case that can be appealed.`,
-  TransferFailed: ([x]) =>
-    `The transfer to ${x} did not go through: an address that refuses ETH (some smart-contract wallets do), or, when returning tokens, a token contract that refused (check the token address and the amount the contract holds). Nothing was sent.`,
+  NotEnoughGas: () =>
+    "The transaction ran short of gas while paying someone. Nothing changed. Try again, with a higher gas limit if it happens again.",
+  SpareTooLow: ([x]) => `The contract only holds ${eth(x)} of spare money.`,
+  BadTemplate: () => "The case description template does not fit the contract.",
+  NotAnImplementation: () => "That address is not a Proof of Presence event implementation.",
 };
+
+const PRESENCE_ERRORS_ABI: Abi = [...presenceEventAbi, ...presenceFactoryAbi].filter((x) => x.type === "error");
 
 type Decoded = { errorName: string; args: readonly unknown[] };
 
@@ -137,11 +131,11 @@ function decodeRevert(e: unknown, abi: Abi): Decoded | null {
 }
 
 /**
- * Plain-language text for an error from a read, a dry run or a send: a TruthPaysKickback custom error
+ * Plain-language text for an error from a read, a dry run or a send: a PresenceEvent custom error
  * (decoded with `abi`), a Kleros reason string, a wallet rejection, a rate limit, insufficient funds
  * or a timeout; otherwise the error's own message.
  */
-export function errorText(error: unknown, abi: Abi = kickbackAbi): string {
+export function errorText(error: unknown, abi: Abi = PRESENCE_ERRORS_ABI): string {
   const objs = chain(error);
   const codes = objs.map((o) => o.code);
   const texts = (keys: string[]) =>

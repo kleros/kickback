@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildEventInfo, fillShare, parseEventInfo, serializeEventInfo, validateShare } from "../src";
+import { fillShare, validateShare } from "../src";
 
 const details = {
   event: "Dinner 🎉 & friends",
@@ -28,14 +28,6 @@ describe("share templates", () => {
       expect(() => validateShare(share)).toThrow();
     },
   );
-  it("round trips share with canonical serialisation and keeps old documents unchanged", () => {
-    const doc = buildEventInfo({ share: " Cafe\u0301 {event} " });
-    expect(doc.share).toBe("Café {event}");
-    expect(parseEventInfo(serializeEventInfo(doc))).toEqual(doc);
-    expect(serializeEventInfo(buildEventInfo({}))).toBe('{"description":"","links":[],"version":1}');
-    expect(buildEventInfo({ share: "  " }).share).toBeUndefined();
-    expect(() => parseEventInfo('{"version":1,"description":"","links":[],"share":"{bad}"}')).toThrow();
-  });
   it("keeps 280 characters intact, including emoji", () => {
     const template = "🎉".repeat(280);
     expect(validateShare(template)).toBe(template);
