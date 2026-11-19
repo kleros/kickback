@@ -16,4 +16,6 @@ yarn dev
 
 Any Next.js host, with the app directory `apps/web` and the variable `NEXT_PUBLIC_REOWN_PROJECT_ID` (a Reown project that allows the site's domain). Production builds default to Ethereum mainnet. `apps/web/netlify.toml` holds the Netlify settings; on Vercel set the root directory to `apps/web`.
 
+The live site is the Vercel project `kleros-kickback`: the `main` branch deploys to production (and to kickback.kleros.io once its DNS points there); other branches get preview links.
+
 Powered by Kleros. MIT licence.
