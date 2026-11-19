@@ -70,13 +70,14 @@ export function HomeScreen({ events }: { events: ReactNode }) {
       <section className="home-hero">
         <div className="home-hero-text">
           <h1 className="home-title">
-            Signups are free.
-            <span>Showing up pays.</span>
+            1,000 signups. 100 guests.
+            <span>Not anymore.</span>
           </h1>
           <p className="home-lede">
-            Web3 events get thousands of signups and a fraction of the guests. Here, booking takes a small deposit, so
-            every spot is a real commitment and organisers can plan for the people who actually come. Everyone who shows
-            up gets their deposit back, plus a share of what the no-shows left behind.
+            You book the venue, order the food and print the badges for a crowd that never comes. Here, every guest
+            books with a small deposit, so a signup becomes a promise. Show up, and you get it back plus a cut of the
+            no-shows&apos; deposits. Don&apos;t, and you pay for the empty seat. You plan for the room you will really
+            have.
           </p>
           <div className="home-actions">
             <Link href={paths.organiseNew.getHref()} className="kb-btn" data-testid="home-create">
