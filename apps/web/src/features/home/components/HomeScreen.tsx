@@ -70,14 +70,14 @@ export function HomeScreen({ events }: { events: ReactNode }) {
       <section className="home-hero">
         <div className="home-hero-text">
           <h1 className="home-title">
-            1,000 signups. 100 guests.
-            <span>Not anymore.</span>
+            Turn signups into guests.
+            <span>Reward the people who show up.</span>
           </h1>
           <p className="home-lede">
-            You book the venue, order the food and print the badges for a crowd that never comes. Here, every guest
-            books with a small deposit, so a signup becomes a promise. Show up, and you get it back plus a cut of the
-            no-shows&apos; deposits. Don&apos;t, and you pay for the empty seat. You plan for the room you will really
-            have.
+            Web3 events get thousands of signups and only a fraction of the guests actually show up. Proof of Presence
+            asks every guest for a small refundable deposit, which turns each booking into a real commitment. Everyone
+            who attends gets their deposit back plus a share of the no-shows&apos; deposits, and a fair attendance list
+            backed by Kleros settles any dispute.
           </p>
           <div className="home-actions">
             <Link href={paths.organiseNew.getHref()} className="kb-btn" data-testid="home-create">
