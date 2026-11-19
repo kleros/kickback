@@ -1,12 +1,18 @@
-# Netlify: base directory = repo root, package directory = apps/web.
-# Set NEXT_PUBLIC_REOWN_PROJECT_ID (and optionally NEXT_PUBLIC_MAINNET_RPC, NEXT_PUBLIC_SITE_URL) in the site's environment.
+# Netlify: base directory = repo root, package directory = apps/web. Yarn 4 comes from "packageManager" in the
+# root package.json (Netlify enables Corepack for it). Every variable below is public: NEXT_PUBLIC_* values are
+# built into the pages anyway. No secrets are needed.
 [build]
   command = "yarn turbo run build --filter=web"
   publish = "apps/web/.next"
 
 [build.environment]
   NODE_VERSION = "22"
+  COREPACK_ENABLE_DOWNLOAD_PROMPT = "0"
   NEXT_PUBLIC_CHAIN = "mainnet"
+  NEXT_PUBLIC_SITE_URL = "https://kickback.kleros.io"
+  # Reown (WalletConnect) project "Kickback" in the Kleros team on dashboard.reown.com; a public id
+  NEXT_PUBLIC_REOWN_PROJECT_ID = "39591871e9a25eca838a656347021634"
+  # Optional: NEXT_PUBLIC_MAINNET_RPC, an Ethereum RPC URL (default https://rpc.mevblocker.io)
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
