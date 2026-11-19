@@ -242,7 +242,7 @@ export function depositState(input: DepositInput): DepositView {
     receipt: receipt(tx, when),
     action: "copy",
     button: "Copy transaction link",
-    foot: "You're in. Come to the event to get it back.",
+    foot: "Show up to get it back.",
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);
@@ -345,7 +345,7 @@ export function depositState(input: DepositInput): DepositView {
         "claim",
         "Ready to claim",
         value,
-        [{ text: "Thanks for coming. Here is your share of the pool." }, ...both],
+        [{ text: "Thanks for coming. Here is your share." }, ...both],
         unit,
       );
     return moneyAction(
@@ -399,7 +399,7 @@ export function depositState(input: DepositInput): DepositView {
       ]);
     if (challenge?.state === 2)
       return readOnly("disputed", "With Kleros", [
-        { text: "Kleros jurors are deciding if you came.", tone: "pri", link: kleros(challenge.arbitratorDisputeID) },
+        { text: "Kleros jurors are deciding.", tone: "pri", link: kleros(challenge.arbitratorDisputeID) },
         { text: "Send your proof on the case page." },
       ]);
     if (ruledAbsent)
@@ -428,7 +428,7 @@ export function depositState(input: DepositInput): DepositView {
         action: "challenge",
         button: "Challenge the list",
         disabled: input.busy || (input.balance !== undefined && input.balance < cost),
-        foot: "The organiser can match it and Kleros jurors decide. The winner's side is refunded.",
+        foot: "If the organiser disagrees, Kleros jurors decide.",
         shake: error !== undefined,
       });
     }
@@ -713,7 +713,7 @@ export function depositState(input: DepositInput): DepositView {
       label: "Refundable deposit",
       lines: notice
         ? [notice, { text: where }]
-        : [{ text: `Step 1 of 2: allow the event to take exactly ${amt} ${sym}.`, tone: "pri" }, { text: where }],
+        : [{ text: `Step 1 of 2: approve exactly ${amt} ${sym}.`, tone: "pri" }, { text: where }],
       action: "approve",
       button: `Allow ${amt} ${sym}`,
       disabled: input.busy || input.allowance === undefined,
