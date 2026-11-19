@@ -17,9 +17,15 @@
   font-size: clamp(2rem, 4.6vw, 2.8rem);
   line-height: 1.08;
 }
+/* two lines, one phrase each: the size follows the text column so neither phrase wraps */
+.home-hero-text {
+  container-type: inline-size;
+}
 .home-title {
-  font-size: clamp(2.2rem, 5vw, 3.4rem);
-  line-height: 1.05;
+  font-size: min(2.6rem, 8cqi);
+  line-height: 1.12;
+  white-space: nowrap;
+  text-wrap: nowrap;
 }
 .home-title span {
   font-style: italic;
