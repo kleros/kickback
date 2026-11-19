@@ -12,8 +12,8 @@ import { useSend } from "@/lib/web3/send";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
-import { depositsKey, eventKey } from "../api/useEvent";
 import { moneyKey } from "./useGuestMoney";
+import { depositsKey, eventKey } from "../api/useEvent";
 
 /**
  * Sends deposit(), with value = depositAmount for an ETH event and no ETH for a token event (approved first).

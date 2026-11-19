@@ -1,36 +1,79 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useState } from "react";
 
+import { errorText } from "@kickback/core";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAddressEqual, type Address } from "viem";
-import { useAccount } from "wagmi";
+import { useAccount, usePublicClient } from "wagmi";
+
+import { STALE_TIME } from "@/lib/query";
+import { useSend, useSendBusy } from "@/lib/web3/send";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
-import { networkFor } from "@/config/kleros";
 
-import { useEventOverview } from "./useEventOverview";
-import { readDeployments } from "../model/create";
-import type { EventScope } from "../model/shared";
+import { phaseOf } from "../model/phase";
+import { readOrganiser } from "../operations/read";
 
-/** The block deposits are read from: the link's `from`, else this browser's record of the deploy. */
-export function deployBlockFor(address: Address, from: string | undefined): number | undefined {
-  if (from !== undefined && /^\d+$/.test(from)) return Number(from);
-  return readDeployments().find((row) => row.chainId === DEFAULT_CHAIN_ID && isAddressEqual(row.address, address))
-    ?.block;
-}
+export const organiserKey = (address: string) => ["organise", DEFAULT_CHAIN_ID, address.toLowerCase()] as const;
 
-/** One event's overview, read once for the shell and every tab under it. */
-export function useOrganiserEventSource(address: Address, from?: string) {
-  const deployBlock = useMemo(() => deployBlockFor(address, from), [address, from]);
-  const scope: EventScope = useMemo(
-    () => ({ chainId: DEFAULT_CHAIN_ID, address, deployBlock }),
-    [address, deployBlock],
-  );
-  const network = useMemo(() => networkFor(DEFAULT_CHAIN_ID), []);
-  const overview = useEventOverview(scope, network);
+/** One event, read for the shell and every tab under it, plus the one way its tabs send. */
+export function useOrganiserEventSource(address: Address) {
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  const queries = useQueryClient();
+  const overview = useQuery({
+    queryKey: organiserKey(address),
+    enabled: client !== undefined,
+    staleTime: STALE_TIME.live,
+    refetchInterval: 15_000,
+    retry: 1,
+    queryFn: () => readOrganiser(client!, address),
+  });
   const { address: account } = useAccount();
-  const isOwner = !!account && !!overview.data && isAddressEqual(account, overview.data.event.owner);
-  return { scope, overview, isOwner, connected: !!account };
+  const data = overview.data;
+  const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
+  const phase = data ? phaseOf(data.event, data.now) : null;
+
+  const [running, setRunning] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; at: number } | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const busy = useSendBusy();
+  const send = useSend({
+    onSuccess: () => {
+      void queries.invalidateQueries({ queryKey: organiserKey(address) });
+      void queries.invalidateQueries({ queryKey: ["event", DEFAULT_CHAIN_ID, address.toLowerCase()] });
+    },
+  });
+
+  /** Sends one request under a label ("Turn away 2"); `success` is said when it is confirmed. */
+  const run = (label: string, request: () => { to: Address; data: `0x${string}`; value: bigint }, success: string) => {
+    setRunning(label);
+    setError(null);
+    setDone(null);
+    send.mutate(
+      { expectedAccount: account, prepare: async () => request() },
+      {
+        onSuccess: () => setDone(success),
+        onError: (e) => setError({ text: e.message || errorText(e), at: Date.now() }),
+        onSettled: () => setRunning(null),
+      },
+    );
+  };
+
+  return {
+    address,
+    overview,
+    phase,
+    isOwner,
+    connected: !!account,
+    account,
+    run,
+    running,
+    busy: busy || running !== null,
+    error,
+    done,
+    clearMessages: () => (setError(null), setDone(null)),
+  };
 }
 
 export type OrganiserEvent = ReturnType<typeof useOrganiserEventSource>;

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { kickbackAbi } from "@kickback/contracts";
+import { presenceEventAbi } from "@kickback/contracts";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
 import { createPublicClient, custom, encodeErrorResult, type Address, type Hash } from "viem";
@@ -102,7 +102,7 @@ describe("useSend", () => {
       throw {
         code: 3,
         message: "execution reverted",
-        data: encodeErrorResult({ abi: kickbackAbi, errorName: "TooEarly" }),
+        data: encodeErrorResult({ abi: presenceEventAbi, errorName: "TooEarly" }),
       };
     });
     wagmiCore.getPublicClient.mockReturnValue(
@@ -112,7 +112,7 @@ describe("useSend", () => {
     await expect(act(() => result.current.mutateAsync(deposit))).rejects.toMatchObject({
       kind: "refused",
       message:
-        "This would fail, so nothing was sent: Too early: check the times in the status (list opens at the event start; payouts and settling wait for the windows to end).",
+        "This would fail, so nothing was sent: Too early: this is not possible yet. Check the times on the page.",
     });
     expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ method: "eth_call" }), undefined);
     expect(wagmiCore.sendTransaction).not.toHaveBeenCalled();

@@ -49,7 +49,11 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
           </span>
           <span className="home-event-side">
             <span className="home-event-amount kb-num">
-              {data ? `${unitsText(data.depositAmount, data.decimals)} ${data.symbol}` : event.isError ? null : <i className="home-skel w-16" />}
+              {data ? (
+                `${unitsText(data.depositAmount, data.decimals)} ${data.symbol}`
+              ) : event.isError ? null : (
+                <i className="home-skel w-16" />
+              )}
             </span>
             <span className="home-event-meta">
               {row.mine && <span className="kb-chip">Yours</span>}

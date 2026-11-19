@@ -1,20 +1,23 @@
-import { fmt } from "@kickback/core";
+import { decimalText } from "@kickback/core";
 import { isAddress, type Address } from "viem";
 
 import type { Phase } from "./phase";
 import type { Gate } from "./shared";
 
-/** An amount in wei as the organiser reads it: "0.011186 ETH". */
-export const ethText = (units: bigint | null | undefined) =>
-  units === null || units === undefined ? "—" : `${fmt(units).replace(/\.0$/, "")} ETH`;
+/** An amount as the organiser reads it: "0.011186 ETH", "25 USDC". */
+export const assetText = (
+  units: bigint | null | undefined,
+  asset: { symbol: string; decimals: number } = { symbol: "ETH", decimals: 18 },
+) => (units === null || units === undefined ? "—" : `${decimalText(units, asset.decimals)} ${asset.symbol}`);
+export const ethText = (units: bigint | null | undefined) => assetText(units);
 
 export type Tone = "live" | "ok" | "warn" | "end";
 
 export const PHASE_TONE: Record<Phase, Tone> = {
-  "Deposits open": "live",
-  "Waiting for the event": "live",
+  "Booking open": "live",
   "Attendance due": "warn",
-  "List posted": "live",
+  "Adding names": "warn",
+  "Challenge window": "live",
   "Payouts ready": "ok",
   "Paid out": "end",
   Cancelled: "end",
@@ -32,9 +35,6 @@ export function openable(value: Gate, ...askedInDialog: string[]): Gate {
     ? { enabled: true, lockedReason: null }
     : value;
 }
-
-/** Challenges are counted, never handled here (D8). */
-export const challengeText = (open: number) => (open === 0 ? "None open" : `${open} open · handled in a later release`);
 
 export function openAddress(input: string): { address: Address | null; error: string | null } {
   const text = input.trim();

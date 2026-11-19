@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { paths } from "@/config/paths";
 
-import type { BrowserDeployment } from "../model/create";
+import type { BrowserDeployment } from "../model/browserEvents";
 
 /** Events this browser created: a convenience list, read from local storage only. */
 export function BrowserEvents({ events }: { events: readonly BrowserDeployment[] }) {

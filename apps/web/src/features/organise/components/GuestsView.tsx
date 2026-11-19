@@ -1,229 +1,183 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
 
-import { Button } from "react-aria-components";
-
-import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 
-import { ConfirmDialog, ErrorLine, FilePick } from "./parts";
-import { useGuestsScreen, type GuestFilter, type GuestsScreenModel } from "../hooks/useGuestsScreen";
+import { DEFAULT_CHAIN } from "@/config/chains";
+
+import { Messages } from "./Messages";
+import { ConfirmDialog } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import { ethText, shortHex, statusTone } from "../model/view";
+import { assetText, shortHex, TYPED_WORDS } from "../model/view";
+import type { GuestRow } from "../operations/read";
+import { tx } from "../operations/tx";
 
-const FILTERS: { key: GuestFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "register", label: "To register" },
-  { key: "refund", label: "Refundable" },
-  { key: "look", label: "Needs a look" },
-];
+const STATUS = ["Not booked", "Booked", "Turned away", "Refunded"] as const;
+const TONE = ["end", "ok", "warn", "end"] as const;
 
-type Row = GuestsScreenModel["rows"][number];
-
-function GuestRow({ row, setTick, locked }: { row: Row; setTick: GuestsScreenModel["setTick"]; locked: boolean }) {
-  const tick = (kind: "register" | "refund") => {
-    const gate = kind === "register" ? row.canRegister : row.canRefund;
-    return (
-      <label className="og-tick" title={gate.lockedReason ?? undefined}>
-        <input
-          type="checkbox"
-          checked={row.tick === kind}
-          disabled={!gate.enabled || locked}
-          aria-label={`${kind === "register" ? "Register" : "Refund"} ${row.wallet}`}
-          onChange={(event) => setTick(row.id, event.currentTarget.checked ? kind : null)}
-        />
-        <span>{kind === "register" ? "Register" : "Refund"}</span>
-      </label>
-    );
-  };
-  return (
-    <div className="og-row" data-testid="guest-row" data-wallet={row.wallet.toLowerCase()}>
-      <div className="og-row-main">
-        <span className="og-cell-wallet">{shortHex(row.wallet)}</span>
-        <span className="og-cell-hide kb-num">{ethText(row.amount)}</span>
-        <span className="og-cell-hide">{row.name || "—"}</span>
-        <span className="og-cell-status">
-          <span className="og-dot" data-tone={statusTone(row.status)} aria-hidden />
-          <span>{row.status}</span>
-        </span>
-        <span className="og-ticks">
-          {tick("register")}
-          {tick("refund")}
-          {row.returnHref && !locked && (
-            <Link className="kb-link" href={row.returnHref}>{`Return ${ethText(row.returnAmount)}`}</Link>
-          )}
-        </span>
-      </div>
-      <Disclosure title="Details">
-        <dl className="og-detail">
-          <div>
-            <dt>Wallet</dt>
-            <dd className="og-mono">{row.wallet}</dd>
-          </div>
-          <div>
-            <dt>Transaction</dt>
-            <dd>
-              {row.explorer ? (
-                <a className="kb-link og-mono" href={row.explorer} target="_blank" rel="noreferrer">
-                  {shortHex(row.tx, 6)}
-                </a>
-              ) : (
-                <span className="og-mono">{row.tx ? shortHex(row.tx, 6) : "—"}</span>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt>Amount · sent</dt>
-            <dd>
-              {ethText(row.amount)} · {row.sentAt ?? "—"}
-            </dd>
-          </div>
-          <div>
-            <dt>Luma</dt>
-            <dd>{row.name || "Not on the Luma list"}</dd>
-          </div>
-          {!row.canRegister.enabled && (
-            <div>
-              <dt>Register</dt>
-              <dd>{row.canRegister.lockedReason}</dd>
-            </div>
-          )}
-        </dl>
-      </Disclosure>
-    </div>
-  );
-}
-
-export function GuestsView({ model }: { model: GuestsScreenModel }) {
-  const selected = model.toRegister + model.toRefund;
-  const locked = model.busy || model.running !== null;
-  return (
-    <div className="flex flex-col gap-5" data-testid="guests">
-      <h2 className="kb-h1">Guests</h2>
-      <FilePick
-        label="Load the Luma guest list"
-        hint="Export the guest CSV from Luma"
-        file={model.file ? { name: model.file, rows: model.total } : null}
-        onFile={model.loadCsv}
-        testId="luma-csv"
-      />
-      {model.csvLoaded && (
-        <div className="og-actions">
-          <Button className="kb-link" onPress={model.checkAgain} isDisabled={model.checking}>
-            {model.checking ? "Checking…" : "Check again"}
-          </Button>
-        </div>
-      )}
-      {model.readError && <ErrorLine error={model.readError} />}
-      {model.loading ? (
-        <p className="og-note">Reading deposits…</p>
-      ) : model.total === 0 ? (
-        <GlassCard className="og-card" data-testid="guests-empty">
-          <h3 className="og-h2">No deposits yet</h3>
-          <p className="og-lede">Deposits show here as guests send them. Load the Luma list to match them.</p>
-        </GlassCard>
-      ) : (
-        <>
-          <div className="og-filters" role="group" aria-label="Filter guests">
-            {FILTERS.map((f) => (
-              <Button
-                key={f.key}
-                className="og-filter"
-                aria-pressed={model.filter === f.key}
-                data-selected={model.filter === f.key ? "" : undefined}
-                onPress={() => model.setFilter(f.key)}
-              >
-                {`${f.label} ${model.counts[f.key]}`}
-              </Button>
-            ))}
-          </div>
-          <div className="og-table" role="table" aria-label="Deposits">
-            <div className="og-thead" role="row">
-              <span>Wallet</span>
-              <span>Amount</span>
-              <span>Luma</span>
-              <span>Verdict</span>
-              <span>Tick</span>
-            </div>
-            {model.rows.map((row) => (
-              <GuestRow key={row.id} row={row} setTick={model.setTick} locked={locked} />
-            ))}
-          </div>
-        </>
-      )}
-      {model.frozen && (
-        <ConfirmDialog
-          isOpen
-          title={model.frozen.action === "register" ? "Register guests" : "Refund guests"}
-          intro="These are the wallets and figures you sign."
-          words={[]}
-          figures={[
-            { label: "Count", value: String(model.frozen.wallets.length) },
-            ...(model.frozen.action === "refund" ? [{ label: "Total ETH", value: ethText(model.frozen.total) }] : []),
-          ]}
-          extra={
-            <ul className="og-mono" style={{ overflowWrap: "anywhere" }}>
-              {model.frozen.wallets.map((wallet) => (
-                <li key={wallet}>{wallet}</li>
-              ))}
-            </ul>
-          }
-          action={`${model.frozen.action === "register" ? "Register" : "Refund"} ${model.frozen.wallets.length}`}
-          busy={locked}
-          error={model.error?.text ?? null}
-          onClose={model.close}
-          onConfirm={() => void model.confirm()}
-        />
-      )}
-      <ErrorLine error={model.error} />
-      {model.done && (
-        <p className="og-success" role="status" data-testid="done">
-          {model.done}
-        </p>
-      )}
-      <GlassCard className="og-selbar og-thumb">
-        <span className="og-note" data-testid="selection">
-          {selected} selected · {model.total} deposits
-        </span>
-        <div className="og-actions">
-          <GradientButton
-            className="is-quiet"
-            isDisabled={!model.toRefund || locked}
-            isPending={model.running === "refund"}
-            glyph={model.running === "refund" ? "arc" : undefined}
-            onPress={model.refund}
-          >
-            {`Refund ${model.toRefund}`}
-          </GradientButton>
-          <GradientButton
-            isDisabled={!model.toRegister || locked}
-            isPending={model.running === "register"}
-            glyph={model.running === "register" ? "arc" : undefined}
-            onPress={model.register}
-          >
-            {`Register ${model.toRegister}`}
-          </GradientButton>
-        </div>
-      </GlassCard>
-    </div>
-  );
+function statusText(row: GuestRow, phase: number) {
+  if (row.status !== 1) return STATUS[row.status] ?? "Unknown";
+  if (phase === 0) return "Booked";
+  if (row.attended) return "Attended";
+  if (row.challenge?.state === 1) return "Challenged";
+  if (row.challenge?.state === 2) return "With Kleros";
+  return "Not on the list";
 }
 
 export function GuestsScreen() {
-  const { overview, scope } = useOrganiserEvent();
-  if (!overview.data) return <p className="og-note">Reading the event…</p>;
-  return <GuestsLoaded cfg={overview.data.cfg} scope={scope} />;
-}
+  const event = useOrganiserEvent();
+  const [ticked, setTicked] = useState<Set<string>>(new Set());
+  const [confirm, setConfirm] = useState<"reject" | "cancel" | null>(null);
+  const data = event.overview.data;
+  if (!data) return <p className="og-note">Reading the event…</p>;
+  const info = data.event;
+  const open = info.phase === 0 && data.now <= info.claimDeadline;
+  const canAct = event.isOwner && open && !event.busy;
+  const chosen = data.guests.filter((g) => ticked.has(g.wallet.toLowerCase()) && g.status === 1);
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  const toggle = (wallet: string, on: boolean) => {
+    const next = new Set(ticked);
+    if (on) next.add(wallet.toLowerCase());
+    else next.delete(wallet.toLowerCase());
+    setTicked(next);
+  };
 
-function GuestsLoaded({
-  cfg,
-  scope,
-}: {
-  cfg: Parameters<typeof useGuestsScreen>[0];
-  scope: Parameters<typeof useGuestsScreen>[1];
-}) {
-  const model = useGuestsScreen(cfg, scope);
-  return <GuestsView model={model} />;
+  return (
+    <div className="flex flex-col gap-5" data-testid="guests">
+      <div className="flex flex-col gap-1">
+        <h2 className="kb-h1">Guests</h2>
+        <p className="og-lede">
+          A deposit is a booking. Turn away anyone who should not come: they get their{" "}
+          {assetText(info.depositAmount, info)} back in full and cannot book again.
+        </p>
+      </div>
+      {data.guests.length === 0 ? (
+        <GlassCard className="og-card" data-testid="guests-empty">
+          <h3 className="og-h2">No bookings yet</h3>
+          <p className="og-lede">Guests show here as soon as they deposit on the event page.</p>
+        </GlassCard>
+      ) : (
+        <div className="og-table" role="table" aria-label="Guests">
+          <div className="og-thead" role="row">
+            <span>Wallet</span>
+            <span>Deposit</span>
+            <span>Explorer</span>
+            <span>Status</span>
+            <span>Tick</span>
+          </div>
+          {data.guests.map((row) => (
+            <div key={row.wallet} className="og-row" data-testid="guest-row" data-wallet={row.wallet.toLowerCase()}>
+              <div className="og-row-main">
+                <span className="og-cell-wallet og-mono" title={row.wallet}>
+                  {shortHex(row.wallet)}
+                </span>
+                <span className="og-cell-hide kb-num">{assetText(info.depositAmount, info)}</span>
+                <span className="og-cell-hide">
+                  {explorer ? (
+                    <a className="kb-link" href={`${explorer}/address/${row.wallet}`} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  ) : (
+                    "—"
+                  )}
+                </span>
+                <span className="og-cell-status">
+                  <span className="og-dot" data-tone={TONE[row.status] ?? "end"} aria-hidden />
+                  <span>{statusText(row, info.phase)}</span>
+                </span>
+                <span className="og-ticks">
+                  <label className="og-tick">
+                    <input
+                      type="checkbox"
+                      checked={ticked.has(row.wallet.toLowerCase())}
+                      disabled={!canAct || row.status !== 1}
+                      aria-label={`Turn away ${row.wallet}`}
+                      onChange={(e) => toggle(row.wallet, e.currentTarget.checked)}
+                    />
+                    <span>Turn away</span>
+                  </label>
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <Messages event={event} />
+      {!open && <p className="og-note">Guests can only be turned away before the attendance list is posted.</p>}
+      <GlassCard className="og-selbar og-thumb">
+        <span className="og-note" data-testid="selection">
+          {chosen.length} selected · {info.stakerCount} booked
+        </span>
+        <div className="og-actions">
+          <GradientButton className="is-quiet" isDisabled={!canAct} onPress={() => setConfirm("cancel")}>
+            Cancel the event
+          </GradientButton>
+          <GradientButton
+            isDisabled={!canAct || chosen.length === 0}
+            isPending={event.running?.startsWith("Turn away")}
+            glyph={event.running?.startsWith("Turn away") ? "arc" : undefined}
+            onPress={() => setConfirm("reject")}
+          >
+            {`Turn away ${chosen.length}`}
+          </GradientButton>
+        </div>
+      </GlassCard>
+      {confirm === "reject" && (
+        <ConfirmDialog
+          isOpen
+          title="Turn guests away"
+          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot book this event again.`}
+          words={[]}
+          figures={[
+            { label: "Wallets", value: String(chosen.length) },
+            { label: "Refunded", value: assetText(info.depositAmount * BigInt(chosen.length), info) },
+          ]}
+          extra={
+            <ul className="og-mono" style={{ overflowWrap: "anywhere" }}>
+              {chosen.map((g) => (
+                <li key={g.wallet}>{g.wallet}</li>
+              ))}
+            </ul>
+          }
+          action={`Turn away ${chosen.length}`}
+          busy={event.busy}
+          error={null}
+          onClose={() => setConfirm(null)}
+          onConfirm={() => {
+            const wallets = chosen.map((g) => g.wallet);
+            setConfirm(null);
+            setTicked(new Set());
+            event.run(
+              `Turn away ${wallets.length}`,
+              () => tx.reject(info.contract, wallets),
+              `${wallets.length} turned away and refunded.`,
+            );
+          }}
+        />
+      )}
+      {confirm === "cancel" && (
+        <ConfirmDialog
+          isOpen
+          title="Cancel the event"
+          intro="Every booked guest can then withdraw their full deposit. This cannot be undone."
+          words={[TYPED_WORDS.cancel]}
+          figures={[{ label: "Booked guests", value: String(info.stakerCount) }]}
+          action="Cancel the event"
+          busy={event.busy}
+          error={null}
+          onClose={() => setConfirm(null)}
+          onConfirm={() => {
+            setConfirm(null);
+            event.run(
+              "Cancel",
+              () => tx.cancel(info.contract),
+              "The event is cancelled. Guests can withdraw their deposits.",
+            );
+          }}
+        />
+      )}
+    </div>
+  );
 }

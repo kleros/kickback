@@ -17,7 +17,13 @@ export const LOCAL_PROTOCOL: Protocol = {
 /** The first event deploy-local creates: the factory's first clone. */
 export const FIRST_LOCAL_EVENT = getContractAddress({ from: LOCAL_PROTOCOL.factory, nonce: 1n });
 
-type Deployment = { chainId: number; factory: Address; implementation?: Address; fromBlock?: number; disputeResolver?: Address };
+type Deployment = {
+  chainId: number;
+  factory: Address;
+  implementation?: Address;
+  fromBlock?: number;
+  disputeResolver?: Address;
+};
 const deployed = deployments as unknown as Record<string, Deployment | undefined>;
 const fromFile = (key: string): Protocol | null => {
   const d = deployed[key];

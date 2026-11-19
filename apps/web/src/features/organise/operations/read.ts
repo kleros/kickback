@@ -1,132 +1,58 @@
-import { kickbackAbi } from "@kickback/contracts";
-import {
-  checkDeployBlock,
-  contractConfig,
-  errorText,
-  findDeployBlock,
-  incomingDeposits,
-  TX_GAS_CAP,
-  readEvent,
-  type NetworkInput,
-} from "@kickback/core";
-import { encodeFunctionData, zeroAddress, type Address, type PublicClient } from "viem";
+import { presenceEventAbi } from "@kickback/contracts";
+import { challengeOf, type ChallengeInfo } from "@kickback/core";
+import type { Address, PublicClient } from "viem";
 
-import { isKnownArbitratorOn, isKnownResolverOn } from "@/config/kleros";
+import { loadEvent, type KickbackEvent } from "@/lib/presence";
 
-import { pinnedRead } from "./pinned";
-import { releasePlan, type ChallengeFact } from "../model/payout";
-import { gate, type EventScope } from "../model/shared";
+export interface GuestRow {
+  wallet: Address;
+  /** 0 None, 1 Staker (booked), 2 Rejected (turned away), 3 Refunded (withdrew after a cancel or a missed list). */
+  status: number;
+  attended: boolean;
+  challenge?: ChallengeInfo;
+}
 
-export async function readEventState(client: PublicClient, scope: EventScope) {
-  const block = await client.getBlock();
-  if (block.number === null) throw new Error("Wait for a confirmed block.");
-  const blockNumber = block.number;
-  const readContract = pinnedRead(client, blockNumber);
-  const event = await readEvent(
-    { getCode: (args) => client.getCode({ address: args.address, blockNumber }), readContract },
-    scope.address,
-  );
-  const read = { address: scope.address, abi: kickbackAbi, blockNumber } as const;
-  const [registered, attendees, challengeEndsAt, openChallenges, spare, wallets, payoutShare, heldBack] =
-    await Promise.all([
-      client.readContract({ ...read, functionName: "stakerCount" }),
-      client.readContract({ ...read, functionName: "attendeeCount" }),
-      client.readContract({ ...read, functionName: "challengeEndsAt" }),
-      client.readContract({ ...read, functionName: "pendingChallenges" }),
-      client.readContract({ ...read, functionName: "spare" }),
-      client.readContract({ ...read, functionName: "challengers" }),
-      client.readContract({ ...read, functionName: "payoutShare" }),
-      client.readContract({ ...read, functionName: "heldBack" }),
-    ]);
-  const challenges: ChallengeFact[] = await Promise.all(
-    wallets.map(async (wallet) => {
-      const c = await client.readContract({ ...read, functionName: "challenges", args: [wallet] });
-      return { wallet, state: Number(c[0]), matchEndsAt: Number(c[2]), matched: c[1] !== zeroAddress };
-    }),
-  );
+export interface OrganiserState {
+  event: KickbackEvent;
+  /** The latest block's time. */
+  now: number;
+  guests: GuestRow[];
+  /** Booked wallets (status 1). */
+  booked: Address[];
+  attendees: Address[];
+  /** Challenges, oldest first. */
+  challenges: (ChallengeInfo & { wallet: Address })[];
+}
+
+/** Everything the organiser tabs show, read in one round from the latest block. */
+export async function readOrganiser(client: PublicClient, contract: string): Promise<OrganiserState> {
+  const event = await loadEvent(client, contract);
+  const c = { address: event.contract, abi: presenceEventAbi } as const;
+  const [block, stakers, attendees, challengers] = await Promise.all([
+    client.getBlock(),
+    client.readContract({ ...c, functionName: "stakers" }),
+    client.readContract({ ...c, functionName: "attendees" }),
+    client.readContract({ ...c, functionName: "challengers" }),
+  ]);
+  const [statuses, attended, raw] = await Promise.all([
+    Promise.all(stakers.map((s) => client.readContract({ ...c, functionName: "status", args: [s] }))),
+    Promise.all(stakers.map((s) => client.readContract({ ...c, functionName: "attended", args: [s] }))),
+    Promise.all(challengers.map((s) => client.readContract({ ...c, functionName: "challenges", args: [s] }))),
+  ]);
+  const challenges = challengers.map((wallet, i) => ({ wallet, ...challengeOf(raw[i]!) }));
+  const byWallet = new Map(challenges.map((ch) => [ch.wallet.toLowerCase(), ch]));
+  const guests = stakers.map((wallet, i) => ({
+    wallet,
+    status: Number(statuses[i]),
+    attended: attended[i]!,
+    challenge: byWallet.get(wallet.toLowerCase()),
+  }));
   return {
     event,
-    blockNumber,
     now: Number(block.timestamp),
-    registered: Number(registered),
-    attendees: Number(attendees),
-    challengeEndsAt: Number(challengeEndsAt),
-    openChallenges: Number(openChallenges),
-    spare,
+    guests,
+    booked: guests.filter((g) => g.status === 1).map((g) => g.wallet),
+    attendees: [...attendees],
     challenges,
-    payoutShare,
-    heldBack,
-  };
-}
-export type EventState = Awaited<ReturnType<typeof readEventState>>;
-
-export async function readRelease(
-  client: Pick<PublicClient, "call" | "estimateGas">,
-  state: EventState,
-  account?: Address,
-) {
-  const request = {
-    to: state.event.contract,
-    data: encodeFunctionData({ abi: kickbackAbi, functionName: "releasePayouts" }),
-    ...(account ? { account } : {}),
-    blockNumber: state.blockNumber,
-  };
-  const prerequisite =
-    state.event.phase !== 1
-      ? "Post the attendance list first."
-      : state.now <= state.challengeEndsAt
-        ? "The challenge window is still open."
-        : state.challenges.some((c) => c.state === 1 && state.now <= c.matchEndsAt)
-          ? `Challenges are handled in a later release · ${state.openChallenges}`
-          : null;
-  if (prerequisite) return { ...gate(prerequisite), ...releasePlan([], state.now, null) };
-  let dryRunError: string | null = null;
-  try {
-    await client.call(request);
-  } catch (error) {
-    dryRunError = errorText(error);
-  }
-  let estimate: bigint | null = null;
-  try {
-    estimate = await client.estimateGas(request);
-  } catch {
-    /* A failed estimate can require pre-settlement of expired unmatched challenges. */
-  }
-  const plan = releasePlan(state.challenges, state.now, estimate);
-  return {
-    ...gate(
-      plan.needsPreSettlement
-        ? `Challenges are handled in a later release · ${plan.wallets.length}`
-        : (dryRunError ??
-            (estimate === null
-              ? "Could not estimate the payout; try again."
-              : (estimate * 13n) / 10n > TX_GAS_CAP
-                ? "The payout exceeds one transaction's gas limit."
-                : null)),
-    ),
-    ...plan,
-  };
-}
-
-export async function openEvent(client: PublicClient, scope: EventScope, network: NetworkInput) {
-  const state = await readEventState(client, scope);
-  const deployBlock = scope.deployBlock ?? (await findDeployBlock(client, scope.address));
-  if (scope.deployBlock !== undefined) {
-    const result = await checkDeployBlock(client, scope.address, deployBlock);
-    if (!result.confirmed)
-      throw new Error("Could not confirm the deployment block; verify the creation transaction and try again.");
-  }
-  const cfg = contractConfig(state.event, network, deployBlock);
-  const deposits = await incomingDeposits(client, cfg, deployBlock, state.blockNumber);
-  const release = await readRelease(client, state);
-  return {
-    ...state,
-    cfg,
-    deployBlock,
-    deposits: deposits.length,
-    release,
-    verifiedKleros:
-      isKnownResolverOn(scope.chainId, state.event.disputeResolver) &&
-      isKnownArbitratorOn(scope.chainId, state.event.arbitrator),
   };
 }

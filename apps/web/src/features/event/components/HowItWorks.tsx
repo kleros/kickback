@@ -1,8 +1,15 @@
 "use client";
 
-import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
-
-import type { EventClock } from "../model/when";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
@@ -12,6 +19,7 @@ import { HOW_IT_WORKS_ID } from "@/config/paths";
 
 import { unitsText } from "../model/depositState";
 import type { ShareExample } from "../model/share";
+import type { EventClock } from "../model/when";
 import { deadlineText, sameClock, visitorText } from "../model/when";
 
 const DAY = 86_400;
@@ -133,7 +141,7 @@ function BackPanel({ amount }: { amount: string }) {
       <div className="how-caps three">
         <span>
           <b>Deposit</b>
-          {amount}{" "}{unit}
+          {amount} {unit}
         </span>
         <span>
           <b>Attend</b>checked in
@@ -186,7 +194,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         <g className="pop" style={d(900)}>
           <rect x={poolX - 44} y={62} width={88} height={30} rx={12} className="card" />
           <text x={poolX} y={81.5} textAnchor="middle">
-            {pool}{" "}{unit}
+            {pool} {unit}
           </text>
         </g>
         <path
@@ -205,7 +213,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
       </svg>
       <div className="how-caps two">
         <span>
-          <b>{example.attend} attend</b>+{bonus}{" "}{unit} each
+          <b>{example.attend} attend</b>+{bonus} {unit} each
         </span>
         <span>
           <b>
@@ -313,7 +321,8 @@ function TimelinePanel({
           <b>List</b>by the deadline
         </span>
         <span>
-          <b>Challenges</b>{spanText(challengePeriod)}
+          <b>Challenges</b>
+          {spanText(challengePeriod)}
         </span>
         <span>
           <b>Paid out</b>to attendees
@@ -370,30 +379,30 @@ export function HowItWorks({
 }: HowItWorksProps) {
   return (
     <Asset.Provider value={{ unit, decimals }}>
-    <section id={HOW_IT_WORKS_ID} className="kb-how" aria-labelledby="how-title">
-      <h2 id="how-title" className="how-title">
-        How it works
-      </h2>
-      <div className="how-grid">
-        <BackPanel amount={amount} />
-        <SplitPanel example={example} />
-        <ListPanel court={court} />
-        <TimelinePanel
-          eventEnd={eventEnd}
-          claimDeadline={claimDeadline}
-          challengePeriod={challengePeriod}
-          challengeEndsAt={challengeEndsAt}
-          clock={clock}
-        />
-      </div>
-      {depositOpen && (
-        <div className="how-cta">
-          <GradientButton wide onPress={onDeposit} icon={<ArrowUpIcon />}>
-            {`Deposit ${amount} ${unit}`}
-          </GradientButton>
+      <section id={HOW_IT_WORKS_ID} className="kb-how" aria-labelledby="how-title">
+        <h2 id="how-title" className="how-title">
+          How it works
+        </h2>
+        <div className="how-grid">
+          <BackPanel amount={amount} />
+          <SplitPanel example={example} />
+          <ListPanel court={court} />
+          <TimelinePanel
+            eventEnd={eventEnd}
+            claimDeadline={claimDeadline}
+            challengePeriod={challengePeriod}
+            challengeEndsAt={challengeEndsAt}
+            clock={clock}
+          />
         </div>
-      )}
-    </section>
+        {depositOpen && (
+          <div className="how-cta">
+            <GradientButton wide onPress={onDeposit} icon={<ArrowUpIcon />}>
+              {`Deposit ${amount} ${unit}`}
+            </GradientButton>
+          </div>
+        )}
+      </section>
     </Asset.Provider>
   );
 }

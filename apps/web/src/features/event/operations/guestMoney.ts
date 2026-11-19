@@ -16,7 +16,9 @@ export async function readGuestMoney(
     token
       ? client.readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [wallet, contract] })
       : undefined,
-    token ? client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [wallet] }) : undefined,
+    token
+      ? client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [wallet] })
+      : undefined,
   ]);
   return { ...guest, allowance, tokenBalance };
 }
@@ -38,12 +40,24 @@ export async function prepareGuestMoney(
   token?: Address,
 ) {
   if (action === "challenge") {
-    const cost = await client.readContract({ address: contract, abi: presenceEventAbi, functionName: "challengeDeposit" });
+    const cost = await client.readContract({
+      address: contract,
+      abi: presenceEventAbi,
+      functionName: "challengeDeposit",
+    });
     if (cost !== shownAmount) throw new Error("Kleros's fee changed. Check the card and try again.");
-    return { to: contract, value: cost, data: encodeFunctionData({ abi: presenceEventAbi, functionName: "challenge" }) };
+    return {
+      to: contract,
+      value: cost,
+      data: encodeFunctionData({ abi: presenceEventAbi, functionName: "challenge" }),
+    };
   }
   if (action === "approve") {
-    const amount = await client.readContract({ address: contract, abi: presenceEventAbi, functionName: "depositAmount" });
+    const amount = await client.readContract({
+      address: contract,
+      abi: presenceEventAbi,
+      functionName: "depositAmount",
+    });
     if (amount !== shownAmount || !token) throw new Error("The deposit amount changed. Reload the page.");
     // exactly the deposit, never an unlimited allowance
     return {

@@ -2,7 +2,6 @@ import { readFile } from "node:fs/promises";
 
 import type jsQR from "jsqr";
 
-
 import { expect, test } from "../fixtures";
 
 // phones render at 2-3x; at 1x a 224 px QR of a long URL is about 4 px per module, below what jsQR resolves
@@ -19,18 +18,19 @@ for (const theme of ["light", "dark"] as const) {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const image = await qr.screenshot({ scale: "device" });
     await page.addScriptTag({ path: require.resolve("jsqr") });
-    const decode = (png: Buffer) => page.evaluate(async (base64) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${base64}`;
-      await image.decode();
-      const canvas = document.createElement("canvas");
-      canvas.width = image.width;
-      canvas.height = image.height;
-      const context = canvas.getContext("2d")!;
-      context.drawImage(image, 0, 0);
-      const pixels = context.getImageData(0, 0, image.width, image.height);
-      return (window as unknown as { jsQR: typeof jsQR }).jsQR(pixels.data, pixels.width, pixels.height)?.data;
-    }, png.toString("base64"));
+    const decode = (png: Buffer) =>
+      page.evaluate(async (base64) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${base64}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        const pixels = context.getImageData(0, 0, image.width, image.height);
+        return (window as unknown as { jsQR: typeof jsQR }).jsQR(pixels.data, pixels.width, pixels.height)?.data;
+      }, png.toString("base64"));
     const href = await page.getByRole("link", { name: "Open the transaction", exact: true }).getAttribute("href");
     expect(await decode(image)).toBe(href);
     expect(await page.getByTestId("qr-stub").evaluate((el) => getComputedStyle(el).animationName)).toBe("none");

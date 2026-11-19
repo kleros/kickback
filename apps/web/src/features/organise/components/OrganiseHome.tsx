@@ -12,7 +12,7 @@ import { paths } from "@/config/paths";
 
 import { BrowserEvents } from "./BrowserEvents";
 import { ErrorLine } from "./parts";
-import { useBrowserEvents } from "../hooks/useCreateScreen";
+import { useBrowserEvents } from "../hooks/useMyEvents";
 import { openAddress } from "../model/view";
 
 /** Open an event by its contract address, or create one. */

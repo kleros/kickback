@@ -153,16 +153,7 @@ export interface StatusLine {
 }
 
 export type DepositAction =
-  | "connect"
-  | "switch"
-  | "add-chain"
-  | "deposit"
-  | "approve"
-  | "copy"
-  | "none"
-  | "withdraw"
-  | "claim"
-  | "challenge";
+  "connect" | "switch" | "add-chain" | "deposit" | "approve" | "copy" | "none" | "withdraw" | "claim" | "challenge";
 
 export interface DepositView {
   key: DepositStateKey;
@@ -471,7 +462,8 @@ export function depositState(input: DepositInput): DepositView {
   }
 
   if (send.status === "success" && send.hash && connected) return done(send.hash);
-  if (connected && sent?.outcome === "mined" && isDepositRecord(sent)) return done(sent.hash, Math.floor(sent.at / 1000));
+  if (connected && sent?.outcome === "mined" && isDepositRecord(sent))
+    return done(sent.hash, Math.floor(sent.at / 1000));
   // a mined record without call data cannot be told apart from a deposit until the contract answers
   if (connected && input.sent?.data === undefined && input.sent?.outcome === "mined" && guest === undefined)
     return {

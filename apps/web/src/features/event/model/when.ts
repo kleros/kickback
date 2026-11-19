@@ -1,8 +1,6 @@
-/** A fixed clock to show times on: minutes east of UTC, and its name ("IST"). */
-export interface EventClock {
-  offset: number;
-  zone: string;
-}
+import type { EventClock } from "@/lib/presence";
+
+export type { EventClock };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

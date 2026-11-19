@@ -17,7 +17,12 @@ import { prepareGuestMoney, readGuestMoney } from "../operations/guestMoney";
 export const moneyKey = (contract: Address) => ["guest-money", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
 /** The connected wallet's place in the event, and its calls besides the deposit: approve, challenge, withdraw. */
-export function useGuestMoney(contract: Address, token: Address | undefined, depositAmount: bigint, challengeCost: bigint) {
+export function useGuestMoney(
+  contract: Address,
+  token: Address | undefined,
+  depositAmount: bigint,
+  challengeCost: bigint,
+) {
   const { address } = useAccount();
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const queries = useQueryClient();

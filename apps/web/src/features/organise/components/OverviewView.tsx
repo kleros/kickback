@@ -5,91 +5,94 @@ import Link from "next/link";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NumberPop } from "@/components/ui/NumberPop";
 
-import { Figures, Locked } from "./parts";
+import { paths } from "@/config/paths";
+
+import { Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import type { overviewModel } from "../model/phase";
-import { challengeText } from "../model/view";
+import { NEXT_STEP } from "../model/phase";
+import { assetText } from "../model/view";
 
-const tabName = (route: string) => {
-  const last = route.split("/").pop() ?? "";
-  return last.charAt(0).toUpperCase() + last.slice(1);
-};
+const when = (unix: number) =>
+  new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZoneName: "short",
+  }).format(new Date(unix * 1000));
 
-export type OverviewData = ReturnType<typeof overviewModel> & { verifiedKleros: boolean };
-
-export function OverviewView({
-  data,
-  court,
-  connected = true,
-  from,
-}: {
-  data: OverviewData;
-  court: string;
-  connected?: boolean;
-  from?: number;
-}) {
-  const { nextStep, counts, phase, deadlines } = data;
-  const when =
-    phase === "Deposits open" || phase === "Waiting for the event"
-      ? `Deposits open until ${deadlines.depositsClose.text}`
-      : phase === "Attendance due" || phase === "Past the deadline"
-        ? `Attendance due by ${deadlines.attendanceDue.text}`
-        : phase === "List posted" && deadlines.challengeEnds
-          ? `Challenges close ${deadlines.challengeEnds.text}`
+export function OverviewScreen({ court }: { court: string }) {
+  const { overview, phase, address } = useOrganiserEvent();
+  const data = overview.data;
+  if (!data || !phase) return <p className="og-note">Reading the event…</p>;
+  const { event } = data;
+  const step = NEXT_STEP[phase];
+  const deadline =
+    phase === "Booking open"
+      ? `Bookings open until ${when(event.eventEnd)}`
+      : phase === "Attendance due" || phase === "Adding names"
+        ? `Attendance list due by ${when(event.claimDeadline)}`
+        : phase === "Challenge window"
+          ? `Challenges close ${when(event.challengeEndsAt)}`
           : null;
+  const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
       <div className="flex flex-col gap-1">
         <p className="og-hero-phase" data-testid="overview-phase">
           {phase}
         </p>
-        {when && <p className="og-lede">{when}</p>}
+        {deadline && <p className="og-lede">{deadline}</p>}
       </div>
       <GlassCard as="section" className="og-card" data-testid="next-step">
         <span className="og-kicker">Next</span>
         <div className="flex flex-col gap-1">
-          <h2 className="og-h2">{nextStep.title}</h2>
-          <p className="og-lede">{nextStep.detail}</p>
+          <h2 className="og-h2">{step.title}</h2>
+          <p className="og-lede">{step.detail}</p>
         </div>
-        {nextStep.actionRoute && (
+        {step.tab && (
           <div className="og-actions">
             <Link
-              href={from === undefined ? nextStep.actionRoute : `${nextStep.actionRoute}?from=${from}`}
-              className={nextStep.lockedReason || !connected ? "kb-btn is-quiet" : "kb-btn"}
+              href={paths.organiseEvent.getHref(address, undefined, step.tab)}
+              className="kb-btn"
               data-testid="next-action"
             >
-              {nextStep.lockedReason ? `Open ${tabName(nextStep.actionRoute)}` : nextStep.title}
+              {step.title}
             </Link>
-            <Locked gate={{ enabled: !nextStep.lockedReason, lockedReason: nextStep.lockedReason }} />
           </div>
-        )}
-        {!nextStep.actionRoute && nextStep.lockedReason && (
-          <Locked gate={{ enabled: false, lockedReason: nextStep.lockedReason }} />
         )}
       </GlassCard>
       <Figures
         big
         testId="counts"
         rows={[
-          { label: "Deposits", value: <NumberPop value={String(counts.deposits)} still /> },
-          { label: "Registered", value: <NumberPop value={String(counts.registered)} still /> },
+          { label: "Booked", value: <NumberPop value={String(event.stakerCount)} still /> },
           {
             label: "Attendees",
-            value: counts.attendees === null ? "—" : <NumberPop value={String(counts.attendees)} still />,
+            value:
+              event.phase === 0 || event.phase === 3 ? "—" : <NumberPop value={String(event.attendeeCount)} still />,
           },
+          { label: "Challenges", value: <NumberPop value={String(open)} still /> },
           {
-            label: "Challenges",
-            value: <span className="text-base">{challengeText(counts.openChallenges)}</span>,
+            label: "Pool",
+            value: (
+              <span className="text-base">{assetText(event.depositAmount * BigInt(event.stakerCount), event)}</span>
+            ),
           },
         ]}
       />
-      <p className="og-note">{data.verifiedKleros ? `Verified ${court} contract` : `Court: ${court}`}</p>
+      <Figures
+        rows={[
+          { label: "Deposit", value: assetText(event.depositAmount, event) },
+          { label: "Capacity", value: event.capacity ? String(event.capacity) : "No limit" },
+          { label: "Starts", value: when(event.eventStart) },
+          { label: "Ends · bookings close", value: when(event.eventEnd) },
+          { label: "List due by", value: when(event.claimDeadline) },
+          { label: "Disputes", value: court },
+        ]}
+      />
     </div>
   );
-}
-
-export function OverviewScreen({ court }: { court: string }) {
-  const { overview, connected, scope } = useOrganiserEvent();
-  if (!overview.data) return <p className="og-note">Reading the event…</p>;
-  return <OverviewView data={overview.data} court={court} connected={connected} from={scope.deployBlock} />;
 }

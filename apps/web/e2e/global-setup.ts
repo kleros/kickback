@@ -1,4 +1,4 @@
-import { FIRST_LOCAL_EVENT } from "@/config/event";
+import { FIRST_LOCAL_EVENT } from "@/config/protocol";
 
 import { deploySuiteEvent } from "./utils/localEvent";
 import { assertHardhatNode, assertKickbackApp } from "./utils/servers";

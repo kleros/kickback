@@ -1,118 +1,74 @@
-import { eventClock, renderCase, type EventInfo } from "@kickback/core";
-
-import { gate, type Gate } from "./shared";
+import type { EventInfo } from "@kickback/core";
 
 export type Phase =
-  | "Deposits open"
-  | "Waiting for the event"
+  | "Booking open"
   | "Attendance due"
-  | "List posted"
+  | "Adding names"
+  | "Challenge window"
   | "Payouts ready"
   | "Paid out"
   | "Cancelled"
   | "Past the deadline";
 
-export interface OverviewFacts {
-  deposits: number;
-  registered: number;
-  attendees: number;
-  openChallenges: number;
-  challengeEndsAt: number;
-  spare: bigint;
-  release: Gate;
+/** The event's step in plain words, from the contract's phase and the chain's time. */
+export function phaseOf(
+  event: Pick<EventInfo, "phase" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount">,
+  now: number,
+): Phase {
+  if (event.phase === 3) return "Cancelled";
+  if (event.phase === 2) return "Paid out";
+  if (event.phase === 1) return now <= event.challengeEndsAt ? "Challenge window" : "Payouts ready";
+  if (now > event.claimDeadline) return "Past the deadline";
+  if (now < event.eventEnd) return "Booking open";
+  return event.attendeeCount > 0 ? "Adding names" : "Attendance due";
 }
 
-export function eventDeadline(at: number, clock: { offset: number; zone: string }) {
-  return {
-    at,
-    text: `${new Date((at + clock.offset * 60) * 1000).toISOString().slice(0, 16).replace("T", " ")} ${clock.zone}`,
-  };
+export interface NextStep {
+  title: string;
+  detail: string;
+  /** The tab that does it. */
+  tab: "guests" | "attendance" | "payout" | null;
 }
 
-export function overviewModel(event: EventInfo, now: number, facts: OverviewFacts) {
-  const clock = eventClock(renderCase(event.metaEvidenceTemplate, event.owner, event.contract), event.eventStart) ?? {
-    offset: 0,
-    zone: "UTC",
-  };
-  const deadlines = {
-    depositsClose: eventDeadline(event.eventStart, clock),
-    attendanceDue: eventDeadline(event.claimDeadline, clock),
-    challengeEnds: facts.challengeEndsAt ? eventDeadline(facts.challengeEndsAt, clock) : null,
-  };
-  let phase: Phase;
-  if (event.phase === 3) phase = "Cancelled";
-  else if (event.phase === 2) phase = "Paid out";
-  else if (event.phase === 1) phase = facts.release.enabled ? "Payouts ready" : "List posted";
-  else if (event.phase !== 0) throw new Error("Unknown event phase. Refresh before continuing.");
-  else if (now > event.claimDeadline) phase = "Past the deadline";
-  else if (now >= event.eventStart) phase = "Attendance due";
-  else phase = facts.deposits > facts.registered ? "Deposits open" : "Waiting for the event";
-  const base = `/organise/${event.contract}`;
-  const steps: Record<
-    Phase,
-    { title: string; detail: string; actionRoute: string | null; lockedReason: string | null }
-  > = {
-    "Deposits open": {
-      title: "Check the guests",
-      detail: "Check the Luma list and register approved deposits.",
-      actionRoute: `${base}/guests`,
-      lockedReason: null,
-    },
-    "Waiting for the event": {
-      title: "Wait for the event",
-      detail: "Deposits stay open until the event starts.",
-      actionRoute: `${base}/attendance`,
-      lockedReason: `Posting unlocks ${deadlines.depositsClose.text}.`,
-    },
-    "Attendance due": {
-      title: "Post the attendance list",
-      detail: "Build the list from the check-in CSV and door list, then post it.",
-      actionRoute: `${base}/attendance`,
-      lockedReason: null,
-    },
-    "List posted": {
-      title: "Wait to release payouts",
-      detail: "Guests left off can still challenge during the window.",
-      actionRoute: `${base}/payout`,
-      lockedReason: facts.release.lockedReason,
-    },
-    "Payouts ready": {
-      title: "Release payouts",
-      detail: "Attendees get their deposit back plus their share of the pool.",
-      actionRoute: `${base}/payout`,
-      lockedReason: null,
-    },
-    "Paid out": {
-      title: facts.spare > 0n ? "Check the leftovers" : "Payouts released",
-      detail: facts.spare > 0n ? "Return guests' stray money before collecting leftovers." : "Nothing left to collect.",
-      actionRoute: facts.spare > 0n ? `${base}/payout` : null,
-      lockedReason: null,
-    },
-    Cancelled: {
-      title: "Check remaining deposits",
-      detail: "Registered stakers were refunded. Return any unregistered deposits separately.",
-      actionRoute: `${base}/guests`,
-      lockedReason: null,
-    },
-    "Past the deadline": {
-      title: "Guests can withdraw",
-      detail: "No attendance list was posted before the deadline.",
-      actionRoute: null,
-      lockedReason: "The deadline for posting attendance has passed.",
-    },
-  };
-  return {
-    phase,
-    nextStep: steps[phase],
-    counts: {
-      deposits: facts.deposits,
-      registered: facts.registered,
-      attendees: event.phase === 0 || event.phase === 3 ? null : facts.attendees,
-      openChallenges: facts.openChallenges,
-    },
-    clock,
-    deadlines,
-  };
-}
-
-export const unreadRelease = () => gate("Check the payout dry run first.");
+export const NEXT_STEP: Record<Phase, NextStep> = {
+  "Booking open": {
+    title: "Check who booked",
+    detail: "Guests are in as soon as they deposit. Turn away anyone who should not come: they get a full refund.",
+    tab: "guests",
+  },
+  "Attendance due": {
+    title: "Post the attendance list",
+    detail: "Load the check-in CSV, review who came, and post the list before the deadline.",
+    tab: "attendance",
+  },
+  "Adding names": {
+    title: "Close the list",
+    detail: "Add any missing names, then close the list. Closing starts the challenge window.",
+    tab: "attendance",
+  },
+  "Challenge window": {
+    title: "Answer challenges",
+    detail: "Guests left off the list can challenge. Match a challenge you disagree with and Kleros decides.",
+    tab: "payout",
+  },
+  "Payouts ready": {
+    title: "Release payouts",
+    detail: "The challenge window is over. Release the pool: attendees get their deposit back plus a share.",
+    tab: "payout",
+  },
+  "Paid out": {
+    title: "Send the payouts",
+    detail: "Attendees can withdraw on the event page, or you can push their share to every wallet.",
+    tab: "payout",
+  },
+  Cancelled: {
+    title: "Event cancelled",
+    detail: "Every guest can withdraw their full deposit on the event page.",
+    tab: null,
+  },
+  "Past the deadline": {
+    title: "No list was posted",
+    detail: "The deadline for the attendance list has passed. Guests can withdraw their full deposit.",
+    tab: null,
+  },
+};

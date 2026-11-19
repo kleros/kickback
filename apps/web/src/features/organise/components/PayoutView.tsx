@@ -1,282 +1,228 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useState } from "react";
 
-import { Button, Menu, MenuItem, MenuTrigger, Popover, Text } from "react-aria-components";
+import { batches, BATCH_SIZE } from "@kickback/core";
 
-import { ChevronIcon } from "@/components/ui/icons";
+import { GlassCard } from "@/components/ui/GlassCard";
+import { GradientButton } from "@/components/ui/GradientButton";
 
-import { ConfirmDialog, ErrorLine, Figures, Primary } from "./parts";
+import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { caseUrl } from "@/config/protocol";
+
+import { Messages } from "./Messages";
+import { ConfirmDialog, Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import { usePayoutScreen, type PayoutScreenModel, type RareAction } from "../hooks/usePayoutScreen";
-import type { EventScope } from "../model/shared";
-import { challengeText, ethText, TYPED_WORDS } from "../model/view";
+import { assetText, ethText, shortHex, TYPED_WORDS } from "../model/view";
+import { tx } from "../operations/tx";
 
-const RARE: { key: RareAction; label: string; hint: string }[] = [
-  { key: "sweep", label: "Collect leftovers", hint: "Rounding dust, after payouts or cancellation" },
-  { key: "returnToken", label: "Return tokens", hint: "ERC-20 tokens sent here by mistake" },
-  { key: "refund", label: "Return stray ETH", hint: "Sent to the contract by mistake" },
-  { key: "removeGuest", label: "Remove and refund one guest", hint: "Only while deposits are open" },
-  { key: "cancel", label: "Cancel the event", hint: "Refunds every registered guest" },
-];
+const when = (unix: number) =>
+  new Intl.DateTimeFormat("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(new Date(unix * 1000));
 
-function MoreMenu({ model }: { model: PayoutScreenModel }) {
-  const disabled = RARE.filter((item) => !model.gates[item.key].enabled).map((item) => item.key);
-  return (
-    <MenuTrigger>
-      <Button className="kb-btn is-quiet" isDisabled={model.busy} data-testid="more">
-        More
-        <ChevronIcon />
-      </Button>
-      <Popover className="og-menu-pop" placement="bottom end" offset={8}>
-        <Menu
-          className="og-menu"
-          aria-label="More actions"
-          disabledKeys={disabled}
-          onAction={(key) => model.open(key as RareAction)}
-        >
-          {RARE.map((item) => (
-            <MenuItem key={item.key} id={item.key} className="og-menu-item" textValue={item.label}>
-              <Text slot="label">{item.label}</Text>
-              <Text slot="description">{model.gates[item.key].lockedReason ?? item.hint}</Text>
-            </MenuItem>
-          ))}
-        </Menu>
-      </Popover>
-    </MenuTrigger>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  mono,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  mono?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <label className="og-field">
-      <span className="og-label">{label}</span>
-      <input
-        className={mono ? "og-input is-mono" : "og-input"}
-        value={value}
-        placeholder={placeholder}
-        autoComplete="off"
-        spellCheck={false}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
-    </label>
-  );
-}
-
-function PayoutDialog({ model }: { model: PayoutScreenModel }) {
-  const frozen = model.frozen;
-  if (!frozen) return null;
-  const common = {
-    isOpen: true,
-    busy: model.pending,
-    error: model.error,
-    onClose: model.close,
-    onConfirm: (typed: string[]) => void model.confirm(typed[0] ?? ""),
-  };
-  if (frozen.action === "release")
-    return (
-      <ConfirmDialog
-        {...common}
-        title="Release payouts"
-        intro="Read from the chain when you opened this. These are the figures you sign."
-        figures={[
-          { label: "Pool", value: ethText(frozen.pool) },
-          { label: "Attendees", value: String(frozen.attendees) },
-          { label: "Each gets", value: ethText(frozen.share) },
-          { label: "Held for open challenges", value: ethText(frozen.heldBack) },
-        ]}
-        words={[TYPED_WORDS.pay]}
-        action="Release"
-      />
-    );
-  if (frozen.action === "sweep")
-    return (
-      <ConfirmDialog
-        {...common}
-        title="Collect leftovers"
-        intro="Sends what the contract holds beyond guests' money to your wallet."
-        figures={[{ label: "Leftovers", value: ethText(frozen.spare) }]}
-        words={[TYPED_WORDS.sweep]}
-        action="Collect"
-      />
-    );
-  if (frozen.action === "cancel")
-    return (
-      <ConfirmDialog
-        {...common}
-        title="Cancel the event"
-        intro="Every registered guest gets their deposit back. This cannot be undone."
-        figures={[
-          { label: "Registered guests", value: String(frozen.registered) },
-          { label: "Refunded in total", value: ethText(frozen.refundTotal) },
-        ]}
-        words={[TYPED_WORDS.cancel]}
-        action="Cancel the event"
-      />
-    );
-  if (frozen.action === "returnToken")
-    return (
-      <ConfirmDialog
-        {...common}
-        title="Return tokens"
-        intro="Return ERC-20 tokens sent to the event by mistake."
-        figures={
-          model.token
-            ? [
-                {
-                  label: `Balance, smallest units (${model.token.symbol ?? "token"})`,
-                  value: model.token.balance.toString(),
-                },
-              ]
-            : []
-        }
-        words={[]}
-        gate={model.dialogGate}
-        action="Return tokens"
-        extra={
-          <>
-            <Field
-              label="Token contract"
-              mono
-              value={model.fields.token}
-              onChange={(v) => model.setField("token", v)}
-              placeholder="0x…"
-            />
-            <Field
-              label="To wallet"
-              mono
-              value={model.fields.to}
-              onChange={(v) => model.setField("to", v)}
-              placeholder="0x…"
-            />
-            <Field
-              label="Amount, smallest token units"
-              value={model.fields.amount}
-              onChange={(v) => model.setField("amount", v)}
-            />
-            {model.token?.decimals !== null && model.token?.decimals !== undefined && (
-              <p className="og-note">
-                This token uses {model.token.decimals} decimals. Enter whole smallest units, not ETH.
-              </p>
-            )}
-          </>
-        }
-      />
-    );
-  if (frozen.action === "refund")
-    return (
-      <ConfirmDialog
-        {...common}
-        title="Return stray ETH"
-        intro="Only money beyond guests' deposits can be returned."
-        figures={[{ label: "Spare", value: ethText(frozen.spare) }]}
-        words={[]}
-        gate={model.dialogGate}
-        action="Return"
-        extra={
-          <>
-            <Field
-              label="To wallet"
-              mono
-              value={model.fields.to}
-              onChange={(v) => model.setField("to", v)}
-              placeholder="0x…"
-            />
-            <Field
-              label="Amount, ETH"
-              value={model.fields.amount}
-              onChange={(v) => model.setField("amount", v)}
-              placeholder="0.01"
-            />
-          </>
-        }
-      />
-    );
-  return (
-    <ConfirmDialog
-      {...common}
-      title="Remove and refund one guest"
-      intro="Takes the guest off the list and returns their deposit."
-      figures={[]}
-      words={[]}
-      gate={model.dialogGate}
-      action="Remove and refund"
-      extra={
-        <Field
-          label="Guest wallet"
-          mono
-          value={model.fields.guest}
-          onChange={(v) => model.setField("guest", v)}
-          placeholder="0x…"
-        />
-      }
-    />
-  );
-}
-
-export function PayoutView({ model, released }: { model: PayoutScreenModel; released: boolean }) {
-  const f = model.figures;
-  return (
-    <div className="flex flex-col gap-5" data-testid="payout">
-      <h2 className="kb-h1">Payout</h2>
-      {model.readError && <ErrorLine error={model.readError} />}
-      {f ? (
-        <Figures
-          testId="payout-figures"
-          rows={[
-            { label: "Pool", value: ethText(f.pool) },
-            { label: "Attendees", value: f.attendees === null ? "—" : String(f.attendees) },
-            { label: "Each gets", value: ethText(f.share) },
-            { label: "Leftovers", value: ethText(f.spare) },
-            { label: "Challenges", value: challengeText(f.openChallenges) },
-          ]}
-        />
-      ) : (
-        <p className="og-note">Reading the payout…</p>
-      )}
-      {model.done && (
-        <p className="og-success" role="status" data-testid="done">
-          {model.done}
-        </p>
-      )}
-      <div className="og-actions">
-        {!released && (
-          <Primary gate={model.gates.release} onPress={() => model.open("release")} busy={model.busy}>
-            Release payouts
-          </Primary>
-        )}
-        <MoreMenu model={model} />
-      </div>
-      <PayoutDialog model={model} />
-    </div>
-  );
-}
+const STATE = ["None", "Waiting for you", "With Kleros", "Decided"] as const;
 
 export function PayoutScreen() {
-  const { overview, scope } = useOrganiserEvent();
-  if (!overview.data) return <p className="og-note">Reading the event…</p>;
-  return (
-    <PayoutLoaded scope={scope} deposit={overview.data.event.depositAmount} released={overview.data.event.phase >= 2} />
-  );
-}
+  const event = useOrganiserEvent();
+  const [confirm, setConfirm] = useState<"release" | null>(null);
+  const data = event.overview.data;
+  if (!data) return <p className="og-note">Reading the event…</p>;
+  const info = data.event;
+  const now = data.now;
+  const canSend = event.isOwner && !event.busy;
+  const expired = data.challenges.filter((c) => c.state === 1 && now > c.matchEndsAt).map((c) => c.wallet);
+  const stillOpen = data.challenges.filter((c) => c.state === 1 && now <= c.matchEndsAt);
+  const disputed = data.challenges.filter((c) => c.state === 2);
+  const releaseReason =
+    info.phase !== 1
+      ? null
+      : now <= info.challengeEndsAt
+        ? `The challenge window closes ${when(info.challengeEndsAt)}.`
+        : stillOpen.length
+          ? `${stillOpen.length} challenge still waiting for your answer.`
+          : null;
+  const pool = info.depositAmount * BigInt(info.stakerCount);
+  const shares = info.attendeeCount + info.openCases;
+  const share = info.phase === 2 ? info.payoutShare : shares ? pool / BigInt(shares) : 0n;
 
-function PayoutLoaded({ scope, deposit, released }: { scope: EventScope; deposit: bigint; released: boolean }) {
-  const search = useSearchParams();
-  const model = usePayoutScreen(scope, deposit, {
-    to: search.get("returnTo") ?? "",
-    amount: search.get("returnAmount") ?? "",
-  });
-  return <PayoutView model={model} released={released} />;
+  return (
+    <div className="flex flex-col gap-5" data-testid="payout">
+      <h2 className="kb-h1">Challenges and payout</h2>
+      {info.phase === 0 || info.phase === 3 ? (
+        <GlassCard className="og-card">
+          <h3 className="og-h2">{info.phase === 3 ? "The event was cancelled" : "Post the attendance list first"}</h3>
+          <p className="og-lede">
+            {info.phase === 3
+              ? "Every booked guest withdraws their full deposit on the event page."
+              : "Payouts open once the list is closed and the challenge window is over."}
+          </p>
+        </GlassCard>
+      ) : (
+        <>
+          <Figures
+            big
+            rows={[
+              { label: "Pool", value: assetText(pool, info) },
+              { label: "Attendees", value: String(info.attendeeCount) },
+              { label: info.phase === 2 ? "Each got" : "Each gets", value: assetText(share, info) },
+              { label: "Kleros cases", value: String(disputed.length) },
+            ]}
+          />
+          <section className="flex flex-col gap-3" data-testid="challenges">
+            <h3 className="og-h2">Challenges</h3>
+            {data.challenges.length === 0 ? (
+              <p className="og-note">
+                {info.phase === 1 && now <= info.challengeEndsAt
+                  ? `No challenges yet. Guests left off can challenge until ${when(info.challengeEndsAt)}.`
+                  : "No guest challenged the list."}
+              </p>
+            ) : (
+              data.challenges.map((c) => {
+                const href = c.state === 2 ? caseUrl(DEFAULT_CHAIN_ID, c.arbitratorDisputeID) : undefined;
+                const canMatch = c.state === 1 && now <= c.matchEndsAt && info.phase === 1;
+                return (
+                  <GlassCard key={c.wallet} className="og-card" data-testid="challenge-row">
+                    <div className="og-head-row">
+                      <span className="og-mono" title={c.wallet}>
+                        {shortHex(c.wallet)}
+                      </span>
+                      <span className="og-note">
+                        {STATE[c.state] ?? "Unknown"}
+                        {c.state === 1 &&
+                          (now <= c.matchEndsAt ? ` · answer by ${when(c.matchEndsAt)}` : " · not answered in time")}
+                      </span>
+                    </div>
+                    <p className="og-lede">
+                      {c.state === 1
+                        ? `This guest says they came and paid ${ethText(c.deposit)}. If they did, add them to the list and they get it back. If not, match it with the same amount and Kleros jurors decide; the side they agree with is refunded.`
+                        : c.state === 2
+                          ? "Kleros jurors are deciding. Send your evidence (check-in records, photos) on the case page. Once ruled, settle it here."
+                          : "Settled."}
+                    </p>
+                    <div className="og-actions">
+                      {href && (
+                        <a className="kb-btn is-quiet" href={href} target="_blank" rel="noreferrer">
+                          Open the Kleros case
+                        </a>
+                      )}
+                      {canMatch && (
+                        <>
+                          <GradientButton
+                            className="is-quiet"
+                            isDisabled={!canSend}
+                            onPress={() =>
+                              event.run(
+                                "Add",
+                                () => tx.addAttendees(info.contract, [c.wallet]),
+                                `${shortHex(c.wallet)} added to the list.`,
+                              )
+                            }
+                          >
+                            They came: add them
+                          </GradientButton>
+                          <GradientButton
+                            isDisabled={!canSend}
+                            onPress={() =>
+                              event.run(
+                                "Match",
+                                () => tx.matchChallenge(info.contract, c.wallet, c.deposit),
+                                "Matched. The case is now with Kleros.",
+                              )
+                            }
+                          >
+                            {`Match · ${ethText(c.deposit)}`}
+                          </GradientButton>
+                        </>
+                      )}
+                      {(c.state === 2 || (c.state === 1 && now > c.matchEndsAt)) && info.phase !== 0 && (
+                        <GradientButton
+                          className="is-quiet"
+                          isDisabled={event.busy}
+                          onPress={() =>
+                            event.run(
+                              "Settle",
+                              () => tx.resolveChallenge(info.contract, c.wallet),
+                              "Challenge settled.",
+                            )
+                          }
+                        >
+                          Settle
+                        </GradientButton>
+                      )}
+                    </div>
+                  </GlassCard>
+                );
+              })
+            )}
+          </section>
+          <Messages event={event} />
+          {info.phase === 1 ? (
+            <GlassCard className="og-card">
+              <h3 className="og-h2">Release payouts</h3>
+              <p className="og-lede">
+                Splits the pool among the attendees. A share is held for each open Kleros case until it is decided.
+                Anyone can press it once the window is over.
+              </p>
+              <div className="og-actions">
+                <GradientButton isDisabled={!!releaseReason || event.busy} onPress={() => setConfirm("release")}>
+                  Release payouts
+                </GradientButton>
+                {releaseReason && <span className="og-note">{releaseReason}</span>}
+              </div>
+            </GlassCard>
+          ) : (
+            <GlassCard className="og-card">
+              <h3 className="og-h2">Payouts released</h3>
+              <p className="og-lede">
+                Each attendee can claim {assetText(info.payoutShare, info)} on the event page. You can also send every
+                attendee their share now (you pay the network fee).
+              </p>
+              <div className="og-actions">
+                <GradientButton
+                  isDisabled={event.busy || data.attendees.length === 0}
+                  onPress={() => {
+                    const first = batches(data.attendees, BATCH_SIZE)[0] ?? [];
+                    event.run("Send", () => tx.distribute(info.contract, first), `Sent to ${first.length} attendees.`);
+                  }}
+                >
+                  {`Send to ${Math.min(data.attendees.length, BATCH_SIZE)} attendees`}
+                </GradientButton>
+              </div>
+            </GlassCard>
+          )}
+        </>
+      )}
+      {confirm === "release" && (
+        <ConfirmDialog
+          isOpen
+          title="Release payouts"
+          intro="This splits the pool. It cannot be undone."
+          words={[TYPED_WORDS.pay]}
+          figures={[
+            { label: "Pool", value: assetText(pool, info) },
+            { label: "Attendees", value: String(info.attendeeCount) },
+            { label: "Unanswered challenges accepted", value: String(expired.length) },
+          ]}
+          action="Release payouts"
+          busy={event.busy}
+          error={null}
+          onClose={() => setConfirm(null)}
+          onConfirm={() => {
+            setConfirm(null);
+            event.run(
+              "Release",
+              () => tx.releasePayouts(info.contract, expired),
+              "Payouts released. Attendees can claim now.",
+            );
+          }}
+        />
+      )}
+    </div>
+  );
 }
