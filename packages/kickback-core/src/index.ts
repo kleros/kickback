@@ -7,6 +7,7 @@ export * from "./presence";
 export * from "./attendance";
 export * from "./errorText";
 export * from "./share";
+export * from "./links";
 export {
   caseTemplate,
   decimalText,

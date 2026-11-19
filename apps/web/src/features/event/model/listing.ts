@@ -8,9 +8,9 @@ export interface ListedEvent {
   mine: boolean;
 }
 
-/** The chain's featured events first, then this browser's newest first; one row per contract, at most `limit`. */
+/** The factory's newest events first, then this browser's; one row per contract, at most `limit`. */
 export function listedEvents(
-  featured: readonly { contract: Address; fromBlock: number }[],
+  featured: readonly { contract: Address; fromBlock?: number }[],
   created: readonly { address: Address; block: number }[],
   limit = 6,
 ): ListedEvent[] {
@@ -42,10 +42,10 @@ export const STATUS_TEXT: Record<EventStatus, string> = {
 };
 
 /** The row's state from the contract's phase (Open, Listed, Finalized, Cancelled) and the chain's time. */
-export function eventStatus(phase: number, eventStart: number, claimDeadline: number, now: number): EventStatus {
+export function eventStatus(phase: number, eventEnd: number, claimDeadline: number, now: number): EventStatus {
   if (phase === 1) return "listed";
   if (phase === 2) return "paid";
   if (phase === 3) return "cancelled";
-  if (now < eventStart) return "booking";
+  if (now < eventEnd) return "booking";
   return now < claimDeadline ? "started" : "overdue";
 }

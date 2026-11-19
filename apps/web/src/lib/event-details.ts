@@ -27,3 +27,19 @@ export interface RegistrationPreview {
   siteName: string;
   image: string | null;
 }
+
+/** What the details section shows about an event. */
+export interface EventDetailsData {
+  title: string | null;
+  name: string | null;
+  when: string | null;
+  where: string | null;
+  hosts: string[];
+  /** The registration page. */
+  link: string | null;
+}
+
+export interface EventLink {
+  label: string;
+  url: string;
+}

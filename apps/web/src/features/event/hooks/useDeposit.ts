@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 
-import { kickbackAbi } from "@kickback/contracts";
+import { presenceEventAbi } from "@kickback/contracts";
+import { isEth } from "@kickback/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { encodeFunctionData, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
@@ -11,10 +12,14 @@ import { useSend } from "@/lib/web3/send";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
-import { depositsKey } from "../api/useEvent";
+import { depositsKey, eventKey } from "../api/useEvent";
+import { moneyKey } from "./useGuestMoney";
 
-/** Sends deposit() with value = depositAmount, re-read right before the wallet prompt. */
-export function useDeposit(contract: Address, shownAmount: bigint) {
+/**
+ * Sends deposit(), with value = depositAmount for an ETH event and no ETH for a token event (approved first).
+ * The amount is re-read right before the wallet prompt.
+ */
+export function useDeposit(contract: Address, token: Address, shownAmount: bigint) {
   const { address } = useAccount();
   const [account, setAccount] = useState<Address>();
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
@@ -23,7 +28,10 @@ export function useDeposit(contract: Address, shownAmount: bigint) {
 
   const send = useSend({
     record: true,
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: depositsKey(contract) }),
+    onSuccess: () => {
+      for (const queryKey of [depositsKey(contract), moneyKey(contract), eventKey(contract)])
+        void queryClient.invalidateQueries({ queryKey });
+    },
   });
 
   const deposit = () => {
@@ -34,12 +42,16 @@ export function useDeposit(contract: Address, shownAmount: bigint) {
       prepare: async () => {
         const amount = await client!.readContract({
           address: contract,
-          abi: kickbackAbi,
+          abi: presenceEventAbi,
           functionName: "depositAmount",
         });
         // shown is signed: the amount on the card is the amount sent
         if (amount !== shownAmount) throw new Error("The deposit amount changed. Reload the page.");
-        return { to: contract, data: encodeFunctionData({ abi: kickbackAbi, functionName: "deposit" }), value: amount };
+        return {
+          to: contract,
+          data: encodeFunctionData({ abi: presenceEventAbi, functionName: "deposit" }),
+          value: isEth(token) ? amount : 0n,
+        };
       },
     });
   };

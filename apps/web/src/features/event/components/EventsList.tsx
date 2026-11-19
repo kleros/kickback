@@ -12,7 +12,7 @@ import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 
 import { useEvent } from "../api/useEvent";
-import { ethText } from "../model/depositState";
+import { unitsText } from "../model/depositState";
 import { eventStatus, STATUS_TEXT, type ListedEvent } from "../model/listing";
 import { eventDateText } from "../model/when";
 
@@ -20,7 +20,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   const event = useEvent(row.contract);
   const href = paths.event.getHref(row.contract, row.from);
   const data = event.data;
-  const status = data && now !== undefined ? eventStatus(data.phase, data.eventStart, data.claimDeadline, now) : null;
+  const status = data && now !== undefined ? eventStatus(data.phase, data.eventEnd, data.claimDeadline, now) : null;
 
   return (
     <li>
@@ -49,7 +49,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
           </span>
           <span className="home-event-side">
             <span className="home-event-amount kb-num">
-              {data ? `${ethText(data.depositAmount)} ETH` : event.isError ? null : <i className="home-skel w-16" />}
+              {data ? `${unitsText(data.depositAmount, data.decimals)} ${data.symbol}` : event.isError ? null : <i className="home-skel w-16" />}
             </span>
             <span className="home-event-meta">
               {row.mine && <span className="kb-chip">Yours</span>}
@@ -58,7 +58,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
                   {STATUS_TEXT[status]}
                 </span>
               )}
-              {data && <span className="kb-num">{data.stakerCount} registered</span>}
+              {data && <span className="kb-num">{data.stakerCount} booked</span>}
             </span>
           </span>
         </Link>
@@ -67,7 +67,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   );
 }
 
-/** The chain's featured events and the ones created from this browser; there is no on-chain index of all events. */
+/** The factory's newest events and the ones created from this browser. */
 export function EventsList({ rows }: { rows: readonly ListedEvent[] }) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;

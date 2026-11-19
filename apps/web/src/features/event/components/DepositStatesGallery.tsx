@@ -14,10 +14,13 @@ const ACTIONS: TicketActions = {
   deposit: noop,
   withdraw: noop,
   claim: noop,
+  challenge: noop,
+  approve: noop,
   recheck: noop,
 };
 const VERIFIED = {
-  contract: "0xd5c6A73c05FA431c748781DaBAA99Fe2590d677D",
+  contract: "0x6c2d4D1bC2B0aCe3F2A9f0f1b7f4f4a1d9e3B2a1",
+  factory: "0xEAC922d8AAC8f32cb9832f52Ac878B2a94772F8B",
   disputeResolver: "0x4B89e798B10478A839Ea0Abcf86C4B94A3C782A4",
   arbitrator: "0x988b3A538b618C7A603e1c11Ab82Cd16dbE28069",
   explorer: "https://etherscan.io",
@@ -27,22 +30,24 @@ const EVENT_START = 1_793_802_600;
 const IST = { offset: 330, zone: "IST" };
 
 function Card({ state }: { state: GalleryState }) {
-  const view = depositState(galleryInput(state));
+  const input = galleryInput(state);
+  const view = depositState(input);
   return (
     <>
       <TicketCard
         view={view}
         amount="0.01"
+        unit={input.asset.symbol}
         actions={ACTIONS}
         verified={VERIFIED}
-        lumaUrl="https://luma.com/truth-pays"
+        lumaUrl="https://luma.com/example"
       />
       <ReceiptExtras
         view={view}
-        name="Truth Pays"
-        amount="0.01"
-        text="Join Truth Pays https://luma.com/truth-pays"
-        luma="https://luma.com/truth-pays"
+        name="Builders' Dinner"
+        amount="0.01 ETH"
+        text="I just locked my spot at Builders' Dinner with a refundable deposit. Join: https://luma.com/example"
+        luma="https://luma.com/example"
         guestLink={`/event/${VERIFIED.contract}`}
       />
     </>
@@ -55,7 +60,7 @@ export function DepositStatesGallery({ state }: { state?: string }) {
   if (one)
     return (
       <div className="kb-narrow" data-testid="gallery-one">
-        <EventHead name="Truth Pays: Devcon Mumbai 2026" eventStart={EVENT_START} clock={IST} />
+        <EventHead name="Builders' Dinner" eventStart={EVENT_START} clock={IST} />
         <Card state={one} />
       </div>
     );

@@ -3,18 +3,22 @@
 import Image from "next/image";
 import type { CSSProperties } from "react";
 
-import type { CaseEventDetails, EventInfoLink } from "@kickback/core";
-
 import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
 
-import { venueMap, visibleLink, type RegistrationPreview } from "@/lib/event-details";
+import {
+  venueMap,
+  visibleLink,
+  type EventDetailsData,
+  type EventLink,
+  type RegistrationPreview,
+} from "@/lib/event-details";
 
 export interface EventDetailsProps {
-  details: CaseEventDetails;
+  details: EventDetailsData;
   description: string;
   coverUrl?: string;
-  links: EventInfoLink[];
+  links: EventLink[];
   preview?: RegistrationPreview;
   tint?: string;
 }

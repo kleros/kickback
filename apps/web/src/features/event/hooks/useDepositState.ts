@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 
-import { kickbackAbi } from "@kickback/contracts";
-import { gasLimitFor } from "@kickback/core";
+import { presenceEventAbi } from "@kickback/contracts";
+import { gasLimitFor, isEth } from "@kickback/core";
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { useQuery } from "@tanstack/react-query";
 import { getConnectorClient } from "@wagmi/core";
@@ -17,13 +17,14 @@ import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
+import { caseUrl } from "@/config/protocol";
 
 import { useDeposit } from "./useDeposit";
 import { useGuestMoney } from "./useGuestMoney";
-import { useBlockTime, useEventDeposits, type KickbackEvent } from "../api/useEvent";
+import { useBlockTime, useCreatedBlock, useEventDeposits, type KickbackEvent } from "../api/useEvent";
 import { chainName } from "../model/chainNames";
 import { depositState, depositsOpen, type DepositInput, type DepositView } from "../model/depositState";
-import { dayText } from "../model/when";
+import { dayText, deadlineText } from "../model/when";
 
 const hasInjectedWallet = () => typeof window !== "undefined" && "ethereum" in window && !!window.ethereum;
 
@@ -36,6 +37,8 @@ const isUnknownChain = (error: unknown): boolean => {
 
 /** The network fee the wallet reserves for a deposit: gas limit × max fee per gas. */
 function useDepositFee(contract: Address, account: Address | undefined, value: bigint, enabled: boolean) {
+  // a token deposit cannot be estimated before the approval; its fee is close to an ETH deposit's plus a transfer
+
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   return useQuery({
     queryKey: ["deposit-fee", DEFAULT_CHAIN_ID, contract.toLowerCase(), account?.toLowerCase(), value.toString()],
@@ -44,12 +47,15 @@ function useDepositFee(contract: Address, account: Address | undefined, value: b
     refetchInterval: 15_000,
     retry: false,
     queryFn: async () => {
-      const gas = await client!.estimateGas({
-        account: account!,
-        to: contract,
-        data: encodeFunctionData({ abi: kickbackAbi, functionName: "deposit" }),
-        value,
-      });
+      const gas =
+        value === 0n
+          ? 120_000n
+          : await client!.estimateGas({
+              account: account!,
+              to: contract,
+              data: encodeFunctionData({ abi: presenceEventAbi, functionName: "deposit" }),
+              value,
+            });
       const fees = await client!.estimateFeesPerGas();
       return gasLimitFor(gas) * (fees.maxFeePerGas ?? fees.gasPrice ?? 0n);
     },
@@ -76,13 +82,15 @@ export interface DepositController {
   deposit: () => void;
   withdraw: () => void;
   claim: () => void;
+  challenge: () => void;
+  approve: () => void;
   depositOpen: boolean;
   recheck: () => void;
   wallet?: Address;
 }
 
 /** The deposit card's state machine: wallet, chain, balance, history and the pending record, folded into one view. */
-export function useDepositState(event: KickbackEvent, fromBlock: number | undefined): DepositController {
+export function useDepositState(event: KickbackEvent): DepositController {
   const { address, chainId, status } = useAccount();
   const { open } = useAppKit();
   const { open: modalOpen } = useAppKitState();
@@ -96,22 +104,23 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
   const onChain = connected && chainId === DEFAULT_CHAIN_ID;
 
   const { data: chainTime } = useChainTime();
-  const deposits = useEventDeposits(event.contract, fromBlock, event.depositAmount);
+  const token = isEth(event.token) ? undefined : event.token;
+  const created = useCreatedBlock(event.contract);
+  const deposits = useEventDeposits(event.contract, created.data);
   const mine = address ? deposits.data?.byWallet.get(address.toLowerCase()) : undefined;
   const depositedAt = useBlockTime(mine?.block);
-  const returnedAt = useBlockTime(mine?.returned?.block);
-  const money = useGuestMoney(event.contract, event.depositAmount);
+  const money = useGuestMoney(event.contract, token, event.depositAmount, event.challengeDeposit);
   const busy = useSendBusy();
-  const phase = money.query.data?.phase ?? event.phase;
+  const phase = event.phase;
   const refundedAt = useBlockTime(mine?.refundedBlock);
   const balance = useBalance({
     address,
     chainId: DEFAULT_CHAIN_ID,
     query: { enabled: onChain, refetchInterval: 10_000 },
   });
-  const fee = useDepositFee(event.contract, address, event.depositAmount, onChain);
+  const fee = useDepositFee(event.contract, address, token ? 0n : event.depositAmount, onChain);
   const sentTx = useSentTx(event.contract);
-  const send = useDeposit(event.contract, event.depositAmount);
+  const send = useDeposit(event.contract, event.token, event.depositAmount);
 
   const sendError = send.error instanceof SendError ? send.error : undefined;
   const sent = sentTx.data ? { ...sentTx.data.record, outcome: sentTx.data.outcome } : null;
@@ -122,22 +131,27 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
     connected && deposits.data
       ? mine
         ? {
-            deposited: mine.deposited,
-            returned: mine.returned ? { amount: mine.returned.amount, at: returnedAt.data } : undefined,
-            payoutTx: mine.payoutTx,
+            paidTx: mine.paid?.tx,
             txHash: mine.txHash,
             at: depositedAt.data,
             refundedAt: mine.refundedBlock === undefined ? undefined : (refundedAt.data ?? chainTime?.now),
           }
-        : { deposited: 0n }
+        : {}
       : undefined;
 
   const view = depositState({
     amount: event.depositAmount,
-    eventStart: event.eventStart,
+    asset: { symbol: event.symbol, decimals: event.decimals, token },
+    eventEnd: event.eventEnd,
     phase,
     claimDeadline: event.claimDeadline,
+    challengeEndsAt: event.challengeEndsAt,
+    challengeDeposit: event.challengeDeposit,
+    capacity: event.capacity,
+    stakerCount: event.stakerCount,
     guest: money.query.data,
+    allowance: money.query.data?.allowance,
+    tokenBalance: money.query.data?.tokenBalance,
     moneySend: money.send,
     busy,
     chainNow: chainTime?.now,
@@ -163,18 +177,22 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
       errorMessage: send.error?.message,
     },
     wallNow,
-    guests: deposits.data?.guests,
+    guests: event.stakerCount,
     explorer: DEFAULT_CHAIN.blockExplorers?.default.url,
     dayText: (unix) => dayText(unix, event.clock),
+    timeText: (unix) => deadlineText(unix, event.clock),
+    caseUrl: (id) => caseUrl(DEFAULT_CHAIN_ID, id),
     chainName,
   });
 
   return {
     view,
     wallet: address,
-    depositOpen: depositsOpen(phase, event.eventStart, chainTime?.now),
+    depositOpen: depositsOpen(phase, event.eventEnd, chainTime?.now),
     withdraw: money.withdraw,
     claim: money.claim,
+    challenge: money.challenge,
+    approve: money.approve,
     connect: () => {
       setAsked(true);
       void open({ view: "Connect" });
@@ -198,6 +216,7 @@ export function useDepositState(event: KickbackEvent, fromBlock: number | undefi
     },
     recheck: () => {
       void balance.refetch();
+      void money.query.refetch();
       void fee.refetch();
     },
   };

@@ -6,21 +6,21 @@ import { fillShare } from "@kickback/core";
 
 import { paths } from "@/config/paths";
 
-import { useEventInfo } from "./useEventDetails";
+import { eventDetails } from "./useEventDetails";
 import type { KickbackEvent } from "../api/useEvent";
 import { lumaShareLink } from "../model/socialShare";
 import { eventDateText } from "../model/when";
 
 export function useReceiptShare(event: KickbackEvent, from?: string) {
-  const { details, info } = useEventInfo(event);
+  const details = eventDetails(event);
   const [origin, setOrigin] = useState("");
   useEffect(() => setOrigin(window.location.origin), []);
   const guestLink = `${origin}${paths.event.getHref(event.contract, from)}`;
   const luma = lumaShareLink(details.link) || lumaShareLink(event.lumaUrl);
-  const text = fillShare(info?.share, {
-    event: details.title || event.eventName,
-    date: details.when || eventDateText(event.eventStart, event.clock),
-    venue: details.where || "",
+  const text = fillShare(undefined, {
+    event: event.eventName,
+    date: eventDateText(event.eventStart, event.clock),
+    venue: "",
     luma,
     guestLink,
   });

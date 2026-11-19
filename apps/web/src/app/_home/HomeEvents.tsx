@@ -1,11 +1,11 @@
 "use client";
 
-import { EventsList, listedEvents } from "@/features/event";
+import { EventsList, listedEvents, useLatestEvents } from "@/features/event";
 import { useBrowserEvents } from "@/features/organise";
 
-import { DEFAULT_EVENT } from "@/config/event";
-
-/** The network's featured event, then the events created from this browser. */
+/** The factory's newest events, then the events created from this browser. */
 export function HomeEvents() {
-  return <EventsList rows={listedEvents([DEFAULT_EVENT], useBrowserEvents())} />;
+  const latest = useLatestEvents(6);
+  const rows = listedEvents((latest.data ?? []).map((contract) => ({ contract })), useBrowserEvents());
+  return <EventsList rows={rows} />;
 }

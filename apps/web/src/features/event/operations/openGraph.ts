@@ -1,13 +1,6 @@
-import {
-  codeFingerprint,
-  eventDetailsFromCase,
-  fmtEth,
-  isAddressStrict,
-  KICKBACK_RUNTIME,
-  readEvent,
-  renderCase,
-} from "@kickback/core";
-import { getAddress, zeroAddress } from "viem";
+import { amountText, isAddressStrict, readEvent } from "@kickback/core";
+
+import { PROTOCOL } from "@/config/protocol";
 
 export const GENERIC_EVENT_CARD = {
   title: "Kickback",
@@ -15,18 +8,15 @@ export const GENERIC_EVENT_CARD = {
   deposit: "Refundable event deposits",
 };
 
-export async function readEventCard(client: Parameters<typeof readEvent>[0], contract: string) {
+/** The link card for an event: only events this site's factory created get their own. */
+export async function readEventCard(client: Parameters<typeof readEvent>[0], contract: string, protocol = PROTOCOL) {
   try {
-    if (!isAddressStrict(contract)) return GENERIC_EVENT_CARD;
-    const code = await client.getCode({ address: getAddress(contract.toLowerCase()) });
-    if (!code || codeFingerprint(code, KICKBACK_RUNTIME.immutables) !== KICKBACK_RUNTIME.sha256)
-      return GENERIC_EVENT_CARD;
-    const event = await readEvent({ getCode: async () => code, readContract: client.readContract }, contract);
-    const details = eventDetailsFromCase(renderCase(event.metaEvidenceTemplate, zeroAddress, event.contract));
+    if (!isAddressStrict(contract) || !protocol) return GENERIC_EVENT_CARD;
+    const event = await readEvent(client, contract, protocol);
     return {
-      title: details.title || event.eventName,
-      date: details.when || new Date(event.eventStart * 1000).toISOString().slice(0, 10),
-      deposit: `Refundable deposit ${fmtEth(event.depositAmount)}`,
+      title: event.name,
+      date: new Date(event.eventStart * 1000).toISOString().slice(0, 10),
+      deposit: `Refundable deposit ${amountText(event.depositAmount, event)}`,
     };
   } catch {
     return GENERIC_EVENT_CARD;

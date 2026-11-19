@@ -1,4 +1,4 @@
-import { fmtEth } from "@kickback/core";
+import { decimalText } from "@kickback/core";
 import type { Address, Hash } from "viem";
 
 import type { SendErrorKind, SentTxOutcome } from "@/lib/web3/send";
@@ -9,6 +9,7 @@ export const DEPOSIT_STATES = [
   "connect",
   "wrongnet",
   "addchain",
+  "approve",
   "ready",
   "insufficient",
   "signing",
@@ -16,17 +17,21 @@ export const DEPOSIT_STATES = [
   "done",
   "failed",
   "closed",
+  "full",
   "already",
   "earlier",
   "dropped",
   "replaced",
   "refunded",
-  "short",
+  "on-list",
+  "listing",
+  "challenge",
+  "challenged",
+  "disputed",
   "withdraw",
   "claim",
   "paid-out",
   "not-attended",
-  "returned",
   "withdrawn",
   "checking",
 ] as const;
@@ -35,18 +40,45 @@ export type DepositStateKey = (typeof DEPOSIT_STATES)[number];
 
 export type WalletStatus = "disconnected" | "connecting" | "connected";
 
+/** The calls a guest makes besides the deposit: all money comes out through withdraw(to). */
+export type MoneyAction = "withdraw" | "claim" | "challenge" | "approve";
+
+/** The deposit() selector: the same for ETH and token events. */
+export const DEPOSIT_DATA = "0xd0e30db0";
+
+export interface GuestState {
+  /** 0 None, 1 Staker, 2 Rejected, 3 Refunded. */
+  status: number;
+  attended: boolean;
+  /** In the event's asset. */
+  claimable: bigint;
+  /** Challenge money, in ETH. */
+  claimableEth: bigint;
+  sharePaid: bigint;
+  challenge: { state: number; matchEndsAt: number; arbitratorDisputeID: bigint };
+}
+
 export interface DepositInput {
-  /** The contract's depositAmount, in wei. */
+  /** The contract's depositAmount, in the asset's smallest unit. */
   amount: bigint;
-  /** Unix seconds. */
-  eventStart: number;
+  /** The deposit's asset; `token` is undefined for ETH. */
+  asset: { symbol: string; decimals: number; token?: Address };
+  /** Unix seconds: deposits are open until the event ends. */
+  eventEnd: number;
   /** 0 Open, 1 Listed, 2 Finalized, 3 Cancelled. */
   phase: number;
   claimDeadline?: number;
-  guest?: { status: number; owed: bigint; attended: boolean; payoutShare: bigint };
+  /** Unix seconds; 0 while the organiser is still adding names. */
+  challengeEndsAt?: number;
+  /** ETH a challenge costs (Kleros's fee for the case). */
+  challengeDeposit?: bigint;
+  /** 0 = no limit. */
+  capacity?: number;
+  stakerCount?: number;
+  guest?: GuestState;
   moneySend?: {
     account?: Address;
-    action: "withdraw" | "claim";
+    action: MoneyAction;
     amount?: bigint;
     status: "idle" | "pending" | "success" | "error";
     error?: string;
@@ -66,20 +98,22 @@ export interface DepositInput {
     /** The wallet answered 4902: it does not know the app's chain. */
     needsChain: boolean;
   };
-  /** Wei, read from the app's chain. */
+  /** ETH, read from the app's chain. */
   balance?: bigint;
+  /** Token events: the wallet's token balance and what it lets the event take. */
+  tokenBalance?: bigint;
+  allowance?: bigint;
   /** Wei, the network fee the deposit is expected to cost. */
   fee?: bigint;
-  /** This wallet's deposits to the event; undefined while loading or disconnected. */
+  /** This wallet's deposit logs; undefined while loading or disconnected. */
   history?: {
-    deposited: bigint;
     txHash?: Hash;
     /** Unix seconds of the receipt deposit. */
     at?: number;
-    /** Unix seconds the contract returned the deposit (Rejected). */
+    /** Unix seconds the organiser turned the booking away (Rejected). */
     refundedAt?: number;
-    returned?: { amount: bigint; at?: number };
-    payoutTx?: Hash;
+    /** The latest payment out of the event to this wallet. */
+    paidTx?: Hash;
   };
   /** The browser's record of the last deposit sent, as reconciled with the network. */
   sent?: { outcome: SentTxOutcome; hash: Hash; at: number; data?: string; value?: string } | null;
@@ -98,8 +132,12 @@ export interface DepositInput {
   guests?: number;
   /** The chain's block explorer, when it has one. */
   explorer?: string;
-  /** Formats unix seconds as a short date on the event's clock ("29 Oct"). */
+  /** Formats unix seconds as a short date ("29 Oct"). */
   dayText: (unix: number) => string;
+  /** Formats unix seconds as a deadline ("Wed 4 Nov, 18:00"). */
+  timeText?: (unix: number) => string;
+  /** Kleros Court's page for a case. */
+  caseUrl?: (arbitratorDisputeID: bigint) => string | undefined;
   /** The wallet's chain by name, when the wallet is on another one. */
   chainName?: (id: number) => string | undefined;
 }
@@ -114,11 +152,23 @@ export interface StatusLine {
   action?: { label: string; id: "recheck" };
 }
 
-export type DepositAction = "connect" | "switch" | "add-chain" | "deposit" | "copy" | "none" | "withdraw" | "claim";
+export type DepositAction =
+  | "connect"
+  | "switch"
+  | "add-chain"
+  | "deposit"
+  | "approve"
+  | "copy"
+  | "none"
+  | "withdraw"
+  | "claim"
+  | "challenge";
 
 export interface DepositView {
   key: DepositStateKey;
   amount?: string;
+  /** The unit after the amount; the deposit's asset when omitted. */
+  unit?: string;
   /** Pending only: 1 under a minute, 2 under five, 3 stuck. */
   stage?: 1 | 2 | 3;
   label: string;
@@ -134,12 +184,14 @@ export interface DepositView {
   shake?: boolean;
 }
 
-export const DEFAULT_FOOT = "Deposits close when the event starts";
+export const DEFAULT_FOOT = "Deposits stay open until the event ends";
 const PENDING_STAGE_2_MS = 60_000;
 const PENDING_STAGE_3_MS = 5 * 60_000;
 
-/** "0.01" from 10^16 wei: the amount as the card prints it, without the unit. */
-export const ethText = (wei: bigint) => fmtEth(wei, 18).replace(/ ETH$/, "");
+/** "0.01" from 10^16 wei: an amount as the card prints it, without the unit. */
+export const unitsText = (units: bigint, decimals = 18) => decimalText(units, decimals);
+/** "0.01" from 10^16 wei. */
+export const ethText = (wei: bigint) => unitsText(wei, 18);
 
 /** "14 s", "2 min 14 s". */
 export function waitText(ms: number): string {
@@ -156,26 +208,32 @@ export function agoText(ms: number): string {
 
 export const txHref = (explorer: string | undefined, hash: Hash) => (explorer ? `${explorer}/tx/${hash}` : undefined);
 
-function guestsLine(guests: number | undefined): StatusLine {
+function guestsLine(guests: number | undefined, capacity: number | undefined): StatusLine {
   if (guests === undefined) return { text: "" };
-  if (guests === 0) return { text: "Be the first to deposit" };
-  return { text: `${guests} ${guests === 1 ? "guest" : "guests"} deposited` };
+  if (guests === 0) return { text: "Be the first to book" };
+  const left = capacity ? ` · ${Math.max(0, capacity - guests)} spots left` : "";
+  return { text: `${guests} ${guests === 1 ? "guest" : "guests"} booked${left}` };
 }
 
-export const depositsOpen = (phase: number, eventStart: number, chainNow: number | undefined) =>
-  phase === 0 && chainNow !== undefined && chainNow < eventStart;
+export const depositsOpen = (phase: number, eventEnd: number, chainNow: number | undefined) =>
+  phase === 0 && chainNow !== undefined && chainNow < eventEnd;
 
 /** The deposit card's state, from everything the page knows. Earlier rules win. */
 export function depositState(input: DepositInput): DepositView {
-  const { amount, chain, wallet, history, explorer } = input;
+  const { amount, asset, chain, wallet, history, explorer } = input;
+  const isToken = asset.token !== undefined;
+  const sym = asset.symbol;
+  const fmt = (units: bigint) => unitsText(units, asset.decimals);
+  const timeText = input.timeText ?? input.dayText;
+  const isDepositRecord = (r: DepositInput["sent"]) =>
+    r?.data === DEPOSIT_DATA && r.value === (isToken ? "0" : amount.toString());
   const sent =
-    (input.sent?.data === "0xd0e30db0" && input.sent.value === amount.toString()) ||
-    (input.sent?.data === undefined && input.sent?.outcome === "pending")
+    isDepositRecord(input.sent) || (input.sent?.data === undefined && input.sent?.outcome === "pending")
       ? input.sent
       : null;
   const send =
     input.send.account?.toLowerCase() === wallet.address?.toLowerCase() ? input.send : { status: "idle" as const };
-  const amt = ethText(amount);
+  const amt = fmt(amount);
   const connected = wallet.status === "connected" && wallet.address !== undefined;
   const onChain = connected && wallet.chainId === chain.id;
   const deposit = { action: "deposit" as const, foot: DEFAULT_FOOT, disabled: input.busy };
@@ -186,54 +244,71 @@ export function depositState(input: DepositInput): DepositView {
     wallet: wallet.address!,
     when: when === undefined ? undefined : input.dayText(when),
   });
-  const returnedText = (returned: NonNullable<NonNullable<DepositInput["history"]>["returned"]>) =>
-    `${ethText(returned.amount)} ETH returned${returned.at === undefined ? "" : ` on ${input.dayText(returned.at)}`}`;
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
-    label: "Deposited",
-    lines: history?.returned ? [{ text: returnedText(history.returned) }] : [],
+    label: "Booked",
+    lines: [],
     receipt: receipt(tx, when),
     action: "copy",
     button: "Copy transaction link",
-    foot: "Paste both into Luma",
+    foot: "You're in. Come to the event to get it back.",
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);
     return href ? { label: "Etherscan", href } : undefined;
   };
+  const switchOr = <T extends DepositView>(view: T): DepositView =>
+    onChain
+      ? view
+      : {
+          ...view,
+          action: wallet.needsChain ? "add-chain" : "switch",
+          button: wallet.needsChain ? `Add ${chain.name} to your wallet` : `Switch to ${chain.name}`,
+        };
 
   const moneySend =
     input.moneySend?.account?.toLowerCase() === wallet.address?.toLowerCase() ? input.moneySend : undefined;
+  const errorFor = (action: MoneyAction): StatusLine | undefined =>
+    moneySend?.status === "error" && moneySend.action === action
+      ? { text: moneySend.error ?? "Nothing was sent. Try again.", tone: "err" }
+      : undefined;
   const guest = connected ? input.guest : undefined;
-  const readOnly = (key: DepositStateKey, label: string, lines: StatusLine[], value = amount): DepositView => ({
+  const readOnly = (
+    key: DepositStateKey,
+    label: string,
+    lines: StatusLine[],
+    value = amount,
+    unit?: string,
+  ): DepositView => ({
     key,
     label,
     lines,
-    amount: ethText(value),
+    amount: unit === "ETH" ? ethText(value) : fmt(value),
+    unit,
     action: "none",
     button: label,
     disabled: true,
     foot: null,
   });
-  const moneyAction = (key: "claim" | "withdraw", value: bigint, lines: StatusLine[]): DepositView => ({
-    key,
-    amount: ethText(value),
-    label: key === "claim" ? "Ready to claim" : "Deposit available",
-    lines:
-      moneySend?.status === "error"
-        ? [{ text: moneySend.error ?? "Nothing was sent. Try again.", tone: "err" }]
-        : lines,
-    action: !onChain ? (wallet.needsChain ? "add-chain" : "switch") : key,
-    button: !onChain
-      ? wallet.needsChain
-        ? `Add ${chain.name} to your wallet`
-        : `Switch to ${chain.name}`
-      : key === "claim"
-        ? "Claim"
-        : "Withdraw my deposit",
-    disabled: input.busy,
-    foot: null,
-  });
+  const moneyAction = (
+    key: "claim" | "withdraw",
+    label: string,
+    value: bigint,
+    lines: StatusLine[],
+    unit?: string,
+  ): DepositView =>
+    switchOr({
+      key,
+      amount: unit === "ETH" ? ethText(value) : fmt(value),
+      unit,
+      label,
+      lines: [errorFor("claim") ?? errorFor("withdraw") ?? lines].flat(),
+      action: key,
+      button: key === "claim" ? "Claim" : "Withdraw my deposit",
+      disabled: input.busy,
+      foot: null,
+    });
+
   if (connected && moneySend?.status === "pending")
     return {
       ...readOnly(
@@ -241,11 +316,12 @@ export function depositState(input: DepositInput): DepositView {
         "Sending",
         [{ text: "Confirm in your wallet." }, { text: "Then wait for the network." }],
         moneySend.amount ?? amount,
+        moneySend.action === "challenge" ? "ETH" : undefined,
       ),
       button: "Confirming",
       glyph: "arc",
     };
-  if (connected && input.sent?.outcome === "pending" && input.sent.data && input.sent.data !== "0xd0e30db0")
+  if (connected && input.sent?.outcome === "pending" && input.sent.data && !isDepositRecord(input.sent))
     return {
       ...readOnly("earlier", "Sending", [
         { text: "An earlier transaction is still confirming.", link: etherscan(input.sent.hash) },
@@ -253,70 +329,151 @@ export function depositState(input: DepositInput): DepositView {
       button: "Confirming",
       glyph: "arc",
     };
-  if (guest && guest.owed > 0n)
-    return moneyAction("claim", guest.owed, [{ text: `${ethText(guest.owed)} ETH ready to claim.` }]);
-  if (
-    guest?.status === 1 &&
-    input.phase === 0 &&
-    input.claimDeadline !== undefined &&
-    input.chainNow !== undefined &&
-    input.chainNow > input.claimDeadline
-  )
-    return moneyAction("withdraw", amount, [
-      { text: "The list never came." },
-      { text: "Your deposit returns in full." },
-    ]);
-  if (guest && input.phase === 2 && guest.attended) {
-    const href = history?.payoutTx ? txHref(explorer, history.payoutTx) : undefined;
+
+  // money waiting for this wallet: a payout, a refund, or challenge money back
+  if (guest && (guest.claimable > 0n || guest.claimableEth > 0n)) {
+    const eth = guest.claimable === 0n;
+    const value = eth ? guest.claimableEth : guest.claimable;
+    const unit = eth ? "ETH" : undefined;
+    const both =
+      guest.claimable > 0n && guest.claimableEth > 0n && isToken
+        ? [{ text: `Plus ${ethText(guest.claimableEth)} ETH from your challenge.` }]
+        : [];
+    if (input.phase === 3)
+      return moneyAction("withdraw", "Event cancelled", value, [
+        { text: "The organiser cancelled the event." },
+        { text: "Your deposit returns in full." },
+      ]);
+    if (input.phase === 0 && guest.status === 1)
+      return moneyAction("withdraw", "Deposit available", value, [
+        { text: "No attendance list came in time." },
+        { text: "Your deposit returns in full." },
+      ]);
+    if (input.phase === 2 && guest.attended)
+      return moneyAction(
+        "claim",
+        "Ready to claim",
+        value,
+        [{ text: "Thanks for coming. Here is your share of the pool." }, ...both],
+        unit,
+      );
+    return moneyAction(
+      "claim",
+      "Ready to claim",
+      value,
+      [{ text: eth ? "Money back from your challenge." : `${fmt(value)} ${sym} is yours to take.` }, ...both],
+      unit,
+    );
+  }
+
+  const paidLink = history?.paidTx ? txHref(explorer, history.paidTx) : undefined;
+  const paidLine = paidLink ? [{ text: "", link: { label: "Payout transaction", href: paidLink } }] : [];
+
+  if (guest && input.phase === 2 && guest.attended)
     return readOnly(
       "paid-out",
       "Paid out",
-      [
-        { text: `Paid out ${ethText(guest.payoutShare)} ETH` },
-        ...(href ? [{ text: "", link: { label: "Payout transaction", href } }] : []),
-      ],
-      guest.payoutShare,
+      [{ text: `Paid out ${fmt(guest.sharePaid)} ${sym}` }, ...paidLine],
+      guest.sharePaid,
     );
-  }
+
+  const challenge = guest?.challenge;
+  const kleros = (id: bigint) => {
+    const href = input.caseUrl?.(id);
+    return href ? { label: "Kleros case", href } : undefined;
+  };
+  const ruledAbsent = challenge?.state === 3 && !guest?.attended;
+
   if (guest?.status === 1 && input.phase === 2 && !guest.attended)
-    return readOnly("not-attended", "Not on the attendance list", [{ text: "Contesting opens in a later release." }]);
-  if (guest?.status === 2 && input.phase === 0)
-    return readOnly("withdrawn", "Deposit withdrawn", [{ text: "Your deposit was returned in full." }]);
-  if (connected && guest?.status === 1 && history && history.deposited >= amount && history.txHash)
-    return done(history.txHash, history.at ?? input.chainNow ?? 0);
-  if (connected && history?.returned)
-    return readOnly(
-      "returned",
-      "Returned",
-      [
+    return readOnly("not-attended", "Not on the attendance list", [
+      {
+        text: ruledAbsent ? "Kleros jurors ruled you were not there." : "Your deposit went to the guests who came.",
+      },
+    ]);
+
+  if (guest?.status === 1 && input.phase === 1) {
+    if (guest.attended)
+      return readOnly("on-list", "On the attendance list", [
+        { text: "You're on the list.", tone: "pri" },
         {
-          text: returnedText(history.returned),
+          text: input.challengeEndsAt
+            ? `Payouts open after ${timeText(input.challengeEndsAt)}.`
+            : "Payouts open once the list is final.",
         },
-      ],
-      history.returned.amount,
-    );
+      ]);
+    if (challenge?.state === 1)
+      return readOnly("challenged", "Challenge sent", [
+        { text: "You said you were there.", tone: "pri" },
+        { text: `The organiser can answer until ${timeText(challenge.matchEndsAt)}.` },
+      ]);
+    if (challenge?.state === 2)
+      return readOnly("disputed", "With Kleros", [
+        { text: "Kleros jurors are deciding if you came.", tone: "pri", link: kleros(challenge.arbitratorDisputeID) },
+        { text: "Send your proof on the case page." },
+      ]);
+    if (ruledAbsent)
+      return readOnly("not-attended", "Not on the attendance list", [
+        { text: "Kleros jurors ruled you were not there." },
+      ]);
+    if (!input.challengeEndsAt)
+      return readOnly("listing", "Attendance list", [
+        { text: "The organiser is posting who came." },
+        { text: "You're not on it yet. Check back soon." },
+      ]);
+    if (input.chainNow !== undefined && input.chainNow <= input.challengeEndsAt) {
+      const cost = input.challengeDeposit ?? 0n;
+      const error = errorFor("challenge");
+      return switchOr({
+        key: "challenge",
+        label: "Not on the list",
+        amount: ethText(cost),
+        unit: "ETH",
+        lines: error
+          ? [error]
+          : [
+              { text: "Came but missing? Challenge the list.", tone: "warn" },
+              { text: `Open until ${timeText(input.challengeEndsAt)}. Kleros decides.` },
+            ],
+        action: "challenge",
+        button: "Challenge the list",
+        disabled: input.busy || (input.balance !== undefined && input.balance < cost),
+        foot: "The organiser can match it and Kleros jurors decide. The winner's side is refunded.",
+        shake: error !== undefined,
+      });
+    }
+    return readOnly("not-attended", "Not on the attendance list", [{ text: "The challenge window has closed." }]);
+  }
 
-  if (send.status === "success" && send.hash && connected) return done(send.hash);
-
-  if (connected && history?.refundedAt !== undefined)
+  if (guest?.status === 2)
     return {
       key: "refunded",
-      label: "Refunded",
+      label: "Turned away",
       lines: [
-        { text: `Your deposit was returned on ${input.dayText(history.refundedAt)}.` },
-        { text: "Ask the organiser before sending again." },
+        {
+          text:
+            history?.refundedAt !== undefined
+              ? `The organiser returned your deposit on ${input.dayText(history.refundedAt)}.`
+              : "The organiser returned your deposit in full.",
+        },
+        { text: "This wallet cannot book this event again." },
       ],
       action: "none",
-      button: "Refunded",
+      button: "Deposit returned",
       disabled: true,
-      foot: DEFAULT_FOOT,
+      foot: null,
     };
+  if (guest?.status === 3)
+    return readOnly("withdrawn", "Deposit returned", [{ text: "Your deposit was returned in full." }, ...paidLine]);
 
-  if (connected && history && history.deposited >= amount && history.txHash)
-    return done(history.txHash, history.at ?? input.chainNow ?? 0);
-  if (connected && sent?.outcome === "mined") return done(sent.hash, Math.floor(sent.at / 1000));
-  // a mined record without call data cannot be told apart from a deposit until the history answers
-  if (connected && input.sent?.data === undefined && input.sent?.outcome === "mined" && history === undefined)
+  if (connected && guest?.status === 1) {
+    if (history?.txHash) return done(history.txHash, history.at ?? input.chainNow ?? 0);
+    return { ...readOnly("already", "Booked", [{ text: "You're booked for this event." }]), button: "Booked" };
+  }
+
+  if (send.status === "success" && send.hash && connected) return done(send.hash);
+  if (connected && sent?.outcome === "mined" && isDepositRecord(sent)) return done(sent.hash, Math.floor(sent.at / 1000));
+  // a mined record without call data cannot be told apart from a deposit until the contract answers
+  if (connected && input.sent?.data === undefined && input.sent?.outcome === "mined" && guest === undefined)
     return {
       key: "earlier",
       label: "Refundable deposit",
@@ -369,8 +526,8 @@ export function depositState(input: DepositInput): DepositView {
       button: "Checking deposits",
       glyph: "arc",
     };
-  const started = input.chainNow >= input.eventStart;
-  if (started || input.phase !== 0)
+  const ended = input.chainNow >= input.eventEnd;
+  if (ended || input.phase !== 0)
     return {
       key: "closed",
       label: "Refundable deposit",
@@ -381,11 +538,21 @@ export function depositState(input: DepositInput): DepositView {
               ? "The event was cancelled."
               : input.phase !== 0
                 ? "The attendance list is out."
-                : "The event has started.",
+                : "The event has ended.",
         },
       ],
       action: "none",
-      button: "Deposits closed",
+      button: "Bookings closed",
+      disabled: true,
+      foot: null,
+    };
+  if (input.capacity && input.stakerCount !== undefined && input.stakerCount >= input.capacity)
+    return {
+      key: "full",
+      label: "Refundable deposit",
+      lines: [{ text: `All ${input.capacity} spots are booked.` }, { text: "A spot opens if a guest is turned away." }],
+      action: "none",
+      button: "Event full",
       disabled: true,
       foot: null,
     };
@@ -414,7 +581,7 @@ export function depositState(input: DepositInput): DepositView {
     return {
       key: "rest",
       label: "Refundable deposit",
-      lines: [guestsLine(input.guests)],
+      lines: [guestsLine(input.guests, input.capacity)],
       action: "connect",
       button: "Connect wallet",
       foot: DEFAULT_FOOT,
@@ -449,7 +616,7 @@ export function depositState(input: DepositInput): DepositView {
     key: "failed",
     label: "Not sent",
     lines: [
-      { text: `Your ${amt} ETH stayed in your wallet.`, tone: "err" },
+      { text: `Your ${amt} ${sym} stayed in your wallet.`, tone: "err" },
       { text: spentFee ? "Only the network fee was spent." : "Nothing was sent." },
     ],
     button: "Try again",
@@ -477,7 +644,7 @@ export function depositState(input: DepositInput): DepositView {
     };
   };
 
-  let notice: StatusLine | undefined;
+  let notice: StatusLine | undefined = errorFor("approve");
   if (send.status === "error") {
     switch (send.errorKind) {
       case "replaced":
@@ -500,46 +667,76 @@ export function depositState(input: DepositInput): DepositView {
   if (sent?.outcome === "replaced") return replaced(sent.hash);
   if (sent?.outcome === "failed" && send.status === "idle") return failed(true);
 
-  if (history && history.deposited > 0n && history.deposited < amount)
-    return {
-      key: "short",
-      label: "Short payment",
-      lines: [
-        {
-          text: `${ethText(history.deposited)} ETH received, ${ethText(amount - history.deposited)} ETH short.`,
-          tone: "warn",
-        },
-        { text: "Refunded later. Send the full amount." },
-      ],
-      button: "Deposit",
-      ...deposit,
-    };
+  const recheck = { label: "Check again", id: "recheck" as const };
+  if (isToken) {
+    if (input.tokenBalance !== undefined && input.tokenBalance < amount)
+      return {
+        key: "insufficient",
+        label: "Refundable deposit",
+        lines: [
+          { text: `${fmt(input.tokenBalance)} ${sym} available`, tone: "err", action: recheck },
+          { text: `${amt} ${sym} needed.` },
+        ],
+        action: "none",
+        button: `Not enough ${sym}`,
+        disabled: true,
+        foot: DEFAULT_FOOT,
+      };
+    if (input.balance !== undefined && input.fee !== undefined && input.balance < input.fee)
+      return {
+        key: "insufficient",
+        label: "Refundable deposit",
+        lines: [
+          { text: `${ethText(input.balance)} ETH available`, tone: "err", action: recheck },
+          { text: `About ${ethText(input.fee)} ETH needed for the network fee.` },
+        ],
+        action: "none",
+        button: "Not enough ETH for the fee",
+        disabled: true,
+        foot: DEFAULT_FOOT,
+      };
+  } else {
+    const needed = amount + (input.fee ?? 0n);
+    if (input.balance !== undefined && input.balance < needed)
+      return {
+        key: "insufficient",
+        label: "Refundable deposit",
+        lines: [
+          { text: `${ethText(input.balance)} ETH available`, tone: "err", action: recheck },
+          { text: input.fee === undefined ? `${amt} ETH needed.` : `${ethText(needed)} ETH needed with the fee.` },
+        ],
+        action: "none",
+        button: "Not enough ETH",
+        disabled: true,
+        foot: DEFAULT_FOOT,
+      };
+  }
 
-  const needed = amount + (input.fee ?? 0n);
-  if (input.balance !== undefined && input.balance < needed)
+  const shown = isToken ? input.tokenBalance : input.balance;
+  const where = shown === undefined ? `On ${chain.name}` : `On ${chain.name} · ${fmt(shown)} ${sym} available`;
+
+  if (isToken && (input.allowance === undefined || input.allowance < amount))
     return {
-      key: "insufficient",
+      key: "approve",
       label: "Refundable deposit",
-      lines: [
-        {
-          text: `${ethText(input.balance)} ETH available`,
-          tone: "err",
-          action: { label: "Check again", id: "recheck" },
-        },
-        { text: input.fee === undefined ? `${amt} ETH needed.` : `${ethText(needed)} ETH needed with the fee.` },
-      ],
-      action: "none",
-      button: "Not enough ETH",
-      disabled: true,
+      lines: notice
+        ? [notice, { text: where }]
+        : [{ text: `Step 1 of 2: allow the event to take exactly ${amt} ${sym}.`, tone: "pri" }, { text: where }],
+      action: "approve",
+      button: `Allow ${amt} ${sym}`,
+      disabled: input.busy || input.allowance === undefined,
+      shake: notice !== undefined,
       foot: DEFAULT_FOOT,
     };
 
-  const where =
-    input.balance === undefined ? `On ${chain.name}` : `On ${chain.name} · ${ethText(input.balance)} ETH available`;
   return {
     key: "ready",
     label: "Refundable deposit",
-    lines: notice ? [notice, { text: where }] : [{ text: where }],
+    lines: notice
+      ? [notice, { text: where }]
+      : isToken
+        ? [{ text: `Step 2 of 2: send your ${amt} ${sym} deposit.`, tone: "pri" }, { text: where }]
+        : [{ text: where }],
     button: "Deposit",
     shake: notice !== undefined,
     ...deposit,

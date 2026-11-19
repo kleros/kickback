@@ -22,11 +22,14 @@ export interface TicketActions {
   deposit: () => void;
   withdraw: () => void;
   claim: () => void;
+  challenge: () => void;
+  approve: () => void;
   recheck: () => void;
 }
 
 export interface VerifiedFacts {
   contract: Address;
+  factory: Address;
   disputeResolver: Address;
   arbitrator: Address;
   explorer?: string;
@@ -37,6 +40,8 @@ export interface TicketCardProps {
   view: DepositView;
   /** "0.01": the deposit, without the unit. */
   amount: string;
+  /** The deposit's asset: "ETH", "USDC". */
+  unit: string;
   actions: TicketActions;
   verified: VerifiedFacts;
   lumaUrl?: string;
@@ -99,7 +104,7 @@ function useShake(trigger: string | undefined) {
 
 /** The deposit ticket: amount biggest, one action, a two-line status slot, at one height in every state. */
 export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function TicketCard(
-  { view, amount, actions, verified, lumaUrl, entrance = false },
+  { view, amount, unit, actions, verified, lumaUrl, entrance = false },
   ref,
 ) {
   const shownAmount = view.amount ?? amount;
@@ -113,6 +118,8 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     deposit: actions.deposit,
     withdraw: actions.withdraw,
     claim: actions.claim,
+    challenge: actions.challenge,
+    approve: actions.approve,
     copy: () => {},
     none: () => {},
   }[view.action];
@@ -137,7 +144,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
           still={!entrance}
           className={shownAmount.length > 10 ? "tk-amount is-precise" : "tk-amount"}
         />
-        <span className="tk-unit">ETH</span>
+        <span className="tk-unit">{view.unit ?? unit}</span>
         {done && (
           <span className="tk-done t-success-check" data-state="in" aria-hidden>
             <CheckIcon size={26} strokeWidth={2.25} />
@@ -206,7 +213,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         {view.foot && <span>{view.foot}</span>}
         {done && lumaUrl && (
           <>
-            <span aria-hidden>·</span>
+            {view.foot && <span aria-hidden>·</span>}
             <Link className="kb-link" href={lumaUrl} target="_blank" rel="noopener noreferrer">
               Back to Luma
               <ExternalIcon size={14} />
@@ -219,7 +226,10 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
           <div className="tk-vrows">
             <div className="tk-vrow">
               <span>Code</span>
-              <span>Same as the Kickback v7 build</span>
+              <span className="kb-mono">
+                Proof of Presence factory {short(verified.factory)}
+                <ExplorerLink explorer={verified.explorer} address={verified.factory} label="Open the factory" />
+              </span>
             </div>
             <div className="tk-vrow">
               <span>Disputes</span>

@@ -31,7 +31,7 @@ function QrStub({
       />
       <div className="receipt-stub-details">
         <h2>{name}</h2>
-        <p>{amount} ETH</p>
+        <p>{amount}</p>
         <p className="kb-mono" title={receipt.tx}>
           {receipt.tx.slice(0, 6)}…{receipt.tx.slice(-4)}
         </p>

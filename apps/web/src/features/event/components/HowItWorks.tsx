@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
-import type { EventClock } from "@kickback/core";
+import type { EventClock } from "../model/when";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
@@ -10,11 +10,24 @@ import { ArrowUpIcon } from "@/components/ui/icons";
 
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 
-import { ethText } from "../model/depositState";
+import { unitsText } from "../model/depositState";
 import type { ShareExample } from "../model/share";
 import { deadlineText, sameClock, visitorText } from "../model/when";
 
 const DAY = 86_400;
+
+/** The deposit's asset, for every figure on the page. */
+const Asset = createContext({ unit: "ETH", decimals: 18 });
+const useAsset = () => {
+  const { unit, decimals } = useContext(Asset);
+  return { unit, text: (units: bigint) => unitsText(units, decimals) };
+};
+
+/** "1 day", "12 hours". */
+const spanText = (seconds: number) =>
+  seconds % DAY === 0
+    ? `${seconds / DAY} ${seconds === DAY ? "day" : "days"}`
+    : `${Math.round(seconds / 3600)} ${seconds === 3600 ? "hour" : "hours"}`;
 
 /** Sets data-inview once the element scrolls into view, so its figure plays once and then rests. */
 function useInViewOnce<T extends Element>() {
@@ -91,6 +104,7 @@ function Coin({
 }
 
 function BackPanel({ amount }: { amount: string }) {
+  const { unit } = useAsset();
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   return (
@@ -99,7 +113,7 @@ function BackPanel({ amount }: { amount: string }) {
         className="how-fig"
         viewBox="0 0 408 96"
         role="img"
-        aria-label={`A ${amount} ETH deposit goes in and comes back with a share added.`}
+        aria-label={`A ${amount} ${unit} deposit goes in and comes back with a share added.`}
       >
         <Axis id={axis} />
         <Coin x={52} y={48} r={28} label={amount} stroke={stroke} delay={0} />
@@ -119,7 +133,7 @@ function BackPanel({ amount }: { amount: string }) {
       <div className="how-caps three">
         <span>
           <b>Deposit</b>
-          {amount} ETH
+          {amount}{" "}{unit}
         </span>
         <span>
           <b>Attend</b>checked in
@@ -133,6 +147,7 @@ function BackPanel({ amount }: { amount: string }) {
 }
 
 function SplitPanel({ example }: { example: ShareExample }) {
+  const { unit, text } = useAsset();
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   const shown = Math.min(example.deposits, 10);
@@ -143,9 +158,9 @@ function SplitPanel({ example }: { example: ShareExample }) {
   const attendX = xs.slice(0, shown - shownNo);
   const noX = xs.slice(shown - shownNo);
   const poolX = Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, 50), 358);
-  const pool = ethText(example.pool);
-  const bonus = ethText(example.bonus);
-  const amount = ethText(example.back - example.bonus);
+  const pool = text(example.pool);
+  const bonus = text(example.bonus);
+  const amount = text(example.back - example.bonus);
 
   return (
     <Panel title="What happens to no-shows' deposits?" testId="how-split">
@@ -153,7 +168,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         className="how-fig"
         viewBox="0 0 408 112"
         role="img"
-        aria-label={`${example.deposits} deposits; ${example.attend} attend and ${example.noShows} do not. The no-shows' ${pool} ETH is split ${example.attend} ways.`}
+        aria-label={`${example.deposits} deposits; ${example.attend} attend and ${example.noShows} do not. The no-shows' ${pool} ${unit} is split ${example.attend} ways.`}
       >
         <Axis id={axis} />
         {attendX.map((x, i) => (
@@ -171,7 +186,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         <g className="pop" style={d(900)}>
           <rect x={poolX - 44} y={62} width={88} height={30} rx={12} className="card" />
           <text x={poolX} y={81.5} textAnchor="middle">
-            {pool} ETH
+            {pool}{" "}{unit}
           </text>
         </g>
         <path
@@ -190,7 +205,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
       </svg>
       <div className="how-caps two">
         <span>
-          <b>{example.attend} attend</b>+{bonus} ETH each
+          <b>{example.attend} attend</b>+{bonus}{" "}{unit} each
         </span>
         <span>
           <b>
@@ -202,7 +217,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
       <div className="how-sum" data-testid="how-sum" data-back={example.back.toString()} data-attend={example.attend}>
         <span>Each attendee gets back</span>
         <b>
-          {amount} + {bonus} = {ethText(example.back)} ETH
+          {amount} + {bonus} = {text(example.back)} {unit}
         </b>
       </div>
       <p className="how-note">
@@ -239,32 +254,36 @@ function ListPanel({ court }: { court: string }) {
           <b>Not on the list</b>but you were there
         </span>
         <span>
-          <b>Contest it</b>in {court}
+          <b>Challenge it</b>in {court}
         </span>
         <span>
           <b>Jurors decide</b>on the evidence
         </span>
       </div>
-      <p className="how-note">Contesting opens in a later release.</p>
+      <p className="how-note">Each side pays the Kleros fee up front. The side the jurors agree with gets it back.</p>
     </Panel>
   );
 }
 
 function TimelinePanel({
-  eventStart,
+  eventEnd,
   claimDeadline,
+  challengePeriod,
+  challengeEndsAt,
   clock,
 }: {
-  eventStart: number;
+  eventEnd: number;
   claimDeadline: number;
+  challengePeriod: number;
+  challengeEndsAt: number;
   clock: EventClock | null;
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   const rows = [
-    ["Deposits close", eventStart],
+    ["Deposits close", eventEnd],
     ["List due by", claimDeadline],
-    ["Challenges close", claimDeadline + DAY],
+    ...(challengeEndsAt ? ([["Challenges close", challengeEndsAt]] as const) : []),
   ] as const;
   return (
     <Panel title="When does it all happen?" testId="how-deadlines">
@@ -272,7 +291,7 @@ function TimelinePanel({
         className="how-fig"
         viewBox="0 0 408 48"
         role="img"
-        aria-label="Deposits close at the start; the list is posted by the deadline; a day for challenges; then payouts."
+        aria-label={`Deposits close when the event ends; the list is posted by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`}
       >
         <Axis id={axis} />
         <path d="M16 34h376" className="ln" />
@@ -283,18 +302,18 @@ function TimelinePanel({
         <circle cx="392" cy="34" r="6" fill="var(--kb-ok)" className="pop" style={d(950)} />
         <path d="M176 14h120M176 10v8M296 10v8" className="ink" />
         <text x="236" y="9" textAnchor="middle" className="dim">
-          1 day
+          {spanText(challengePeriod)}
         </text>
       </svg>
       <div className="how-caps four">
         <span>
-          <b>Starts</b>deposits close
+          <b>Ends</b>deposits close
         </span>
         <span>
           <b>List</b>by the deadline
         </span>
         <span>
-          <b>Challenges</b>one day
+          <b>Challenges</b>{spanText(challengePeriod)}
         </span>
         <span>
           <b>Paid out</b>to attendees
@@ -311,16 +330,22 @@ function TimelinePanel({
           </div>
         ))}
       </div>
-      <p className="how-note">No list by the deadline? Withdraw your deposit.</p>
+      <p className="how-note">No list by the deadline? Withdraw your deposit in full.</p>
     </Panel>
   );
 }
 
 export interface HowItWorksProps {
   amount: string;
+  /** The deposit's asset: "ETH", "USDC", and its decimals. */
+  unit: string;
+  decimals: number;
   example: ShareExample;
-  eventStart: number;
+  eventEnd: number;
   claimDeadline: number;
+  challengePeriod: number;
+  /** 0 until the list is closed. */
+  challengeEndsAt: number;
   clock: EventClock | null;
   court: string;
   /** The closing button: back up to the card. */
@@ -331,15 +356,20 @@ export interface HowItWorksProps {
 /** Below the card, in its own band: the guest's questions, answered with figures that play once. */
 export function HowItWorks({
   amount,
+  unit,
+  decimals,
   example,
-  eventStart,
+  eventEnd,
   claimDeadline,
+  challengePeriod,
+  challengeEndsAt,
   clock,
   court,
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
   return (
+    <Asset.Provider value={{ unit, decimals }}>
     <section id={HOW_IT_WORKS_ID} className="kb-how" aria-labelledby="how-title">
       <h2 id="how-title" className="how-title">
         How it works
@@ -348,15 +378,22 @@ export function HowItWorks({
         <BackPanel amount={amount} />
         <SplitPanel example={example} />
         <ListPanel court={court} />
-        <TimelinePanel eventStart={eventStart} claimDeadline={claimDeadline} clock={clock} />
+        <TimelinePanel
+          eventEnd={eventEnd}
+          claimDeadline={claimDeadline}
+          challengePeriod={challengePeriod}
+          challengeEndsAt={challengeEndsAt}
+          clock={clock}
+        />
       </div>
       {depositOpen && (
         <div className="how-cta">
           <GradientButton wide onPress={onDeposit} icon={<ArrowUpIcon />}>
-            {`Deposit ${amount} ETH`}
+            {`Deposit ${amount} ${unit}`}
           </GradientButton>
         </div>
       )}
     </section>
+    </Asset.Provider>
   );
 }

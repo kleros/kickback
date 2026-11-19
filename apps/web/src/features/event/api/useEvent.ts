@@ -1,36 +1,28 @@
 "use client";
 
-import { kickbackAbi } from "@kickback/contracts";
-import {
-  eventClock,
-  findDeployBlock,
-  getLogsChunked,
-  KickbackError,
-  readEvent,
-  renderCase,
-  type EventClock,
-  type EventInfo,
-} from "@kickback/core";
+import { presenceEventAbi } from "@kickback/contracts";
+import { getLogsChunked, KickbackError, latestEvents, readEvent, type EventInfo } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
-import { getAbiItem, zeroAddress, type Address } from "viem";
+import { getAbiItem, type Address } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 
-import { DEFAULT_CHAIN_ID, isLocalChainEnabled } from "@/config/chains";
-import { knownLumaUrl } from "@/config/event";
-import { isKnownResolverOn } from "@/config/kleros";
+import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { FROM_BLOCK, PROTOCOL } from "@/config/protocol";
 
 import { foldGuestLogs, type WalletDeposits } from "../model/guestLogs";
+import type { EventClock } from "../model/when";
 
 export type RefusalReason = "not-address" | "no-contract" | "not-kickback" | "look-alike";
 
 export interface KickbackEvent extends EventInfo {
+  /** The event's name, as the contract stores it. */
+  eventName: string;
+  /** Dates are shown on the visitor's own clock: the contract stores no time zone. */
   clock: EventClock | null;
-  /** The registration page named in the case description, when it is a Luma link. */
+  /** The registration page, when the event's link is a Luma page. */
   lumaUrl?: string;
-  /** Registered guests: what previewShare divides. */
-  stakerCount: number;
 }
 
 export class EventRefused extends Error {
@@ -42,7 +34,7 @@ export class EventRefused extends Error {
   }
 }
 
-const LUMA_RE = /https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/[A-Za-z0-9._~\-/]+/;
+const LUMA_RE = /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/[A-Za-z0-9._~\-/?=&]+$/;
 
 const refusalOf = (error: unknown): RefusalReason | undefined => {
   if (!(error instanceof KickbackError)) return undefined;
@@ -54,10 +46,30 @@ const refusalOf = (error: unknown): RefusalReason | undefined => {
 
 export const eventKey = (contract: string) => ["event", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
-/**
- * The event at `contract`, read on-chain and checked: the code fingerprint is the Kickback v7 build's,
- * and on a public network the Dispute Resolver is Kleros's own. Anything else throws EventRefused.
- */
+/** Reads and checks an event: it must be a clone this site's factory created (isEvent), or EventRefused is thrown. */
+export async function loadEvent(
+  client: Parameters<typeof readEvent>[0],
+  contract: string,
+  protocol = PROTOCOL,
+): Promise<KickbackEvent> {
+  let info: EventInfo;
+  try {
+    if (!protocol) throw new KickbackError("No factory on this network yet.", "NO_KICKBACK_CONTRACT");
+    info = await readEvent(client, contract, protocol);
+  } catch (error) {
+    const reason = refusalOf(error);
+    if (reason) throw new EventRefused(/^0x[0-9a-fA-F]{40}$/.test(contract) ? reason : "not-address", contract);
+    throw error;
+  }
+  return {
+    ...info,
+    eventName: info.name,
+    clock: null,
+    lumaUrl: LUMA_RE.test(info.url) ? info.url : undefined,
+  };
+}
+
+/** The event at `contract`, read on-chain and checked against this site's factory. */
 export function useEvent(contract: string) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
 
@@ -67,48 +79,48 @@ export function useEvent(contract: string) {
     staleTime: STALE_TIME.live,
     refetchInterval: 10_000,
     retry: (count, error) => !(error instanceof EventRefused) && count < 2,
-    queryFn: async () => {
-      let info: EventInfo;
-      try {
-        info = await readEvent(client!, contract);
-      } catch (error) {
-        const reason = refusalOf(error);
-        if (reason) throw new EventRefused(/^0x[0-9a-fA-F]{40}$/.test(contract) ? reason : "not-address", contract);
-        throw error;
-      }
-      if (!isLocalChainEnabled && !isKnownResolverOn(DEFAULT_CHAIN_ID, info.disputeResolver))
-        throw new EventRefused("look-alike", contract);
-
-      const caseText = renderCase(info.metaEvidenceTemplate, zeroAddress, info.contract);
-      const stakerCount = await client!.readContract({
-        address: info.contract,
-        abi: kickbackAbi,
-        functionName: "stakerCount",
-      });
-      return {
-        ...info,
-        clock: eventClock(caseText, info.eventStart),
-        lumaUrl: LUMA_RE.exec(caseText)?.[0] ?? knownLumaUrl(DEFAULT_CHAIN_ID, info.contract),
-        stakerCount: Number(stakerCount),
-      };
-    },
+    queryFn: () => loadEvent(client!, contract),
   });
 }
 
-/** The contract's previewShare for `attend` attendees, when the event has registered guests. */
-export function usePreviewShare(contract: Address | undefined, attend: number | undefined) {
+/** The factory's newest events, for the home page. */
+export function useLatestEvents(limit = 6) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   return useQuery({
-    queryKey: ["preview-share", DEFAULT_CHAIN_ID, contract?.toLowerCase(), attend],
-    enabled: client !== undefined && contract !== undefined && attend !== undefined && attend > 0,
+    queryKey: ["latest-events", DEFAULT_CHAIN_ID, PROTOCOL?.factory, limit],
+    enabled: client !== undefined && PROTOCOL !== null,
     staleTime: STALE_TIME.live,
-    queryFn: () =>
-      client!.readContract({
-        address: contract!,
-        abi: kickbackAbi,
-        functionName: "previewShare",
-        args: [BigInt(attend!)],
-      }),
+    refetchInterval: 30_000,
+    queryFn: async () => (await latestEvents(client!, PROTOCOL!.factory, limit)) as Address[],
+  });
+}
+
+/** The block `contract` was created in (its own EventCreated log): where its logs start. */
+export function useCreatedBlock(contract: Address | undefined) {
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  return useQuery({
+    queryKey: ["created-block", DEFAULT_CHAIN_ID, contract?.toLowerCase()],
+    enabled: client !== undefined && contract !== undefined && PROTOCOL !== null,
+    staleTime: STALE_TIME.immutable,
+    queryFn: async () => {
+      const created = getAbiItem({ abi: presenceEventAbi, name: "EventCreated" });
+      const logs = await getLogsChunked(
+        {
+          getLogs: ({ fromBlock, toBlock }) =>
+            client!.getLogs({
+              address: contract!,
+              event: created,
+              fromBlock,
+              toBlock,
+            }),
+          getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
+        },
+        FROM_BLOCK,
+      );
+      return logs[0]?.blockNumber === undefined || logs[0].blockNumber === null
+        ? FROM_BLOCK
+        : Number(logs[0].blockNumber);
+    },
   });
 }
 
@@ -119,42 +131,40 @@ export interface EventDeposits {
   byWallet: Map<string, WalletDeposits>;
 }
 
-const DEPOSITED = getAbiItem({ abi: kickbackAbi, name: "Deposited" });
-const REJECTED = getAbiItem({ abi: kickbackAbi, name: "Rejected" });
-const REFUNDED = getAbiItem({ abi: kickbackAbi, name: "Refunded" });
-const REGISTERED = getAbiItem({ abi: kickbackAbi, name: "StakerRegistered" });
-const PAYOUT = getAbiItem({ abi: kickbackAbi, name: "Payout" });
+const DEPOSITED = getAbiItem({ abi: presenceEventAbi, name: "Deposited" });
+const REJECTED = getAbiItem({ abi: presenceEventAbi, name: "Rejected" });
+const PAID = getAbiItem({ abi: presenceEventAbi, name: "Paid" });
 
 export const depositsKey = (contract: string) => ["event-deposits", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
-/** Deposit and payment logs, from `fromBlock` or the searched deploy block. */
-export function useEventDeposits(contract: Address | undefined, fromBlock: number | undefined, depositAmount: bigint) {
+/** Deposit, turn-away and payment logs, from `fromBlock` (the event's creation, or the factory's deploy). */
+export function useEventDeposits(contract: Address | undefined, fromBlock: number | undefined) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
 
   return useQuery<EventDeposits>({
-    queryKey: [...depositsKey(contract ?? ""), fromBlock, depositAmount.toString()],
-    enabled: client !== undefined && contract !== undefined,
+    queryKey: [...depositsKey(contract ?? ""), fromBlock],
+    enabled: client !== undefined && contract !== undefined && fromBlock !== undefined,
     staleTime: STALE_TIME.live,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const from = fromBlock ?? (await findDeployBlock(client!, contract!));
       const logs = await getLogsChunked(
         {
           getLogs: ({ fromBlock: a, toBlock: b }) =>
             client!.getLogs({
               address: contract!,
-              events: [DEPOSITED, REJECTED, REFUNDED, REGISTERED, PAYOUT],
+              events: [DEPOSITED, REJECTED, PAID],
               fromBlock: a,
               toBlock: b,
             }),
           getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
         },
-        from,
+        fromBlock!,
       );
-      const byWallet = foldGuestLogs(logs, depositAmount);
+      const byWallet = foldGuestLogs(logs);
       return {
-        guests: new Set(logs.filter((log) => log.eventName === "Deposited").map((log) => log.args.from?.toLowerCase()))
-          .size,
+        guests: new Set(
+          logs.filter((log) => log.eventName === "Deposited").map((log) => log.args.staker?.toLowerCase()),
+        ).size,
         byWallet,
       };
     },

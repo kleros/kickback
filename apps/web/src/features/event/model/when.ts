@@ -1,4 +1,8 @@
-import type { EventClock } from "@kickback/core";
+/** A fixed clock to show times on: minutes east of UTC, and its name ("IST"). */
+export interface EventClock {
+  offset: number;
+  zone: string;
+}
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

@@ -2,12 +2,9 @@
 
 import { useEffect, useRef } from "react";
 
-import type { Address } from "viem";
-
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
-import { fromBlockFor } from "@/config/event";
-import { courtName } from "@/config/kleros";
 import { HOW_IT_WORKS_ID } from "@/config/paths";
+import { courtName } from "@/config/protocol";
 
 import { EventDetails } from "./EventDetails";
 import { EventHead } from "./EventHead";
@@ -16,10 +13,10 @@ import { ReceiptExtras } from "./ReceiptExtras";
 import { Refusal } from "./Refusal";
 import { TicketCard } from "./TicketCard";
 import { TicketSkeleton } from "./TicketSkeleton";
-import { EventRefused, usePreviewShare, useEvent, type KickbackEvent } from "../api/useEvent";
+import { EventRefused, useEvent, type KickbackEvent } from "../api/useEvent";
 import { useDepositState } from "../hooks/useDepositState";
 import { useReceiptShare } from "../hooks/useReceiptShare";
-import { ethText } from "../model/depositState";
+import { unitsText } from "../model/depositState";
 import { shareExample } from "../model/share";
 
 const COURT = courtName(DEFAULT_CHAIN_ID);
@@ -27,14 +24,9 @@ const COURT = courtName(DEFAULT_CHAIN_ID);
 function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const ticket = useRef<HTMLElement>(null);
   const share = useReceiptShare(event, from);
-  const controller = useDepositState(event, fromBlockFor(event.contract, from));
-  const amount = ethText(event.depositAmount);
-  const example0 = shareExample(event.depositAmount, event.stakerCount);
-  const preview = usePreviewShare(event.contract, example0.real ? example0.attend : undefined);
-  const example =
-    example0.real && preview.data !== undefined
-      ? shareExample(event.depositAmount, event.stakerCount, preview.data)
-      : example0;
+  const controller = useDepositState(event);
+  const amount = unitsText(event.depositAmount, event.decimals);
+  const example = shareExample(event.depositAmount, event.stakerCount);
 
   // the fragment is set before the page has height; land on it once the section exists
   useEffect(() => {
@@ -49,30 +41,36 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   return (
     <>
       <div className="kb-narrow">
-        <EventHead name={event.eventName} eventStart={event.eventStart} clock={event.clock} />
+        <EventHead name={event.eventName} eventStart={event.eventStart} eventEnd={event.eventEnd} clock={event.clock} />
         <TicketCard
           ref={ticket}
           entrance
           view={controller.view}
           amount={amount}
+          unit={event.symbol}
           actions={controller}
           lumaUrl={event.lumaUrl}
           verified={{
             contract: event.contract,
-            disputeResolver: event.disputeResolver as Address,
-            arbitrator: event.arbitrator as Address,
+            factory: event.factory,
+            disputeResolver: event.disputeResolver,
+            arbitrator: event.arbitrator,
             explorer: DEFAULT_CHAIN.blockExplorers?.default.url,
             court: COURT,
           }}
         />
-        <ReceiptExtras view={controller.view} name={event.eventName} amount={amount} {...share} />
+        <ReceiptExtras view={controller.view} name={event.eventName} amount={`${amount} ${event.symbol}`} {...share} />
       </div>
       <EventDetails key={event.contract} event={event} />
       <HowItWorks
         amount={amount}
+        unit={event.symbol}
+        decimals={event.decimals}
         example={example}
-        eventStart={event.eventStart}
+        eventEnd={event.eventEnd}
         claimDeadline={event.claimDeadline}
+        challengePeriod={event.challengePeriod}
+        challengeEndsAt={event.challengeEndsAt}
         clock={event.clock}
         court={COURT}
         onDeposit={backToCard}
