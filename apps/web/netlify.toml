@@ -1,0 +1,12 @@
+# Netlify: base directory = repo root, package directory = apps/web.
+# Set NEXT_PUBLIC_REOWN_PROJECT_ID (and optionally NEXT_PUBLIC_MAINNET_RPC, NEXT_PUBLIC_SITE_URL) in the site's environment.
+[build]
+  command = "yarn turbo run build --filter=web"
+  publish = "apps/web/.next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_PUBLIC_CHAIN = "mainnet"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
