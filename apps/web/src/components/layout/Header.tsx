@@ -33,7 +33,7 @@ export function Header() {
         >
           <span className="kb-brand-logo" role="img" aria-label="Kleros" />
           <span className="kb-brand-sep" aria-hidden />
-          <span className="kb-brand-name">{siteConfig.name}</span>
+          <span className="kb-brand-name">Proof of Presence</span>
         </Link>
         <div className="kb-header-right">
           {isSepolia && (

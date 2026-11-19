@@ -58,7 +58,7 @@
   background: var(--kb-hair);
 }
 .kb-brand-name {
-  font: italic 400 1.4rem/1 var(--kb-font-display);
+  font: 400 1.4rem/1 var(--kb-font-display);
   letter-spacing: 0;
 }
 .kb-icon-link {
@@ -74,6 +74,9 @@
   border-color: var(--kb-violet);
 }
 @media (max-width: 520px) {
+  .kb-brand-name {
+    font-size: 1.1rem;
+  }
   .kb-icon-link {
     display: none;
   }
@@ -129,4 +132,29 @@
   padding-top: 16px;
   padding-bottom: 24px;
   border-top: 1px solid var(--kb-hair);
+}
+
+/* A touch of the Kleros symbol: large, tilted, half off the bottom-right edge, see-through. */
+.kb-aurora::after {
+  content: "";
+  position: absolute;
+  right: -14vmax;
+  bottom: -16vmax;
+  width: 60vmax;
+  aspect-ratio: 1;
+  rotate: -24deg;
+  background: var(--kb-violet);
+  opacity: 0.11;
+  -webkit-mask: url(/img/kleros-symbol.svg) center / contain no-repeat;
+  mask: url(/img/kleros-symbol.svg) center / contain no-repeat;
+}
+:root.dark .kb-aurora::after {
+  opacity: 0.14;
+}
+@media (max-width: 520px) {
+  .kb-aurora::after {
+    width: 80vmax;
+    right: -30vmax;
+    bottom: -20vmax;
+  }
 }
