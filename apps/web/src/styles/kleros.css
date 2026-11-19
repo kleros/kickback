@@ -58,7 +58,7 @@
   background: var(--kb-hair);
 }
 .kb-brand-name {
-  font: 400 1.4rem/1 var(--kb-font-display);
+  font: italic 400 1.4rem/1 var(--kb-font-display);
   letter-spacing: 0;
 }
 .kb-icon-link {

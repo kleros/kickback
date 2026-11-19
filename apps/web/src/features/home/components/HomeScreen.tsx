@@ -70,12 +70,13 @@ export function HomeScreen({ events }: { events: ReactNode }) {
       <section className="home-hero">
         <div className="home-hero-text">
           <h1 className="home-title">
-            Book with a deposit.
-            <span>Come, and earn it back.</span>
+            Signups are free.
+            <span>Showing up pays.</span>
           </h1>
           <p className="home-lede">
-            Guests book with a small refundable deposit. Everyone who comes gets it back, plus a share of the
-            no-shows&apos; deposits.
+            Web3 events get thousands of signups and a fraction of the guests. Here, booking takes a small deposit, so
+            every spot is a real commitment and organisers can plan for the people who actually come. Everyone who shows
+            up gets their deposit back, plus a share of what the no-shows left behind.
           </p>
           <div className="home-actions">
             <Link href={paths.organiseNew.getHref()} className="kb-btn" data-testid="home-create">

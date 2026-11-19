@@ -9,7 +9,7 @@ import { ACCOUNT_PKEYS } from "../utils/accounts";
 
 test("the landing loads, links to create, and a mock account connects", async ({ page, wallet }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1, name: /Book with a deposit/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Signups are free/ })).toBeVisible();
   await expect(page.getByTestId("home-create")).toHaveAttribute("href", "/organise/new");
   await expect(page.getByTestId("home-event")).not.toHaveCount(0);
 
