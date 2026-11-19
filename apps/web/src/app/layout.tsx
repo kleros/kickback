@@ -19,42 +19,39 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f6fb" },
-    { media: "(prefers-color-scheme: dark)", color: "#060a19" },
+    { media: "(prefers-color-scheme: light)", color: "#faf8fd" },
+    { media: "(prefers-color-scheme: dark)", color: "#17131f" },
   ],
 };
 
-const hostGrotesk = localFont({
-  variable: "--font-host-grotesk",
+const geist = localFont({
+  variable: "--font-geist",
   display: "swap",
-  src: [
-    {
-      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-400-normal.woff2",
-      weight: "400",
-    },
-    {
-      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-500-normal.woff2",
-      weight: "500",
-    },
-    {
-      path: "../../../../node_modules/@fontsource/host-grotesk/files/host-grotesk-latin-600-normal.woff2",
-      weight: "600",
-    },
-  ],
+  src: [{ path: "../fonts/geist-latin.woff2", weight: "100 900" }],
 });
 
 const geistMono = localFont({
   variable: "--font-geist-mono",
   display: "swap",
+  src: [{ path: "../fonts/geist-mono-latin.woff2", weight: "100 900" }],
+});
+
+const instrumentSerif = localFont({
+  variable: "--font-instrument-serif",
+  display: "swap",
   src: [
-    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-400-normal.woff2", weight: "400" },
-    { path: "../../../../node_modules/@fontsource/geist-mono/files/geist-mono-latin-500-normal.woff2", weight: "500" },
+    { path: "../fonts/instrument-serif-regular.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/instrument-serif-italic.woff2", weight: "400", style: "italic" },
   ],
 });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${hostGrotesk.variable} ${geistMono.variable}`} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={`${geist.variable} ${geistMono.variable} ${instrumentSerif.variable}`}
+      suppressHydrationWarning
+    >
       <body className="flex min-h-screen flex-col">
         <AppProviders>
           <Web3Providers>

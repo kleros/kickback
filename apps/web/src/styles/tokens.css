@@ -1,92 +1,99 @@
-/* Kickback's own tokens. Light is the default; `.dark` on <html> (next-themes) swaps the set. */
+/* The Kleros Events look on Kickback: Kleros violet, flat surfaces, Geist with Instrument Serif titles.
+   Light is the default; `.dark` on <html> (next-themes) swaps the set. */
 
 :root {
   /* the gradient axis: violet into the action blue (D6) */
-  --kb-violet: #7a3cff;
-  --kb-blue: #4872ff;
+  --kb-violet: #6b3fe0;
+  --kb-blue: #6b3fe0;
   --kb-axis: linear-gradient(120deg, var(--kb-violet) 0%, var(--kb-blue) 100%);
   /* the button's fill runs the same axis a step deeper so a white label measures 4.5:1 at both ends */
-  --kb-cta-from: #6c2ff2;
-  --kb-cta-to: #3a5ef0;
+  --kb-cta-from: #6b3fe0;
+  --kb-cta-to: #6b3fe0;
   --kb-cta: linear-gradient(120deg, var(--kb-cta-from) 0%, var(--kb-cta-to) 100%);
   --kb-cta-text: #ffffff;
-  --kb-cta-disabled: #dfe2ee;
-  --kb-cta-disabled-text: #5a6180;
+  --kb-cta-disabled: #ece7f5;
+  --kb-cta-disabled-text: #625a73;
 
-  --kb-bg: #f5f6fb;
-  --kb-text: #0d1330;
-  --kb-text-2: #464d6b;
-  --kb-text-3: #5c6383;
-  --kb-accent-text: #3150dc;
-  --kb-ok: #0f7a4a;
-  --kb-warn: #8a5300;
-  --kb-err: #c0263d;
-  --kb-hair: rgba(13, 19, 48, 0.1);
+  --kb-bg: #faf8fd;
+  --kb-text: #17131f;
+  --kb-text-2: #2b2438;
+  --kb-text-3: #625a73;
+  --kb-accent-text: #5b2fd0;
+  --kb-ok: #11795a;
+  --kb-warn: #8f5208;
+  --kb-err: #b4283e;
+  --kb-hair: #e2dbee;
 
   /* glass */
-  --kb-glass: rgba(255, 255, 255, 0.74);
-  --kb-glass-strong: rgba(255, 255, 255, 0.9);
-  --kb-glass-ring: rgba(13, 19, 48, 0.08);
-  --kb-glass-highlight: rgba(255, 255, 255, 0.9);
-  --kb-glass-blur: 22px;
-  --kb-sunken: rgba(13, 19, 48, 0.04);
-  --kb-chip: rgba(13, 19, 48, 0.06);
-  --kb-shadow: 0 1px 2px rgba(13, 19, 48, 0.04), 0 12px 32px -12px rgba(40, 46, 110, 0.18);
-  --kb-band: rgba(255, 255, 255, 0.5);
+  --kb-glass: #ffffff;
+  --kb-glass-strong: #ffffff;
+  --kb-glass-ring: #e2dbee;
+  --kb-glass-highlight: transparent;
+  --kb-glass-blur: 0px;
+  --kb-sunken: #f1ecf8;
+  --kb-chip: rgb(107 63 224 / 0.09);
+  --kb-shadow: 0 18px 50px -30px rgb(40 20 90 / 0.35);
+  --kb-band: #f2eef9;
 
   /* aurora: light needs about double the dark alpha to read */
-  --kb-aurora-violet: rgba(122, 60, 255, 0.4);
-  --kb-aurora-blue: rgba(72, 114, 255, 0.42);
-  --kb-aurora-cyan: rgba(56, 189, 248, 0.28);
-  --kb-aurora-tint: 30%;
+  --kb-aurora-violet: rgb(124 92 230 / 0.13);
+  --kb-aurora-blue: rgb(167 139 250 / 0.08);
+  --kb-aurora-cyan: transparent;
+  --kb-aurora-tint: 0%;
 
-  --kb-focus: #3150dc;
+  --kb-focus: #6b3fe0;
 
   /* concentric radii */
-  --kb-r-panel: 24px;
-  --kb-r-card: 20px;
-  --kb-r-btn: 14px;
-  --kb-r-row: 12px;
+  --kb-r-panel: 14px;
+  --kb-r-card: 14px;
+  --kb-r-btn: 8px;
+  --kb-r-row: 8px;
   --kb-r-pill: 999px;
 
   --kb-header-h: 64px;
   --kb-gutter: 16px;
 
-  --kb-font-sans: var(--font-host-grotesk), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --kb-font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --kb-font-display: var(--font-instrument-serif), Georgia, serif;
   --kb-font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   color-scheme: light;
 }
 
 :root.dark {
-  --kb-cta-disabled: rgba(255, 255, 255, 0.08);
-  --kb-cta-disabled-text: #a3aacb;
+  --kb-cta-disabled: #2a2336;
+  --kb-cta-disabled-text: #a69fb5;
 
-  --kb-bg: #060a19;
-  --kb-text: #eef1ff;
-  --kb-text-2: #b0b7d6;
-  --kb-text-3: #9aa2c4;
-  --kb-accent-text: #93a8ff;
-  --kb-ok: #4ade9b;
-  --kb-warn: #fbbf5a;
-  --kb-err: #ff8095;
-  --kb-hair: rgba(255, 255, 255, 0.1);
+  --kb-bg: #17131f;
+  --kb-text: #f2eef7;
+  --kb-text-2: #e6e1ee;
+  --kb-text-3: #a69fb5;
+  --kb-accent-text: #c4b5fd;
+  --kb-ok: #86d9b4;
+  --kb-warn: #f0c08a;
+  --kb-err: #f07a8a;
+  --kb-hair: #352d44;
 
-  --kb-glass: rgba(20, 28, 60, 0.52);
-  --kb-glass-strong: rgba(24, 32, 68, 0.86);
-  --kb-glass-ring: rgba(255, 255, 255, 0.1);
-  --kb-glass-highlight: rgba(255, 255, 255, 0.08);
-  --kb-sunken: rgba(255, 255, 255, 0.04);
-  --kb-chip: rgba(255, 255, 255, 0.07);
-  --kb-shadow: none;
-  --kb-band: rgba(255, 255, 255, 0.025);
+  --kb-glass: #201a2b;
+  --kb-glass-strong: #201a2b;
+  --kb-glass-ring: #352d44;
+  --kb-glass-highlight: transparent;
+  --kb-sunken: #2a2336;
+  --kb-chip: rgb(167 139 250 / 0.16);
+  --kb-shadow: 0 24px 60px -30px rgb(0 0 0 / 0.7);
+  --kb-band: #120f19;
 
-  --kb-aurora-violet: rgba(122, 60, 255, 0.16);
-  --kb-aurora-blue: rgba(72, 114, 255, 0.16);
-  --kb-aurora-cyan: rgba(56, 189, 248, 0.08);
-  --kb-aurora-tint: 12%;
+  --kb-aurora-violet: rgb(124 92 230 / 0.22);
+  --kb-aurora-blue: rgb(167 139 250 / 0.08);
+  --kb-aurora-cyan: transparent;
+  --kb-aurora-tint: 0%;
 
-  --kb-focus: #93a8ff;
+  --kb-focus: #a78bfa;
 
+  --kb-violet: #a78bfa;
+  --kb-blue: #a78bfa;
+  --kb-cta-from: #a78bfa;
+  --kb-cta-to: #a78bfa;
+  --kb-cta-text: #17131f;
   color-scheme: dark;
 }

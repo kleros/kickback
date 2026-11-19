@@ -18,11 +18,11 @@ const EXAMPLE = payoutExample(parseEther("0.01"), 10, 8);
 const STEPS = [
   {
     title: "Book a spot",
-    body: "Guests send the deposit in ETH from their own wallet. The organiser approves each guest; anyone declined gets it back.",
+    body: "Guests send the deposit (ETH or a token like USDC) from their own wallet, and they are in. Bookings stay open until the event ends, for walk-ins. Anyone the organiser turns away gets it all back.",
   },
   {
     title: "Show up",
-    body: "Once the event starts, the organiser posts who came. Anyone left off has a day to challenge the list.",
+    body: "After the event, the organiser posts who came. Anyone left off can challenge the list, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
@@ -124,8 +124,8 @@ export function HomeScreen({ events }: { events: ReactNode }) {
           independent jurors decide under a public attendance policy.
         </p>
         <p className="home-note">
-          {isSepolia ? "Cases here go to the Test court (Sepolia). " : ""}Contesting from this site opens in a later
-          release.
+          {isSepolia ? "Cases here go to the Test court (Sepolia). " : ""}The contracts have no owner and cannot be
+          changed: nobody, not even the organiser, can take the deposits.
         </p>
       </GlassCard>
     </div>

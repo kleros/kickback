@@ -1,0 +1,132 @@
+/* The Kleros Events look on top of Kickback's layout: serif display titles, the Kleros logo in the header,
+   flat cards with hairlines, solid violet buttons, and the Kleros footer. Loaded last, so it wins. */
+
+.kb-h1,
+.ev-title,
+.home-title,
+.og-title,
+.og-hero-phase,
+.how-title,
+.kb-refusal h1 {
+  font-family: var(--kb-font-display);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.ev-title,
+.og-title {
+  font-size: clamp(2rem, 4.6vw, 2.8rem);
+  line-height: 1.08;
+}
+.home-title {
+  font-size: clamp(2.2rem, 5vw, 3.4rem);
+  line-height: 1.05;
+}
+.home-title span {
+  font-style: italic;
+}
+.kb-h1,
+.how-title {
+  font-size: 2rem;
+  line-height: 1.15;
+}
+.og-hero-phase {
+  font-size: 2.4rem;
+  line-height: 1.1;
+}
+
+/* header: Kleros logo | Kickback */
+.kb-header {
+  background: color-mix(in srgb, var(--kb-band) 82%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--kb-hair);
+}
+.kb-header[data-scrolled] {
+  background: color-mix(in srgb, var(--kb-band) 92%, transparent);
+}
+.kb-brand-logo {
+  display: inline-block;
+  height: 26px;
+  aspect-ratio: 959 / 360;
+  background: currentColor;
+  -webkit-mask: url(/img/kleros-logo.svg) center / contain no-repeat;
+  mask: url(/img/kleros-logo.svg) center / contain no-repeat;
+}
+.kb-brand-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--kb-hair);
+}
+.kb-brand-name {
+  font: italic 400 1.4rem/1 var(--kb-font-display);
+  letter-spacing: 0;
+}
+.kb-icon-link {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--kb-r-btn);
+  border: 1px solid var(--kb-hair);
+  color: var(--kb-text);
+}
+.kb-icon-link:hover {
+  border-color: var(--kb-violet);
+}
+@media (max-width: 520px) {
+  .kb-icon-link {
+    display: none;
+  }
+}
+
+/* flat surfaces instead of glass */
+.kb-glass,
+.kb-ticket,
+.og-card {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* footer */
+.kb-footer {
+  margin-top: 64px;
+  border-top: 1px solid var(--kb-hair);
+  background: var(--kb-band);
+  color: var(--kb-text-3);
+  font-size: 0.9rem;
+}
+.kb-footer-grid {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  padding-top: 32px;
+  padding-bottom: 16px;
+}
+.kb-footer h3 {
+  margin-bottom: 8px;
+  color: var(--kb-text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.kb-footer ul {
+  display: grid;
+  gap: 4px;
+}
+.kb-footer a {
+  color: var(--kb-text-2);
+  text-decoration: none;
+}
+.kb-footer a:hover {
+  color: var(--kb-accent-text);
+}
+.kb-footer-base {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 16px;
+  padding-bottom: 24px;
+  border-top: 1px solid var(--kb-hair);
+}
