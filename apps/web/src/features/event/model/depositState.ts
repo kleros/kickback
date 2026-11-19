@@ -1,4 +1,4 @@
-import { decimalText } from "@kickback/core";
+import { readableUnits } from "@kickback/core";
 import type { Address, Hash } from "viem";
 
 import type { SendErrorKind, SentTxOutcome } from "@/lib/web3/send";
@@ -180,7 +180,7 @@ const PENDING_STAGE_2_MS = 60_000;
 const PENDING_STAGE_3_MS = 5 * 60_000;
 
 /** "0.01" from 10^16 wei: an amount as the card prints it, without the unit. */
-export const unitsText = (units: bigint, decimals = 18) => decimalText(units, decimals);
+export const unitsText = (units: bigint, decimals = 18) => readableUnits(units, decimals);
 /** "0.01" from 10^16 wei. */
 export const ethText = (wei: bigint) => unitsText(wei, 18);
 

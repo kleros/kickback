@@ -1,4 +1,4 @@
-import { decimalText } from "@kickback/core";
+import { readableUnits } from "@kickback/core";
 import { isAddress, type Address } from "viem";
 
 import type { Phase } from "./phase";
@@ -8,7 +8,7 @@ import type { Gate } from "./shared";
 export const assetText = (
   units: bigint | null | undefined,
   asset: { symbol: string; decimals: number } = { symbol: "ETH", decimals: 18 },
-) => (units === null || units === undefined ? "—" : `${decimalText(units, asset.decimals)} ${asset.symbol}`);
+) => (units === null || units === undefined ? "—" : `${readableUnits(units, asset.decimals)} ${asset.symbol}`);
 export const ethText = (units: bigint | null | undefined) => assetText(units);
 
 export type Tone = "live" | "ok" | "warn" | "end";

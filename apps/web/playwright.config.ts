@@ -25,6 +25,8 @@ export default defineConfig({
     baseURL: BASE_URL,
     trace: process.env.CI ? "on-first-retry" : "retain-on-failure",
     timezoneId: "GMT",
+    // eslint-disable-next-line turbo/no-undeclared-env-vars -- a preinstalled Chromium when the pinned one is absent
+    launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /organiser\.spec\.ts/ },

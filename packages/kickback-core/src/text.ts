@@ -1,3 +1,4 @@
+import { decimalText } from "@kickback/contracts/protocol";
 import { formatUnits, getAddress, parseUnits, type Address } from "viem";
 
 import { DECIMALS } from "./constants";
@@ -193,6 +194,15 @@ export const fmt = (units: bigint, decimals = DECIMALS): string => {
  * An ETH amount for people to read: exact when it fits in `digits` decimals ("0.01 ETH"), otherwise
  * rounded down and marked with "~" ("~0.013333 ETH"). Dust is shown in full.
  */
+/** An amount for reading: at most `digits` decimals, marked "~" when cut (an even split of a pool rarely ends). */
+export function readableUnits(units: bigint, decimals: number, digits = 6): string {
+  const exact = decimalText(units, decimals);
+  const [whole = "0", dec = ""] = exact.split(".");
+  if (dec.length <= digits) return exact;
+  const short = dec.slice(0, digits).replace(/0+$/, "");
+  return short || whole !== "0" ? `~${whole}${short ? "." + short : ""}` : exact;
+}
+
 export function fmtEth(units: bigint, digits = 6): string {
   const exact = fmt(units);
   const [whole = "0", dec = ""] = exact.split(".");
