@@ -150,6 +150,7 @@ export function useDepositState(event: KickbackEvent): DepositController {
     capacity: event.capacity,
     stakerCount: event.stakerCount,
     guest: money.query.data,
+    guestUnknown: connected && money.query.data === undefined,
     allowance: money.query.data?.allowance,
     tokenBalance: money.query.data?.tokenBalance,
     moneySend: money.send,

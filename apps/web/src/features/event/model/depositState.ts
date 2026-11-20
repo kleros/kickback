@@ -76,6 +76,8 @@ export interface DepositInput {
   capacity?: number;
   stakerCount?: number;
   guest?: GuestState;
+  /** True while the connected wallet's booking has not been read yet (loading, or the read failed). */
+  guestUnknown?: boolean;
   moneySend?: {
     account?: Address;
     action: MoneyAction;
@@ -537,6 +539,13 @@ export function depositState(input: DepositInput): DepositView {
       button: "Bookings closed",
       disabled: true,
       foot: null,
+    };
+  // never offer a deposit before we know this wallet has not booked already
+  if (connected && input.guestUnknown)
+    return {
+      ...readOnly("checking", "Refundable deposit", [{ text: "Checking your booking." }]),
+      button: "Checking deposits",
+      glyph: "arc",
     };
   if (input.capacity && input.stakerCount !== undefined && input.stakerCount >= input.capacity)
     return {
