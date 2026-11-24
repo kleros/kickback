@@ -12,6 +12,8 @@
   NEXT_PUBLIC_SITE_URL = "https://kickback.kleros.io"
   # Reown (WalletConnect) project "Kickback" in the Kleros team on dashboard.reown.com; a public id
   NEXT_PUBLIC_REOWN_PROJECT_ID = "39591871e9a25eca838a656347021634"
+  # Organisers whose events the home page lists (comma-separated); other events open only by their link
+  NEXT_PUBLIC_FEATURED_ORGANISERS = "0x259a1084C2043a7B3b5b288596E05C41b8EFa5d6"
   # Optional: NEXT_PUBLIC_MAINNET_RPC, an Ethereum RPC URL (default https://rpc.mevblocker.io)
 
 [[plugins]]

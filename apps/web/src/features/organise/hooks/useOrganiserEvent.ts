@@ -15,6 +15,8 @@ import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { phaseOf } from "../model/phase";
 import { readOrganiser } from "../operations/read";
 
+type Request = { to: Address; data: `0x${string}`; value: bigint };
+
 export const organiserKey = (address: string) => ["organise", DEFAULT_CHAIN_ID, address.toLowerCase()] as const;
 
 /** One event, read for the shell and every tab under it, plus the one way its tabs send. */
@@ -46,12 +48,12 @@ export function useOrganiserEventSource(address: Address) {
   });
 
   /** Sends one request under a label ("Turn away 2"); `success` is said when it is confirmed. */
-  const run = (label: string, request: () => { to: Address; data: `0x${string}`; value: bigint }, success: string) => {
+  const run = (label: string, request: () => Request | Promise<Request>, success: string) => {
     setRunning(label);
     setError(null);
     setDone(null);
     send.mutate(
-      { expectedAccount: account, prepare: async () => request() },
+      { expectedAccount: account, prepare: async () => await request() },
       {
         onSuccess: () => setDone(success),
         onError: (e) => setError({ text: e.message || errorText(e), at: Date.now() }),

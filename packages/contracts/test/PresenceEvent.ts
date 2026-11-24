@@ -149,6 +149,8 @@ describe("Proof of Presence contracts", function () {
       [{ 5: t + 50 }, "BadConfig"], // ends before it starts
       [{ 4: t - 500, 5: t - 100, 6: t + 8 * DAY }, "BadConfig"], // already over
       [{ 6: t + 200 + 7 * DAY - 1 }, "BadConfig"], // deadline too soon after the end
+      [{ 6: t + 200 + 90 * DAY + 1 }, "BadConfig"], // deadline too long after the end
+      [{ 4: t + 100, 5: t + 3 * 365 * DAY, 6: t + 3 * 365 * DAY + 8 * DAY }, "BadConfig"], // ends too far ahead
       [{ 0: "" }, "BadConfig"],
       [{ 0: 'Say "hi"' }, "BadConfig"],
       [{ 0: "a\\b" }, "BadConfig"],
@@ -192,22 +194,22 @@ describe("Proof of Presence contracts", function () {
     await reverts(at(ev, b), "deposit", [{ value: D - 1n }], "WrongAmount");
     await assert.rejects(prov.call({ from: A(b), to: ev.target, value: D * 2n })); // plain transfer, wrong amount
     await assert.rejects(prov.call({ from: A(b), to: ev.target, value: D, data: "0x12345678" })); // no fallback
+    await send(c.sendTransaction({ to: ev.target, value: D }));
+    await send(ev.reject([A(c)])); // before the start: a spot frees up
+    await reverts(at(ev, c), "deposit", [{ value: D }], "WasRejected");
     // during the event (walk-ins)
     await warp(600 + 3600);
     await send(at(ev, b).deposit({ value: D }));
-    await send(c.sendTransaction({ to: ev.target, value: D }));
-    await reverts(at(ev, d), "deposit", [{ value: D }], "EventFull");
-    await send(ev.reject([A(c)])); // a spot frees up
-    await reverts(at(ev, c), "deposit", [{ value: D }], "WasRejected");
+    await reverts(ev, "reject", [[A(b)]], "TooLate"); // once it has started, nobody can be turned away
     await warp(2 * 3600 - 120);
     await send(at(ev, d).deposit({ value: D })); // two minutes before the end
     assert.equal(await ev.stakerCount(), 3n);
     await reverts(at(ev, x), "deposit", [{ value: D }], "EventFull");
     await warp(200);
-    await send(ev.reject([A(d)]));
-    await reverts(at(ev, x), "deposit", [{ value: D }], "TooLate"); // the event is over, even with a free spot
-    assert.equal(await bal(ev), 2n * D);
-    assert.deepEqual([...(await ev.stakers())], [A(a), A(b), A(c), A(d)]);
+    await reverts(ev, "reject", [[A(d)]], "TooLate"); // nor after it
+    await reverts(at(ev, x), "deposit", [{ value: D }], "TooLate"); // the event is over
+    assert.equal(await bal(ev), 3n * D);
+    assert.deepEqual([...(await ev.stakers())], [A(a), A(c), A(b), A(d)]);
   });
 
   it("reject: refunds exactly the deposit; a wallet that refuses ETH can withdraw it to another address", async () => {
@@ -241,7 +243,7 @@ describe("Proof of Presence contracts", function () {
     await send(ev.postAttendance([A(g[0]), A(g[1])], false));
     await reverts(ev, "postAttendance", [[A(g[1])], false], "DuplicateAttendee");
     await reverts(ev, "postAttendance", [[A(guests[9])], false], "NotAStaker");
-    await reverts(ev, "reject", [[A(g[0])]], "AlreadyAttending");
+    await reverts(ev, "reject", [[A(g[0])]], "TooLate"); // after the start nobody can be turned away
     await send(ev.postAttendance([A(g[2])], true));
     assert.equal(await ev.phase(), 1n);
     await reverts(at(ev, guests[9]), "deposit", [{ value: D }], "NotOpen");
@@ -577,8 +579,8 @@ describe("Proof of Presence contracts", function () {
     for (const iso of [
       "2028-02-29T23:59:00Z",
       "2027-12-31T00:00:00Z",
-      "2100-03-01T12:34:00Z",
-      "2030-01-01T05:07:00Z",
+      "2028-03-01T12:34:00Z",
+      "2027-06-30T05:07:00Z",
     ]) {
       const s = Date.parse(iso) / 1000;
       const r = await send(

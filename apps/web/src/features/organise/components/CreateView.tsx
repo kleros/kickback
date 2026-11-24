@@ -3,10 +3,10 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { presenceFactoryAbi } from "@kickback/contracts";
-import { eventConfig, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
+import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
+import { eventConfig, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
-import { erc20Abi, isAddress, parseEventLogs, parseUnits, type Address } from "viem";
+import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -63,6 +63,24 @@ function useToken(address: string) {
   });
 }
 
+/** Kleros's fee a guest pays to challenge the list now, read from the factory's implementation. */
+function useChallengeFee() {
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  return useQuery({
+    queryKey: ["challenge-fee", DEFAULT_CHAIN_ID, PROTOCOL?.factory],
+    enabled: !!client && !!PROTOCOL,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const implementation = await client!.readContract({
+        address: PROTOCOL!.factory,
+        abi: presenceFactoryAbi,
+        functionName: "implementation",
+      });
+      return client!.readContract({ address: implementation, abi: presenceEventAbi, functionName: "challengeDeposit" });
+    },
+  });
+}
+
 function Field({
   label,
   hint,
@@ -89,6 +107,7 @@ export function CreateScreen() {
   const [form, setForm] = useState<Form>(() => initialForm());
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   const token = useToken(form.asset === "token" ? form.token : "");
+  const fee = useChallengeFee().data;
   const send = useSend();
   const set = (key: keyof Form) => (e: { currentTarget: { value: string } }) =>
     setForm({ ...form, [key]: e.currentTarget.value });
@@ -180,7 +199,18 @@ export function CreateScreen() {
               <option value="token">A token (USDC, DAI…)</option>
             </select>
           </Field>
-          <Field label={`Deposit${asset ? `, ${asset.symbol}` : ""}`}>
+          <Field
+            label={`Deposit${asset ? `, ${asset.symbol}` : ""}`}
+            hint={
+              fee === undefined
+                ? undefined
+                : form.asset === "ETH" &&
+                    /^\d+(\.\d+)?$/.test(form.deposit.trim()) &&
+                    parseUnits(form.deposit.trim(), 18) < fee
+                  ? `A guest left off pays Kleros's fee, now ${formatEther(fee)} ETH, to challenge: more than this deposit, so few will. Guests get less protection.`
+                  : `A guest left off pays Kleros's fee, now ${formatEther(fee)} ETH, to challenge.`
+            }
+          >
             <input className="og-input" inputMode="decimal" value={form.deposit} onChange={set("deposit")} />
           </Field>
           {form.asset === "token" && (
@@ -206,12 +236,13 @@ export function CreateScreen() {
           </Field>
           <Field
             label="Post the list within, days"
-            hint={`At least ${MIN_SETTLEMENT_WINDOW / 86_400} days after the end`}
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end`}
           >
             <input
               className="og-input"
               type="number"
-              min={7}
+              min={MIN_SETTLEMENT_WINDOW / 86_400}
+              max={MAX_SETTLEMENT_WINDOW / 86_400}
               value={form.deadlineDays}
               onChange={set("deadlineDays")}
             />

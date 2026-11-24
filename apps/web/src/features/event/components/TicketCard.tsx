@@ -13,6 +13,8 @@ import { CheckIcon, ExternalIcon, ShieldCheckIcon } from "@/components/ui/icons"
 import { NumberPop } from "@/components/ui/NumberPop";
 import { TextSwap } from "@/components/ui/TextSwap";
 
+import { paths } from "@/config/paths";
+
 import type { DepositView, StatusLine } from "../model/depositState";
 
 export interface TicketActions {
@@ -222,8 +224,12 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         )}
       </div>
       <div className="tk-verified">
-        <Disclosure title="Verified Kleros contract" icon={<ShieldCheckIcon className="ok" />}>
+        <Disclosure title="Proof of Presence contract" icon={<ShieldCheckIcon className="ok" />}>
           <div className="tk-vrows">
+            <p className="tk-vnote">
+              Made by this site&apos;s factory, with disputes in Kleros Court. This checks the code, not the organiser:
+              anyone can create an event, so make sure you came here from the organiser&apos;s own event page.
+            </p>
             <div className="tk-vrow">
               <span>Code</span>
               <span className="kb-mono">
@@ -259,6 +265,16 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
                 {short(verified.contract)}
                 <ExplorerLink explorer={verified.explorer} address={verified.contract} label="Open the contract" />
               </span>
+            </div>
+            <div className="tk-vrow">
+              <span>List and challenges</span>
+              <Link
+                className="kb-link"
+                href={paths.organiseEvent.getHref(verified.contract, undefined, "payout")}
+                data-testid="public-challenges"
+              >
+                Open
+              </Link>
             </div>
           </div>
         </Disclosure>

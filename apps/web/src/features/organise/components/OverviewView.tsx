@@ -5,6 +5,8 @@ import Link from "next/link";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NumberPop } from "@/components/ui/NumberPop";
 
+import { isShowableTime } from "@/utils/time";
+
 import { paths } from "@/config/paths";
 
 import { Figures } from "./parts";
@@ -13,15 +15,17 @@ import { NEXT_STEP } from "../model/phase";
 import { assetText } from "../model/view";
 
 const when = (unix: number) =>
-  new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-    timeZoneName: "short",
-  }).format(new Date(unix * 1000));
+  isShowableTime(unix)
+    ? new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZoneName: "short",
+      }).format(new Date(unix * 1000))
+    : "date out of range";
 
 export function OverviewScreen({ court }: { court: string }) {
   const { overview, phase, address } = useOrganiserEvent();

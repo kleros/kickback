@@ -64,3 +64,17 @@ export const caseUrl = (chainId: number, arbitratorDisputeID: bigint): string | 
   const court = KLEROS[chainId]?.court;
   return court ? `${court}${arbitratorDisputeID}` : undefined;
 };
+
+/**
+ * Organisers whose events the home page lists. Anyone can create an event from the factory, so the home page
+ * does not advertise strangers' events (a guest can still open any event by its link). Comma-separated
+ * addresses in NEXT_PUBLIC_FEATURED_ORGANISERS; on a local chain every event is listed.
+ */
+export const FEATURED_ORGANISERS: readonly string[] | null =
+  CHAIN_MODE === "hardhat" && !process.env.NEXT_PUBLIC_FEATURED_ORGANISERS
+    ? null
+    : (process.env.NEXT_PUBLIC_FEATURED_ORGANISERS ?? "")
+        .split(",")
+        .map((a) => a.trim())
+        .filter((a) => isAddress(a))
+        .map((a) => a.toLowerCase());

@@ -1,6 +1,6 @@
 "use client";
 
-import { presenceEventAbi } from "@kickback/contracts";
+import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import { getLogsChunked, latestEvents } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
 import { getAbiItem, type Address } from "viem";
@@ -10,7 +10,7 @@ import { eventKey, loadEvent, EventRefused, type KickbackEvent } from "@/lib/pre
 import { STALE_TIME } from "@/lib/query";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
-import { FROM_BLOCK, PROTOCOL } from "@/config/protocol";
+import { FEATURED_ORGANISERS, FROM_BLOCK, PROTOCOL } from "@/config/protocol";
 
 import { foldGuestLogs, type WalletDeposits } from "../model/guestLogs";
 
@@ -30,15 +30,31 @@ export function useEvent(contract: string) {
   });
 }
 
-/** The factory's newest events, for the home page. */
+/** The factory's newest events by featured organisers (all events on a local chain), for the home page. */
 export function useLatestEvents(limit = 6) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   return useQuery({
-    queryKey: ["latest-events", DEFAULT_CHAIN_ID, PROTOCOL?.factory, limit],
+    queryKey: ["latest-events", DEFAULT_CHAIN_ID, PROTOCOL?.factory, limit, FEATURED_ORGANISERS?.join()],
     enabled: client !== undefined && PROTOCOL !== null,
     staleTime: STALE_TIME.live,
     refetchInterval: 30_000,
-    queryFn: async () => (await latestEvents(client!, PROTOCOL!.factory, limit)) as Address[],
+    queryFn: async () => {
+      const featured = FEATURED_ORGANISERS;
+      if (!featured) return (await latestEvents(client!, PROTOCOL!.factory, limit)) as Address[];
+      if (!featured.length) return [];
+      const lists = await Promise.all(
+        featured.map((organiser) =>
+          client!.readContract({
+            address: PROTOCOL!.factory,
+            abi: presenceFactoryAbi,
+            functionName: "eventsOf",
+            args: [organiser as Address],
+          }),
+        ),
+      );
+      // newest first: each list is in creation order, so take from the end
+      return lists.flatMap((list) => [...list].reverse()).slice(0, limit);
+    },
   });
 }
 

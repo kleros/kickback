@@ -377,6 +377,16 @@ export function depositState(input: DepositInput): DepositView {
   };
   const ruledAbsent = challenge?.state === 3 && !guest?.attended;
 
+  if (guest?.status === 1 && input.phase === 2 && !guest.attended && challenge?.state === 2)
+    return readOnly("disputed", "With Kleros", [
+      {
+        text: "Kleros jurors are deciding.",
+        tone: "pri",
+        link: kleros(challenge.arbitratorDisputeID),
+      },
+      { text: "Send proof or appeal on the case page." },
+    ]);
+
   if (guest?.status === 1 && input.phase === 2 && !guest.attended)
     return readOnly("not-attended", "Not on the attendance list", [
       {
@@ -402,7 +412,7 @@ export function depositState(input: DepositInput): DepositView {
     if (challenge?.state === 2)
       return readOnly("disputed", "With Kleros", [
         { text: "Kleros jurors are deciding.", tone: "pri", link: kleros(challenge.arbitratorDisputeID) },
-        { text: "Send your proof on the case page." },
+        { text: "Send proof or appeal on the case page." },
       ]);
     if (ruledAbsent)
       return readOnly("not-attended", "Not on the attendance list", [

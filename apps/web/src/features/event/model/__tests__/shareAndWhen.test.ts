@@ -35,7 +35,7 @@ describe("shareExample", () => {
 describe("dates on the event's clock", () => {
   it("prints the start in the event's zone", () => {
     expect(eventDateText(START, IST)).toBe("Wed 4 Nov 2026, 18:00 IST");
-    expect(deadlineText(START, IST)).toBe("Wed 4 Nov, 18:00 IST");
+    expect(deadlineText(START, IST, undefined, START)).toBe("Wed 4 Nov, 18:00 IST");
     expect(dayText(START, IST)).toBe("4 Nov");
   });
 
@@ -47,5 +47,16 @@ describe("dates on the event's clock", () => {
 
   it("falls back to the visitor's zone without an event clock", () => {
     expect(eventDateText(START, null, "UTC")).toMatch(/^Wed 4 Nov 2026, 12:30 (UTC|GMT)$/);
+  });
+
+  it("keeps the year on a deadline in another year", () => {
+    expect(deadlineText(START, IST, undefined, START - 366 * 86_400)).toBe("Wed 4 Nov 2026, 18:00 IST");
+  });
+
+  it("says a time cannot be shown instead of crashing", () => {
+    for (const bad of [1e15, Number.NaN])
+      for (const text of [eventDateText(bad, IST), dayText(bad, null), visitorText(bad, "UTC")])
+        expect(text).toBe("date out of range");
+    expect(sameClock(1e15, IST, "UTC")).toBe(true);
   });
 });

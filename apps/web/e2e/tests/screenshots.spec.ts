@@ -37,7 +37,7 @@ test.describe("screenshots", () => {
         await shot("event");
         await shot("event-full", true);
 
-        await page.getByRole("button", { name: "Verified Kleros contract" }).click();
+        await page.getByRole("button", { name: "Proof of Presence contract" }).click();
         await shot("event-verified");
 
         await page.goto(`/event/0x000000000000000000000000000000000000dEaD`);

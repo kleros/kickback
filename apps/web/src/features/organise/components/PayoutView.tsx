@@ -3,9 +3,14 @@
 import { useState } from "react";
 
 import { batches, BATCH_SIZE } from "@kickback/core";
+import { usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
+
+import { isShowableTime } from "@/utils/time";
+
+import { publishCase } from "@/lib/kleros/publishCase";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { caseUrl } from "@/config/protocol";
@@ -17,25 +22,30 @@ import { assetText, ethText, shortHex, TYPED_WORDS } from "../model/view";
 import { tx } from "../operations/tx";
 
 const when = (unix: number) =>
-  new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(unix * 1000));
+  isShowableTime(unix)
+    ? new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(unix * 1000))
+    : "date out of range";
 
 const STATE = ["None", "Waiting for you", "With Kleros", "Decided"] as const;
 
 export function PayoutScreen() {
   const event = useOrganiserEvent();
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [confirm, setConfirm] = useState<"release" | null>(null);
   const data = event.overview.data;
   if (!data) return <p className="og-note">Reading the event…</p>;
   const info = data.event;
   const now = data.now;
   const canSend = event.isOwner && !event.busy;
+  // anyone may answer a challenge (the contract does not limit match to the organiser)
+  const canMatchAsAnyone = event.connected && !event.busy;
   const expired = data.challenges.filter((c) => c.state === 1 && now > c.matchEndsAt).map((c) => c.wallet);
   const stillOpen = data.challenges.filter((c) => c.state === 1 && now <= c.matchEndsAt);
   const disputed = data.challenges.filter((c) => c.state === 2);
@@ -127,11 +137,15 @@ export function PayoutScreen() {
                             They came: add them
                           </GradientButton>
                           <GradientButton
-                            isDisabled={!canSend}
+                            isDisabled={!canMatchAsAnyone}
                             onPress={() =>
                               event.run(
                                 "Match",
-                                () => tx.matchChallenge(info.contract, c.wallet, c.deposit),
+                                async () => {
+                                  // the jurors must be able to read the case: pin its text before it opens
+                                  await publishCase(client!, info.contract, c.wallet);
+                                  return tx.matchChallenge(info.contract, c.wallet, c.deposit);
+                                },
                                 "Matched. The case is now with Kleros.",
                               )
                             }

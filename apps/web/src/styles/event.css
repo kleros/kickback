@@ -166,6 +166,12 @@
   gap: 2px;
   padding: 6px 0 4px;
 }
+.tk-vnote {
+  margin: 0 0 4px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--kb-text-2);
+}
 .tk-vrow {
   display: flex;
   align-items: center;

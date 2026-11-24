@@ -17,6 +17,8 @@ export {
   jsonSafe,
   MAX_NAME,
   MAX_URL,
+  MAX_LEAD_TIME,
+  MAX_SETTLEMENT_WINDOW,
   MIN_SETTLEMENT_WINDOW,
   renderCase,
   SLOT,

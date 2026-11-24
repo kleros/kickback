@@ -19,4 +19,12 @@ describe("depositState", () => {
     const visitor = { ...b, wallet: { ...b.wallet, status: "disconnected" as const, address: undefined } };
     expect(depositState({ ...visitor, guestUnknown: true }).key).not.toBe("checking");
   });
+
+  it("a guest whose case is still with Kleros after the list is final sees the case, not a lost deposit", () => {
+    const d = galleryInput("disputed");
+    const view = depositState({ ...d, phase: 2, caseUrl: (id) => `https://court.kleros.io/cases/${id}` });
+    expect(view.key).toBe("disputed");
+    expect(JSON.stringify(view)).toContain("cases/1712");
+    expect(JSON.stringify(view)).not.toContain("went to the guests");
+  });
 });

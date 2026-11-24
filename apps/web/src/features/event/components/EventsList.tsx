@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { GlassCard } from "@/components/ui/GlassCard";
 
 import { shortenAddress } from "@/utils/address";
@@ -14,7 +15,7 @@ import { paths } from "@/config/paths";
 import { useEvent } from "../api/useEvent";
 import { unitsText } from "../model/depositState";
 import { eventStatus, STATUS_TEXT, type ListedEvent } from "../model/listing";
-import { eventDateText } from "../model/when";
+import { eventDateText, isShowableTime } from "../model/when";
 
 function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   const event = useEvent(row.contract);
@@ -37,7 +38,11 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
             </span>
             <span className="home-event-when">
               {data ? (
-                <time dateTime={new Date(data.eventStart * 1000).toISOString()}>
+                <time
+                  dateTime={
+                    isShowableTime(data.eventStart) ? new Date(data.eventStart * 1000).toISOString() : undefined
+                  }
+                >
                   {eventDateText(data.eventStart, data.clock)}
                 </time>
               ) : event.isError ? (
@@ -76,11 +81,14 @@ export function EventsList({ rows }: { rows: readonly ListedEvent[] }) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;
 
-  if (!rows.length) return <p className="home-empty">No events on this network yet.</p>;
+  if (!rows.length)
+    return <p className="home-empty">No featured events yet. Guests open an event from its own link.</p>;
   return (
     <ul className="home-events" data-testid="home-events">
       {rows.map((row) => (
-        <EventRow key={row.contract.toLowerCase()} row={row} now={now} />
+        <ErrorBoundary key={row.contract.toLowerCase()} fallback={null}>
+          <EventRow row={row} now={now} />
+        </ErrorBoundary>
       ))}
     </ul>
   );

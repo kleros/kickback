@@ -57,6 +57,10 @@ export const STATUS = ["None", "Staker", "Rejected", "Refunded"] as const;
 export const CHALLENGE_STATES = ["None", "Waiting", "Disputed", "Resolved"] as const;
 /** Must match PresenceEvent.MIN_SETTLEMENT_WINDOW. */
 export const MIN_SETTLEMENT_WINDOW = 7 * 86_400;
+/** Must match PresenceEvent.MAX_SETTLEMENT_WINDOW. */
+export const MAX_SETTLEMENT_WINDOW = 90 * 86_400;
+/** Must match PresenceEvent.MAX_LEAD_TIME. */
+export const MAX_LEAD_TIME = 2 * 365 * 86_400;
 export const MAX_NAME = 200;
 export const MAX_URL = 300;
 /** One IPFS block: ipfsCidV0 (and the contract's caseMetaEvidence) only hash single-block files. */
@@ -265,6 +269,9 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
   if (!(e > now)) throw new Error("The event's end time is already past.");
   if (!(d >= e + MIN_SETTLEMENT_WINDOW))
     throw new Error("The deadline to post the list must be at least 7 days after the event ends.");
+  if (!(d <= e + MAX_SETTLEMENT_WINDOW))
+    throw new Error("The deadline to post the list must be at most 90 days after the event ends.");
+  if (!(e <= now + MAX_LEAD_TIME)) throw new Error("The event must end within 2 years.");
   const cap = Number(form.capacity) || 0;
   if (cap < 0 || cap > 2 ** 32 - 1) throw new Error("Capacity must be 0 (no limit) or a positive number.");
   return {

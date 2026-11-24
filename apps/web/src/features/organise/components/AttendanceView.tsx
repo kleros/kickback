@@ -9,6 +9,8 @@ import type { Address } from "viem";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 
+import { isShowableTime } from "@/utils/time";
+
 import { Messages } from "./Messages";
 import { ConfirmDialog, FilePick, Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
@@ -23,14 +25,16 @@ const SKIP_TEXT = {
 } as const;
 
 const when = (unix: number) =>
-  new Intl.DateTimeFormat("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(new Date(unix * 1000));
+  isShowableTime(unix)
+    ? new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+      }).format(new Date(unix * 1000))
+    : "date out of range";
 
 export function AttendanceScreen() {
   const event = useOrganiserEvent();

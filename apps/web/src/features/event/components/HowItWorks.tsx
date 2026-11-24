@@ -235,7 +235,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
   );
 }
 
-function ListPanel({ court }: { court: string }) {
+function ListPanel({ court, challengeFee }: { court: string; challengeFee?: bigint }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   return (
@@ -268,7 +268,11 @@ function ListPanel({ court }: { court: string }) {
           <b>Jurors decide</b>on the evidence
         </span>
       </div>
-      <p className="how-note">Each side pays the Kleros fee up front. The side the jurors agree with gets it back.</p>
+      <p className="how-note" data-testid="challenge-fee">
+        Each side pays the Kleros fee up front
+        {challengeFee ? `, now ${unitsText(challengeFee, 18)} ETH (it follows Kleros's price)` : ""}. The side the
+        jurors agree with gets it back.
+      </p>
     </Panel>
   );
 }
@@ -357,6 +361,8 @@ export interface HowItWorksProps {
   challengeEndsAt: number;
   clock: EventClock | null;
   court: string;
+  /** Kleros's fee a guest pays to challenge, in wei, read now. */
+  challengeFee?: bigint;
   /** The closing button: back up to the card. */
   onDeposit: () => void;
   depositOpen: boolean;
@@ -374,6 +380,7 @@ export function HowItWorks({
   challengeEndsAt,
   clock,
   court,
+  challengeFee,
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
@@ -386,7 +393,7 @@ export function HowItWorks({
         <div className="how-grid">
           <BackPanel amount={amount} />
           <SplitPanel example={example} />
-          <ListPanel court={court} />
+          <ListPanel court={court} challengeFee={challengeFee} />
           <TimelinePanel
             eventEnd={eventEnd}
             claimDeadline={claimDeadline}

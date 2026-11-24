@@ -73,6 +73,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         challengeEndsAt={event.challengeEndsAt}
         clock={event.clock}
         court={COURT}
+        challengeFee={event.challengeDeposit}
         onDeposit={backToCard}
         depositOpen={controller.depositOpen}
       />
