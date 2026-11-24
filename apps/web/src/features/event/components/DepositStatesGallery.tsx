@@ -20,7 +20,7 @@ const ACTIONS: TicketActions = {
 };
 const VERIFIED = {
   contract: "0x6c2d4D1bC2B0aCe3F2A9f0f1b7f4f4a1d9e3B2a1",
-  factory: "0xEAC922d8AAC8f32cb9832f52Ac878B2a94772F8B",
+  factory: "0xdbf41b66714E6fE1402Dc43Afa602189877681ae",
   disputeResolver: "0x4B89e798B10478A839Ea0Abcf86C4B94A3C782A4",
   arbitrator: "0x988b3A538b618C7A603e1c11Ab82Cd16dbE28069",
   explorer: "https://etherscan.io",
