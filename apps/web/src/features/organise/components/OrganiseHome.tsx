@@ -12,6 +12,7 @@ import { paths } from "@/config/paths";
 
 import { BrowserEvents } from "./BrowserEvents";
 import { ErrorLine } from "./parts";
+import { WalletEvents } from "./WalletEvents";
 import { useBrowserEvents } from "../hooks/useMyEvents";
 import { openAddress } from "../model/view";
 
@@ -37,6 +38,9 @@ export function OrganiseHome() {
       </Link>
       <GlassCard as="section" className="og-card">
         <h2 className="og-h2">Open an event</h2>
+        <p className="og-note">
+          Lost the link? Connect the wallet that created the event: your events are listed below.
+        </p>
         <form
           className="flex flex-col gap-3"
           onSubmit={(event) => {
@@ -62,6 +66,7 @@ export function OrganiseHome() {
           </Button>
         </form>
       </GlassCard>
+      <WalletEvents />
       <BrowserEvents events={events} />
     </div>
   );

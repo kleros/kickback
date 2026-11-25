@@ -140,17 +140,17 @@ export function PayoutScreen() {
                             isDisabled={!canMatchAsAnyone}
                             onPress={() =>
                               event.run(
-                                "Match",
+                                "Send to Kleros",
                                 async () => {
                                   // the jurors must be able to read the case: pin its text before it opens
                                   await publishCase(client!, info.contract, c.wallet);
                                   return tx.matchChallenge(info.contract, c.wallet, c.deposit);
                                 },
-                                "Matched. The case is now with Kleros.",
+                                "Sent. The case is now with Kleros.",
                               )
                             }
                           >
-                            {`Match · ${ethText(c.deposit)}`}
+                            {`Send to Kleros · ${ethText(c.deposit)}`}
                           </GradientButton>
                         </>
                       )}

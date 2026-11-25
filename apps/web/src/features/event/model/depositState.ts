@@ -244,7 +244,7 @@ export function depositState(input: DepositInput): DepositView {
     receipt: receipt(tx, when),
     action: "copy",
     button: "Copy transaction link",
-    foot: "Show up to get it back.",
+    foot: "Check in to get it back.",
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);

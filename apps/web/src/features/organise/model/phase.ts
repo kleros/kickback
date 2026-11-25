@@ -33,12 +33,14 @@ export interface NextStep {
 export const NEXT_STEP: Record<Phase, NextStep> = {
   "Booking open": {
     title: "Check who booked",
-    detail: "Guests are in as soon as they deposit. Turn away anyone who should not come: they get a full refund.",
+    detail:
+      "Put the guest link on your Luma ticket and turn on Luma's \"Require Ethereum wallet\". Guests are in as soon as they deposit; turn away anyone who should not come, before the start, with a full refund. At the door, scan every guest's Luma QR: only checked-in guests count as attended.",
     tab: "guests",
   },
   "Attendance due": {
     title: "Post the attendance list",
-    detail: "Load the check-in CSV, review who came, and post the list before the deadline.",
+    detail:
+      "Export the Luma guest list (it has check-ins and wallets), load it here, review who came, and post the list before the deadline.",
     tab: "attendance",
   },
   "Adding names": {
@@ -48,7 +50,8 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   },
   "Challenge window": {
     title: "Answer challenges",
-    detail: "Guests left off the list can challenge. Match a challenge you disagree with and Kleros decides.",
+    detail:
+      "Guests left off the list can challenge. You have 1 day to add them, or send the challenge to Kleros if they did not come.",
     tab: "payout",
   },
   "Payouts ready": {

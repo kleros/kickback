@@ -14,7 +14,7 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 
 import { useSend } from "@/lib/web3/send";
 
-import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 import { PROTOCOL } from "@/config/protocol";
 
@@ -184,7 +184,7 @@ export function CreateScreen() {
           <Field label="Event name" full hint="Shown to guests and to Kleros jurors if there is a dispute">
             <input className="og-input" value={form.name} maxLength={120} onChange={set("name")} />
           </Field>
-          <Field label="Event page" full hint="Your Luma (or other) page, https://…">
+          <Field label="Event page" full hint="Optional: your Luma (or other) page, https://…">
             <input
               className="og-input"
               type="url"
@@ -228,7 +228,7 @@ export function CreateScreen() {
               <input className="og-input is-mono" value={form.token} spellCheck={false} onChange={set("token")} />
             </Field>
           )}
-          <Field label="Starts">
+          <Field label="Starts" hint="In your local time">
             <input className="og-input" type="datetime-local" value={form.start} onChange={set("start")} />
           </Field>
           <Field label="Ends" hint="Bookings stay open until then, for walk-ins">
@@ -257,8 +257,10 @@ export function CreateScreen() {
         Create the event
       </Primary>
       <p className="og-note">
-        One transaction from your wallet. The event&apos;s rules are fixed in the contract: nobody, including you, can
-        change them or take the deposits.
+        Runs on {DEFAULT_CHAIN.name}. Creating an event is free: one transaction from your wallet, you pay only the
+        network fee. The event&apos;s rules are fixed in the contract: nobody, including you, can change them or take
+        the deposits. After the event, a guest you leave off the list can challenge; you then have 1 day to add them, or
+        send it to Kleros{fee === undefined ? "" : ` (${formatEther(fee)} ETH now)`}.
       </p>
     </div>
   );
