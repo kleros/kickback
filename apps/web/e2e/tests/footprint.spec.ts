@@ -22,7 +22,6 @@ for (const width of [375, 1280] as const)
     for (const state of ["done", "already"]) {
       const receipt = page.locator(`[data-gallery-state="${state}"]`);
       await expect(receipt.getByTestId("share-row")).toBeVisible();
-      await expect(receipt.getByTestId("qr-stub")).toBeVisible();
       const ticket = await receipt.getByTestId("ticket").boundingBox();
       const extras = await receipt.getByTestId("receipt-extras").boundingBox();
       expect(extras!.y).toBeGreaterThanOrEqual(ticket!.y + ticket!.height);

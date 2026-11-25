@@ -41,7 +41,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Live now": {
     title: "Check a guest",
     detail:
-      "Walk-ins can still book with the guest link or QR code. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
+      "Walk-ins register on Luma and can still deposit until the end. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
     tab: "guests",
   },
   "Attendance due": {

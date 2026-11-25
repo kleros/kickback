@@ -59,7 +59,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
             court: COURT,
           }}
         />
-        <ReceiptExtras view={controller.view} name={event.eventName} amount={`${amount} ${event.symbol}`} {...share} />
+        <ReceiptExtras view={controller.view} {...share} />
       </div>
       <EventDetails key={event.contract} event={event} />
       <HowItWorks

@@ -828,25 +828,6 @@
   padding-bottom: 24px;
 }
 
-/* ---------- door QR ---------- */
-.og-qr {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding-top: 4px;
-}
-.og-qr-code {
-  flex: none;
-  width: 148px;
-  height: 148px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: #fff;
-}
-.og-qr-code svg {
-  display: block;
-}
-
 /* ---------- danger zone ---------- */
 .og-danger {
   padding: 18px 20px;

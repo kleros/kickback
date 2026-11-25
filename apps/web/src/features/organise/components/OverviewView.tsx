@@ -12,7 +12,6 @@ import { isShowableTime } from "@/utils/time";
 
 import { paths } from "@/config/paths";
 
-import { DoorQr } from "./DoorQr";
 import { Messages } from "./Messages";
 import { ConfirmDialog, Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
@@ -83,7 +82,6 @@ export function OverviewScreen({ court }: { court: string }) {
               <code title={guestLink}>{guestLink}</code>
               <CopyButton value={guestLink} label="Copy guest link" />
             </div>
-            <DoorQr link={guestLink} name={info.eventName} />
           </div>
         )}
         {phase === "Booking open" && (
