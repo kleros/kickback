@@ -75,7 +75,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         court={COURT}
         challengeFee={event.challengeDeposit}
         onDeposit={backToCard}
-        depositOpen={controller.depositOpen}
+        depositOpen={controller.depositOpen && ["rest", "nowallet", "connect", "ready"].includes(controller.view.key)}
       />
     </>
   );

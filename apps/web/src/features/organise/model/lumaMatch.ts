@@ -8,6 +8,8 @@ export interface LumaMatchRow {
   luma: LumaDecision;
   /** "deposit": this wallet booked; "none": no deposit from it; "no-wallet": the row has no wallet. */
   match: "deposit" | "none" | "no-wallet";
+  /** Another registration with the same wallet came first: one deposit is one ticket. */
+  dupOf?: string;
 }
 
 /**
@@ -30,6 +32,14 @@ export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow
       match: !wallet ? "no-wallet" : paid.has(wallet.toLowerCase()) ? "deposit" : "none",
     };
   });
+  const first = new Map<string, string>();
+  for (const r of out) {
+    if (!r.wallet) continue;
+    const k = r.wallet.toLowerCase();
+    const seen = first.get(k);
+    if (seen === undefined) first.set(k, r.name);
+    else r.dupOf = seen;
+  }
   const order = { deposit: 0, none: 1, "no-wallet": 2 } as const;
   return out.sort((a, b) => order[a.match] - order[b.match]);
 }

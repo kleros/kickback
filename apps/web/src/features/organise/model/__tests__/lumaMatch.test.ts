@@ -20,4 +20,13 @@ describe("matchLuma", () => {
       ["Cy", "no-wallet", "approved"],
     ]);
   });
+
+  it("flags a second registration with the same wallet: one deposit, one ticket", () => {
+    const csv = ["name,email,eth_address", `Al,al@x.io,${A}`, `Al again,al2@x.io,${A.toLowerCase()}`].join("\n");
+    const rows = matchLuma(csv, [A]);
+    expect(rows.map((r) => [r.name, r.dupOf])).toEqual([
+      ["Al", undefined],
+      ["Al again", "Al"],
+    ]);
+  });
 });

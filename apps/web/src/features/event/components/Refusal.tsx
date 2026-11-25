@@ -1,4 +1,8 @@
+import Link from "next/link";
+
 import { GlassCard } from "@/components/ui/GlassCard";
+
+import { paths } from "@/config/paths";
 
 import type { RefusalReason } from "../api/useEvent";
 
@@ -13,11 +17,16 @@ const BODY: Record<RefusalReason, string> = {
 export function Refusal({ reason, address }: { reason: RefusalReason; address: string }) {
   return (
     <div className="kb-narrow">
-      <GlassCard as="section" className="kb-refusal kb-rise" data-testid="refusal" data-reason={reason}>
+      <GlassCard as="section" className="kb-refusal" data-testid="refusal" data-reason={reason}>
         <h1>Not a Kickback event</h1>
         <p>{BODY[reason]}</p>
         {address && <span className="addr kb-mono">{address}</span>}
         <p>Check the link you were given.</p>
+        <p>
+          <Link className="kb-link" href={paths.home.getHref()}>
+            Go to the home page
+          </Link>
+        </p>
       </GlassCard>
     </div>
   );

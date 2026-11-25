@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { extractTxHash, normAddress } from "@kickback/core";
 import type { Address, Hash } from "viem";
@@ -8,30 +8,85 @@ import { usePublicClient } from "wagmi";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
-import { shortHex } from "../model/view";
 import type { GuestRow } from "../operations/read";
 
-type Result = { tone: "ok" | "err" | "warn"; text: string } | null;
+type Verdict = {
+  tone: "ok" | "err" | "warn";
+  title: string;
+  text?: string;
+  /** The paying wallet, shown in full so it can be compared with the Luma request. */
+  wallet?: string;
+} | null;
 
-const STATUS: Record<number, Result> = {
-  1: { tone: "ok", text: "Deposit found: booked. Approve on Luma." },
-  2: { tone: "err", text: "Turned away: their deposit was refunded. Do not approve." },
-  3: { tone: "err", text: "Refunded. Do not approve." },
-};
+const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-/** One paste from Luma (the verified wallet, or the transaction link) → is this a real booking? */
-export function GuestCheck({ contract, guests }: { contract: Address; guests: readonly GuestRow[] }) {
+/** The full address, with the first 6 and last 4 characters stressed: what people compare by eye. */
+function WalletText({ wallet }: { wallet: string }) {
+  return (
+    <span className="og-verdict-wallet">
+      <b>{wallet.slice(0, 6)}</b>
+      {wallet.slice(6, -4)}
+      <b>{wallet.slice(-4)}</b>
+    </span>
+  );
+}
+
+/**
+ * One paste from a Luma request (the verified wallet, or the transaction link) → is this a real
+ * booking? Remembers what was confirmed in this browser, so one deposit is not approved twice.
+ */
+export function GuestCheck({
+  contract,
+  guests,
+  nameOf,
+  check: remember,
+}: {
+  contract: Address;
+  guests: readonly GuestRow[];
+  nameOf: (wallet: string) => string | undefined;
+  check: (wallet: string) => number | undefined;
+}) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [text, setText] = useState("");
-  const [result, setResult] = useState<Result>(null);
+  const [result, setResult] = useState<Verdict>(null);
   const [busy, setBusy] = useState(false);
   const latest = useRef("");
-  const byWallet = (wallet: string) => guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase());
-  const walletResult = (wallet: string): Result =>
-    STATUS[byWallet(wallet)?.status ?? 0] ?? {
-      tone: "err",
-      text: `No deposit from ${shortHex(wallet)} for this event. Do not approve.`,
+  const input = useRef<HTMLInputElement>(null);
+
+  // the overview's "Check a guest" lands here: ready for the first paste
+  useEffect(() => {
+    if (window.location.hash === "#check") {
+      input.current?.scrollIntoView({ block: "center" });
+      input.current?.focus({ preventScroll: true });
+    }
+  }, []);
+
+  const walletVerdict = (wallet: string, viaTx: boolean): Verdict => {
+    const row = guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase());
+    const name = nameOf(wallet);
+    const who = name ? `${name} on Luma. ` : "";
+    if (!row || row.status === 0)
+      return { tone: "err", title: "No deposit: do not approve", text: "No booking from this wallet.", wallet };
+    if (row.status === 2)
+      return { tone: "err", title: "Turned away: do not approve", text: "Their deposit was refunded.", wallet };
+    if (row.status === 3) return { tone: "err", title: "Refunded: do not approve", wallet };
+    const before = remember(wallet);
+    if (before !== undefined)
+      return {
+        tone: "warn",
+        title: "Already checked: approve only one",
+        text: `${who}This deposit was confirmed here at ${clock(before)}. One deposit is one ticket.`,
+        wallet,
+      };
+    return {
+      tone: "ok",
+      title: "Booked: approve",
+      text: viaTx
+        ? `${who}Approve if this is the Ethereum address on their Luma request.`
+        : `${who}Deposit found for this wallet.`,
+      wallet,
     };
+  };
 
   const check = async (value: string) => {
     latest.current = value;
@@ -43,54 +98,76 @@ export function GuestCheck({ contract, guests }: { contract: Address; guests: re
         const tx = await client.getTransaction({ hash: hash as Hash });
         if (latest.current !== value) return;
         if (tx.to?.toLowerCase() !== contract.toLowerCase())
-          return setResult({ tone: "err", text: "This transaction is not a deposit into this event. Do not approve." });
-        const outcome = walletResult(tx.from);
-        setResult(
-          outcome?.tone === "ok"
-            ? {
-                tone: "ok",
-                text: `Deposit found from ${shortHex(tx.from)}. Approve only if this is the Ethereum address on their Luma request.`,
-              }
-            : outcome,
-        );
+          return setResult({
+            tone: "err",
+            title: "Not a deposit: do not approve",
+            text: "This transaction did not go to this event.",
+          });
+        setResult(walletVerdict(tx.from, true));
       } catch {
-        setResult({ tone: "err", text: "No such transaction on this network. Do not approve." });
+        if (latest.current === value)
+          setResult({ tone: "err", title: "Not found: do not approve", text: "No such transaction on this network." });
       } finally {
-        setBusy(false);
+        if (latest.current === value) setBusy(false);
       }
       return;
     }
+    setBusy(false);
     const wallet = normAddress(value);
-    if (wallet) return setResult(walletResult(wallet));
-    if (value.trim()) setResult({ tone: "warn", text: "Paste a wallet address (0x…) or a transaction link." });
+    if (wallet) return setResult(walletVerdict(wallet, false));
+    if (value.trim()) setResult({ tone: "warn", title: "Paste a wallet (0x…) or a transaction link" });
+  };
+
+  const take = (value: string) => {
+    setText(value);
+    void check(value);
+  };
+
+  const paste = async () => {
+    try {
+      const value = (await navigator.clipboard.readText()).trim();
+      if (value) take(value);
+    } catch {
+      input.current?.focus();
+    }
+    input.current?.select();
   };
 
   return (
-    <section className="flex flex-col gap-2" data-testid="guest-check">
-      <h2 className="og-h2">Check a Luma request</h2>
+    <section className="flex flex-col gap-2" id="check" data-testid="guest-check">
+      <h2 className="og-h2">Check a guest</h2>
       <p className="og-lede">
-        Paste the guest&apos;s Ethereum address or transaction link from their Luma request. It is checked against this
-        event&apos;s deposits on the blockchain, so a fake or random link fails.
+        Paste the Ethereum address or transaction link from a Luma request. It is checked against this event&apos;s
+        deposits on the blockchain, so a fake link fails.
       </p>
-      <input
-        className="og-input is-mono"
-        placeholder="0x… or https://etherscan.io/tx/0x…"
-        value={text}
-        spellCheck={false}
-        autoComplete="off"
-        aria-label="Wallet address or transaction link"
-        data-testid="guest-check-input"
-        onChange={(event) => {
-          const value = event.currentTarget.value;
-          setText(value);
-          void check(value);
-        }}
-      />
+      <div className="og-check-row">
+        <input
+          ref={input}
+          className="og-input is-mono"
+          placeholder="0x… or https://etherscan.io/tx/0x…"
+          value={text}
+          spellCheck={false}
+          autoComplete="off"
+          aria-label="Wallet address or transaction link"
+          data-testid="guest-check-input"
+          onFocus={(e) => e.currentTarget.select()}
+          onChange={(e) => take(e.currentTarget.value)}
+        />
+        <button type="button" className="og-paste" onClick={() => void paste()}>
+          Paste
+        </button>
+      </div>
       {(busy || result) && (
-        <p className="og-cell-status" data-testid="guest-check-result" data-tone={result?.tone}>
-          <span className="og-dot" data-tone={busy ? "warn" : result?.tone} aria-hidden />
-          <span>{busy ? "Checking the transaction…" : result?.text}</span>
-        </p>
+        <div
+          className="og-verdict"
+          role="status"
+          data-testid="guest-check-result"
+          data-tone={busy ? "warn" : result?.tone}
+        >
+          <p className="og-verdict-title">{busy ? "Checking the transaction…" : result?.title}</p>
+          {!busy && result?.wallet && <WalletText wallet={result.wallet} />}
+          {!busy && result?.text && <p className="og-verdict-text">{result.text}</p>}
+        </div>
       )}
     </section>
   );

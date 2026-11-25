@@ -12,7 +12,8 @@ export function WalletChip() {
   return (
     <span className="kb-wallet-chip" title={address} data-testid="wallet-chip">
       <span className="dot" aria-hidden />
-      <span className="kb-mono">{shortenAddress(address)}</span>
+      <span className="kb-mono kb-wallet-long">{shortenAddress(address)}</span>
+      <span className="kb-mono kb-wallet-short">{address.slice(0, 6)}</span>
     </span>
   );
 }

@@ -13,14 +13,16 @@ import { isShowableTime } from "@/utils/time";
 
 import { Messages } from "./Messages";
 import { ConfirmDialog, FilePick, Figures } from "./parts";
+import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
+import { matchLuma } from "../model/lumaMatch";
 import { assetText, shortHex, TYPED_WORDS } from "../model/view";
 import { tx } from "../operations/tx";
 
 const SKIP_TEXT = {
   "no-wallet": "No wallet in the row",
-  "not-a-guest": "Wallet has no deposit",
-  "not-checked-in": "Not checked in",
+  "not-a-guest": "Checked in, but this wallet has no deposit",
+  "not-checked-in": "Not checked in on Luma",
   duplicate: "Listed twice",
 } as const;
 
@@ -38,6 +40,7 @@ const when = (unix: number) =>
 
 export function AttendanceScreen() {
   const event = useOrganiserEvent();
+  const luma = useLumaBook(event.address);
   const [csv, setCsv] = useState<{ name: string; text: string } | null>(null);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [confirm, setConfirm] = useState<"close" | "save" | null>(null);
@@ -56,6 +59,8 @@ export function AttendanceScreen() {
   const canAdd = event.isOwner && !event.busy && (inWindow || (listed && data.now <= info.challengeEndsAt));
   const total = booked.filter(isOn).length;
   const noShows = booked.length - total;
+  const parts = batches(toAdd, BATCH_SIZE);
+  const unscanned = plan?.skipped.filter((s) => s.reason === "not-checked-in" && s.wallet).length ?? 0;
 
   if (info.phase === 0 && data.now < info.eventEnd)
     return (
@@ -95,7 +100,6 @@ export function AttendanceScreen() {
       event.run(`Add ${list.length}`, () => tx.addAttendees(info.contract, list), `${list.length} added to the list.`);
       return;
     }
-    const parts = batches(list, BATCH_SIZE);
     // one transaction for a list that fits; the last batch closes it
     const first = parts[0] ?? [];
     const closeNow = close && parts.length <= 1;
@@ -117,7 +121,7 @@ export function AttendanceScreen() {
         <p className="og-lede">
           {listed
             ? `The list is closed. Until ${when(info.challengeEndsAt)} you can still add guests left off by mistake.`
-            : `Tick who came, then post the list by ${when(info.claimDeadline)}. Closing it opens a ${Math.round(info.challengePeriod / 3600)} hour window for challenges.`}
+            : `Load the Luma export: everyone checked in is ticked. Check the ticks, then post the list by ${when(info.claimDeadline)}. Once posted, names cannot be removed, and guests left off have ${Math.round(info.challengePeriod / 3600)} hours to challenge.`}
         </p>
       </div>
       {!listed && (
@@ -128,13 +132,18 @@ export function AttendanceScreen() {
           onFile={(name, text) => {
             setCsv({ name, text });
             setPicked(null);
+            luma.add(matchLuma(text, booked));
           }}
           testId="checkin-csv"
         />
       )}
       {plan && plan.skipped.length > 0 && (
-        <details className="og-note">
-          <summary>{plan.skipped.length} rows not used</summary>
+        <details className="og-note og-skipped" open>
+          <summary>
+            {plan.skipped.length} rows not used
+            {unscanned > 0 &&
+              ` · ${unscanned} paid but were not checked in: tick any you saw at the door, or they may challenge`}
+          </summary>
           <ul>
             {plan.skipped.map((s) => (
               <li key={s.row}>
@@ -158,7 +167,7 @@ export function AttendanceScreen() {
       />
       <div className="og-table" role="table" aria-label="Booked guests">
         <div className="og-thead" role="row">
-          <span>Wallet</span>
+          <span>Guest</span>
           <span />
           <span />
           <span>Status</span>
@@ -169,14 +178,17 @@ export function AttendanceScreen() {
           return (
             <div key={w} className="og-row" data-testid="attendance-row">
               <div className="og-row-main">
-                <span className="og-cell-wallet og-mono" title={w}>
-                  {shortHex(w)}
+                <span className="og-cell-wallet" title={w}>
+                  {luma.nameOf(w) && <span className="og-cell-name">{luma.nameOf(w)}</span>}
+                  <span className="og-mono">{shortHex(w)}</span>
                 </span>
                 <span className="og-cell-hide" />
                 <span className="og-cell-hide" />
                 <span className="og-cell-status">
                   <span className="og-dot" data-tone={isOn(w) ? "ok" : "warn"} aria-hidden />
-                  <span>{on ? "On the list" : isOn(w) ? "To add" : "Not on the list"}</span>
+                  <span>
+                    {on ? "Already on the list" : isOn(w) ? (csv ? "Came (from Luma)" : "Came") : "Didn't come"}
+                  </span>
                 </span>
                 <span className="og-ticks">
                   <label className="og-tick">
@@ -202,7 +214,9 @@ export function AttendanceScreen() {
       )}
       <Messages event={event} />
       <GlassCard className="og-selbar og-thumb">
-        <span className="og-note">{toAdd.length} to add</span>
+        <span className="og-note">
+          {total} came · {noShows} no-shows
+        </span>
         <div className="og-actions">
           {listed ? (
             <GradientButton isDisabled={!canAdd || !toAdd.length} onPress={() => setConfirm("save")}>
@@ -215,10 +229,10 @@ export function AttendanceScreen() {
                 isDisabled={!canAdd || !toAdd.length}
                 onPress={() => setConfirm("save")}
               >
-                {`Save ${toAdd.length}, keep open`}
+                {`Save ${toAdd.length} for now`}
               </GradientButton>
               <GradientButton isDisabled={!canAdd || total === 0} onPress={() => setConfirm("close")}>
-                Post and close the list
+                {parts.length > 1 ? `Post ${BATCH_SIZE} of ${toAdd.length} first` : "Post and close the list"}
               </GradientButton>
             </>
           )}

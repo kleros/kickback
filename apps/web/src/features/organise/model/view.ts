@@ -15,6 +15,7 @@ export type Tone = "live" | "ok" | "warn" | "end";
 
 export const PHASE_TONE: Record<Phase, Tone> = {
   "Booking open": "live",
+  "Live now": "live",
   "Attendance due": "warn",
   "Adding names": "warn",
   "Challenge window": "live",

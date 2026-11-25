@@ -2,6 +2,7 @@ import type { EventInfo } from "@kickback/core";
 
 export type Phase =
   | "Booking open"
+  | "Live now"
   | "Attendance due"
   | "Adding names"
   | "Challenge window"
@@ -12,14 +13,15 @@ export type Phase =
 
 /** The event's step in plain words, from the contract's phase and the chain's time. */
 export function phaseOf(
-  event: Pick<EventInfo, "phase" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount">,
+  event: Pick<EventInfo, "phase" | "eventStart" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount">,
   now: number,
 ): Phase {
   if (event.phase === 3) return "Cancelled";
   if (event.phase === 2) return "Paid out";
   if (event.phase === 1) return now <= event.challengeEndsAt ? "Challenge window" : "Payouts ready";
   if (now > event.claimDeadline) return "Past the deadline";
-  if (now < event.eventEnd) return "Booking open";
+  if (now < event.eventStart) return "Booking open";
+  if (now < event.eventEnd) return "Live now";
   return event.attendeeCount > 0 ? "Adding names" : "Attendance due";
 }
 
@@ -33,8 +35,13 @@ export interface NextStep {
 export const NEXT_STEP: Record<Phase, NextStep> = {
   "Booking open": {
     title: "Check who booked",
+    detail: "Set up Luma once, then approve each request that has a deposit.",
+    tab: "guests",
+  },
+  "Live now": {
+    title: "Check a guest",
     detail:
-      "Put the guest link below on your Luma ticket, and turn on Luma's \"Require Ethereum wallet\". Guests are in as soon as they deposit. Before the start you can turn anyone away with a full refund. At the door, scan every guest's Luma QR code: only checked-in guests count as attended.",
+      "Walk-ins can still book with the guest link or QR code. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
     tab: "guests",
   },
   "Attendance due": {

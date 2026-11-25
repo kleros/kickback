@@ -82,6 +82,7 @@
 @media (max-width: 520px) {
   .kb-brand-name {
     font-size: 1.1rem;
+    white-space: nowrap;
   }
   .kb-icon-link {
     display: none;
@@ -168,4 +169,30 @@
 .home-lede {
   text-align: justify;
   hyphens: auto;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+@media (max-width: 400px) {
+  .kb-brand-name {
+    font-size: 0.95rem;
+  }
+  .kb-wallet-chip {
+    padding: 0 10px;
+    gap: 6px;
+  }
+}
+
+.kb-wallet-short {
+  display: none;
+}
+@media (max-width: 520px) {
+  .kb-wallet-long {
+    display: none;
+  }
+  .kb-wallet-short {
+    display: inline;
+  }
 }

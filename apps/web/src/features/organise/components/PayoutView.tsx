@@ -17,6 +17,7 @@ import { caseUrl } from "@/config/protocol";
 
 import { Messages } from "./Messages";
 import { ConfirmDialog, Figures } from "./parts";
+import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { assetText, ethText, shortHex, TYPED_WORDS } from "../model/view";
 import { tx } from "../operations/tx";
@@ -33,10 +34,15 @@ const when = (unix: number) =>
       }).format(new Date(unix * 1000))
     : "date out of range";
 
-const STATE = ["None", "Waiting for you", "With Kleros", "Decided"] as const;
+/** "23 h 40 min left", from now to a deadline. */
+const left = (from: number, to: number) => {
+  const m = Math.max(0, Math.floor((to - from) / 60));
+  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m} min left`;
+};
 
 export function PayoutScreen() {
   const event = useOrganiserEvent();
+  const luma = useLumaBook(event.address);
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [confirm, setConfirm] = useState<"release" | null>(null);
   const data = event.overview.data;
@@ -81,7 +87,14 @@ export function PayoutScreen() {
               { label: "Pool", value: assetText(pool, info) },
               { label: "Attendees", value: String(info.attendeeCount) },
               { label: info.phase === 2 ? "Each got" : "Each gets", value: assetText(share, info) },
-              { label: "Kleros cases", value: String(disputed.length) },
+              {
+                label: "Challenges",
+                value: stillOpen.length
+                  ? `${stillOpen.length} waiting for you`
+                  : disputed.length
+                    ? `${disputed.length} with Kleros`
+                    : String(data.challenges.length),
+              },
             ]}
           />
           <section className="flex flex-col gap-3" data-testid="challenges">
@@ -96,24 +109,37 @@ export function PayoutScreen() {
               data.challenges.map((c) => {
                 const href = c.state === 2 ? caseUrl(DEFAULT_CHAIN_ID, c.arbitratorDisputeID) : undefined;
                 const canMatch = c.state === 1 && now <= c.matchEndsAt && info.phase === 1;
+                const name = luma.nameOf(c.wallet);
+                const came = data.guests.find((g) => g.wallet.toLowerCase() === c.wallet.toLowerCase())?.attended;
+                const status =
+                  c.state === 1
+                    ? now <= c.matchEndsAt
+                      ? `Waiting for you · ${left(now, c.matchEndsAt)}`
+                      : "Not answered in time: accepted"
+                    : c.state === 2
+                      ? "With Kleros"
+                      : came
+                        ? "Decided: they came"
+                        : "Decided: they did not come";
                 return (
                   <GlassCard key={c.wallet} className="og-card" data-testid="challenge-row">
                     <div className="og-head-row">
-                      <span className="og-mono" title={c.wallet}>
-                        {shortHex(c.wallet)}
+                      <span title={c.wallet}>
+                        {name && <b className="mr-2">{name}</b>}
+                        <span className="og-mono">{shortHex(c.wallet)}</span>
                       </span>
-                      <span className="og-note">
-                        {STATE[c.state] ?? "Unknown"}
-                        {c.state === 1 &&
-                          (now <= c.matchEndsAt ? ` · answer by ${when(c.matchEndsAt)}` : " · not answered in time")}
-                      </span>
+                      <span className="og-note">{status}</span>
                     </div>
                     <p className="og-lede">
-                      {c.state === 1
-                        ? `This guest says they came and paid ${ethText(c.deposit)}. If they did, add them to the list and they get it back. If not, match it with the same amount and Kleros jurors decide; the side they agree with is refunded.`
-                        : c.state === 2
-                          ? "Kleros jurors are deciding. Send your evidence (check-in records, photos) on the case page. Once ruled, settle it here."
-                          : "Settled."}
+                      {c.state === 1 && now <= c.matchEndsAt
+                        ? `This guest says they came. They paid ${ethText(c.deposit)} to challenge. If they came: add them, and they get it back. If they did not: send it to Kleros, paying the same ${ethText(c.deposit)} from your wallet; jurors decide and the side they agree with gets its fee back. If you do nothing by ${when(c.matchEndsAt)}, they are added.`
+                        : c.state === 1
+                          ? "You did not answer in time, so this guest is added to the list. It is done when you release payouts, or press Accept."
+                          : c.state === 2
+                            ? "Kleros jurors are deciding. Send your evidence (Luma check-ins, photos) on the case page. Once ruled, settle it here."
+                            : came
+                              ? "This guest was added to the list and gets a share."
+                              : "Kleros jurors ruled this guest did not come."}
                     </p>
                     <div className="og-actions">
                       {href && (
@@ -166,7 +192,7 @@ export function PayoutScreen() {
                             )
                           }
                         >
-                          Settle
+                          {c.state === 1 ? "Accept: add them to the list" : "Settle the ruling"}
                         </GradientButton>
                       )}
                     </div>

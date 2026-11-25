@@ -1,19 +1,24 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 import { CopyButton } from "@/components/ui/CopyButton";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { GradientButton } from "@/components/ui/GradientButton";
 import { NumberPop } from "@/components/ui/NumberPop";
 
 import { isShowableTime } from "@/utils/time";
 
 import { paths } from "@/config/paths";
 
-import { Figures } from "./parts";
+import { DoorQr } from "./DoorQr";
+import { Messages } from "./Messages";
+import { ConfirmDialog, Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { NEXT_STEP } from "../model/phase";
-import { assetText } from "../model/view";
+import { assetText, TYPED_WORDS } from "../model/view";
+import { tx } from "../operations/tx";
 
 const when = (unix: number) =>
   isShowableTime(unix)
@@ -28,22 +33,35 @@ const when = (unix: number) =>
       }).format(new Date(unix * 1000))
     : "date out of range";
 
+const LUMA_SETUP = [
+  "Copy the guest link and put it in your Luma ticket's description.",
+  'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet".',
+  "Guests deposit, then paste their transaction link in the Luma request.",
+  "Approve each request with a deposit: check them on the Guests tab.",
+];
+
 export function OverviewScreen({ court }: { court: string }) {
-  const { overview, phase, address } = useOrganiserEvent();
+  const event = useOrganiserEvent();
+  const { overview, phase, address } = event;
+  const [cancel, setCancel] = useState(false);
   const data = overview.data;
   if (!data || !phase) return <p className="og-note">Reading the event…</p>;
-  const { event } = data;
+  const info = data.event;
   const step = NEXT_STEP[phase];
+  const booking = phase === "Booking open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
     phase === "Booking open"
-      ? `Bookings open until ${when(event.eventEnd)}`
-      : phase === "Attendance due" || phase === "Adding names"
-        ? `Confirm who came by ${when(event.claimDeadline)}`
-        : phase === "Challenge window"
-          ? `Challenges close ${when(event.challengeEndsAt)}`
-          : null;
+      ? `Starts ${when(info.eventStart)} · bookings open until the end`
+      : phase === "Live now"
+        ? `The event is on · walk-ins can book until ${when(info.eventEnd)}`
+        : phase === "Attendance due" || phase === "Adding names"
+          ? `Confirm who came by ${when(info.claimDeadline)}`
+          : phase === "Challenge window"
+            ? `Challenges close ${when(info.challengeEndsAt)}`
+            : null;
   const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
+  const canCancel = event.isOwner && info.phase === 0 && data.now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
       <div className="flex flex-col gap-1">
@@ -58,22 +76,34 @@ export function OverviewScreen({ court }: { court: string }) {
           <h2 className="og-h2">{step.title}</h2>
           <p className="og-lede">{step.detail}</p>
         </div>
-        {phase === "Booking open" && (
+        {booking && (
           <div className="flex flex-col gap-2" data-testid="guest-link">
             <span className="og-label">Guest link</span>
             <div className="og-linkbox">
               <code title={guestLink}>{guestLink}</code>
               <CopyButton value={guestLink} label="Copy guest link" />
             </div>
-            <p className="og-note">
-              Bookmark this organiser page too. If you lose it, connect this wallet on Organise to find your events.
-            </p>
+            <DoorQr link={guestLink} name={info.eventName} />
           </div>
+        )}
+        {phase === "Booking open" && (
+          <ol className="og-steps" aria-label="Set up Luma">
+            {LUMA_SETUP.map((text, i) => (
+              <li key={text} className="og-step">
+                <span className="og-step-n">{i + 1}</span>
+                <span>{text}</span>
+              </li>
+            ))}
+            <li className="og-step">
+              <span className="og-step-n">!</span>
+              <span>On the day, scan every guest&apos;s Luma QR code: only checked-in guests count as came.</span>
+            </li>
+          </ol>
         )}
         {step.tab && (
           <div className="og-actions">
             <Link
-              href={paths.organiseEvent.getHref(address, undefined, step.tab)}
+              href={`${paths.organiseEvent.getHref(address, undefined, step.tab)}${step.tab === "guests" ? "#check" : ""}`}
               className="kb-btn"
               data-testid="next-action"
               prefetch
@@ -83,36 +113,71 @@ export function OverviewScreen({ court }: { court: string }) {
             </Link>
           </div>
         )}
+        {booking && (
+          <p className="og-note">
+            Bookmark this organiser page. If you lose it, connect this wallet on Organise to find your events.
+          </p>
+        )}
       </GlassCard>
       <Figures
         big
         testId="counts"
         rows={[
-          { label: "Booked", value: <NumberPop value={String(event.stakerCount)} still /> },
+          { label: "Booked", value: <NumberPop value={String(info.stakerCount)} still /> },
           {
-            label: "Attendees",
-            value:
-              event.phase === 0 || event.phase === 3 ? "—" : <NumberPop value={String(event.attendeeCount)} still />,
+            label: "Confirmed as came",
+            value: info.phase === 0 || info.phase === 3 ? "—" : <NumberPop value={String(info.attendeeCount)} still />,
           },
-          { label: "Challenges", value: <NumberPop value={String(open)} still /> },
-          {
-            label: "Pool",
-            value: (
-              <span className="text-base">{assetText(event.depositAmount * BigInt(event.stakerCount), event)}</span>
-            ),
-          },
+          { label: "Open challenges", value: <NumberPop value={String(open)} still /> },
+          { label: "Deposits held", value: assetText(info.depositAmount * BigInt(info.stakerCount), info) },
         ]}
       />
-      <Figures
-        rows={[
-          { label: "Deposit", value: assetText(event.depositAmount, event) },
-          { label: "Capacity", value: event.capacity ? String(event.capacity) : "No limit" },
-          { label: "Starts", value: when(event.eventStart) },
-          { label: "Ends · bookings close", value: when(event.eventEnd) },
-          { label: "Confirm who came by", value: when(event.claimDeadline) },
-          { label: "Disputes", value: court },
-        ]}
-      />
+      <section className="flex flex-col gap-2">
+        <h2 className="og-h2">Event details</h2>
+        <Figures
+          rows={[
+            { label: "Deposit", value: assetText(info.depositAmount, info) },
+            { label: "Capacity", value: info.capacity ? String(info.capacity) : "No limit" },
+            { label: "Starts", value: when(info.eventStart) },
+            { label: "Ends · bookings close", value: when(info.eventEnd) },
+            { label: "Confirm who came by", value: when(info.claimDeadline) },
+            { label: "Disputes", value: court },
+          ]}
+        />
+      </section>
+      {canCancel && (
+        <section className="og-danger flex flex-col gap-2" data-testid="danger-zone">
+          <h2 className="og-h2">Cancel the event</h2>
+          <p className="og-note">Every booked guest can then withdraw their full deposit. This cannot be undone.</p>
+          <div>
+            <GradientButton className="is-quiet" isDisabled={event.busy} onPress={() => setCancel(true)}>
+              Cancel the event
+            </GradientButton>
+          </div>
+        </section>
+      )}
+      <Messages event={event} />
+      {cancel && (
+        <ConfirmDialog
+          isOpen
+          title="Cancel the event"
+          intro="Every booked guest can then withdraw their full deposit. This cannot be undone."
+          words={[TYPED_WORDS.cancel]}
+          figures={[{ label: "Booked guests", value: String(info.stakerCount) }]}
+          action="Cancel the event"
+          busy={event.busy}
+          error={null}
+          onClose={() => setCancel(false)}
+          onConfirm={() => {
+            setCancel(false);
+            event.run(
+              "Cancel",
+              () => tx.cancel(info.contract),
+              "The event is cancelled. Guests can withdraw their deposits.",
+            );
+          }}
+        />
+      )}
     </div>
   );
 }

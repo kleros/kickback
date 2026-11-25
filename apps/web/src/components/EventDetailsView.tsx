@@ -64,7 +64,7 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
       style={{ "--ed-tint": tint } as CSSProperties}
     >
       <div className="kb-narrow ed-content">
-        {(title || coverUrl) && (
+        {coverUrl && (
           <GlassCard as="header" className="ed-poster">
             {coverUrl && <Image className="ed-cover" src={coverUrl} alt="" width={800} height={1000} unoptimized />}
             <div className="ed-poster-text">

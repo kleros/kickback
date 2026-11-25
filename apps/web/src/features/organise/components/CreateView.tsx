@@ -237,7 +237,7 @@ export function CreateScreen() {
           </Field>
           <Field
             label="Days to confirm who came"
-            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end. Guests then have 1 day to challenge before payouts.`}
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end. Miss it and every guest gets their deposit back. Then 1 day for challenges.`}
           >
             <input
               className="og-input"
