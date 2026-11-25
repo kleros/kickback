@@ -5,6 +5,8 @@ import { useAccount, useSwitchChain } from "wagmi";
 
 import { GradientButton } from "@/components/ui/GradientButton";
 
+import { connectWallet } from "@/lib/web3/connect";
+
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 /** Connect, or switch to the app's chain: whichever the wallet needs next. The header shows the address. */
@@ -29,7 +31,7 @@ export function ConnectWallet({ text = "Connect" }: { text?: string }) {
   }
 
   return (
-    <GradientButton isDisabled={isOpen} onPress={() => open({ view: "Connect" })}>
+    <GradientButton isDisabled={isOpen} onPress={() => void connectWallet(() => open({ view: "Connect" }))}>
       {text}
     </GradientButton>
   );

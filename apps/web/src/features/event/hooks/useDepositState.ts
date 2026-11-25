@@ -13,6 +13,7 @@ import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
+import { connectWallet } from "@/lib/web3/connect";
 import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
@@ -196,7 +197,7 @@ export function useDepositState(event: KickbackEvent): DepositController {
     approve: money.approve,
     connect: () => {
       setAsked(true);
-      void open({ view: "Connect" });
+      void connectWallet(() => open({ view: "Connect" }));
     },
     switchChain: () => {
       switchChainAsync({ chainId: DEFAULT_CHAIN_ID }).then(
