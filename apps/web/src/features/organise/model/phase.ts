@@ -34,18 +34,18 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Booking open": {
     title: "Check who booked",
     detail:
-      "Put the guest link on your Luma ticket and turn on Luma's \"Require Ethereum wallet\". Guests are in as soon as they deposit; turn away anyone who should not come, before the start, with a full refund. At the door, scan every guest's Luma QR: only checked-in guests count as attended.",
+      "Put the guest link below on your Luma ticket, and turn on Luma's \"Require Ethereum wallet\". Guests are in as soon as they deposit. Before the start you can turn anyone away with a full refund. At the door, scan every guest's Luma QR code: only checked-in guests count as attended.",
     tab: "guests",
   },
   "Attendance due": {
-    title: "Post the attendance list",
+    title: "Confirm who came",
     detail:
-      "Export the Luma guest list (it has check-ins and wallets), load it here, review who came, and post the list before the deadline.",
+      "Export the Luma guest list (it has check-ins and wallets) and load it here. Review who came and confirm it before the deadline. It is recorded on the blockchain, not published anywhere else.",
     tab: "attendance",
   },
   "Adding names": {
     title: "Close the list",
-    detail: "Add any missing names, then close the list. Closing starts the challenge window.",
+    detail: "Add anyone missing, then close the list. Closing starts the 1-day challenge window.",
     tab: "attendance",
   },
   "Challenge window": {

@@ -243,8 +243,8 @@ export function depositState(input: DepositInput): DepositView {
     lines: [],
     receipt: receipt(tx, when),
     action: "copy",
-    button: "Copy transaction link",
-    foot: "Check in to get it back.",
+    button: "Copy link for Luma",
+    foot: "Paste in Luma. Check in.",
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);

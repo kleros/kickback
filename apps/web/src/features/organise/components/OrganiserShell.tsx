@@ -81,7 +81,7 @@ export function ShellView({
         {event.overview.isError ? (
           <p className="og-err" role="alert" data-testid="read-error">
             {event.overview.error instanceof EventRefused
-              ? "This address is not an event created by this site's factory."
+              ? "This address is not an event on this site. If it is your wallet address, open Organise and connect that wallet: your events are listed there."
               : "The network did not answer."}{" "}
             Check the address, or reload to try again.
           </p>

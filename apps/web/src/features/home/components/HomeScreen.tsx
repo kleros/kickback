@@ -57,7 +57,8 @@ function Example() {
         </div>
       </dl>
       <p className="home-note">
-        Their {ethText(EXAMPLE.deposit)} ETH back, plus an equal share of the {noShows} no-shows&apos; deposits.
+        Guests who came get their {ethText(EXAMPLE.deposit)} ETH back, plus an equal share of the {noShows}{" "}
+        no-shows&apos; deposits.
       </p>
     </GlassCard>
   );

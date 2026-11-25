@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { CopyPrimaryButton } from "@/components/ui/CopyButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NumberPop } from "@/components/ui/NumberPop";
 
@@ -33,11 +34,12 @@ export function OverviewScreen({ court }: { court: string }) {
   if (!data || !phase) return <p className="og-note">Reading the event…</p>;
   const { event } = data;
   const step = NEXT_STEP[phase];
+  const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
     phase === "Booking open"
       ? `Bookings open until ${when(event.eventEnd)}`
       : phase === "Attendance due" || phase === "Adding names"
-        ? `Attendance list due by ${when(event.claimDeadline)}`
+        ? `Confirm who came by ${when(event.claimDeadline)}`
         : phase === "Challenge window"
           ? `Challenges close ${when(event.challengeEndsAt)}`
           : null;
@@ -56,6 +58,16 @@ export function OverviewScreen({ court }: { court: string }) {
           <h2 className="og-h2">{step.title}</h2>
           <p className="og-lede">{step.detail}</p>
         </div>
+        {phase === "Booking open" && (
+          <div className="flex flex-col gap-2" data-testid="guest-link">
+            <span className="og-label">Guest link</span>
+            <code className="og-input is-mono break-all">{guestLink}</code>
+            <CopyPrimaryButton value={guestLink}>Copy guest link</CopyPrimaryButton>
+            <p className="og-note">
+              Bookmark this organiser page too. If you lose it, connect this wallet on Organise to find your events.
+            </p>
+          </div>
+        )}
         {step.tab && (
           <div className="og-actions">
             <Link
@@ -93,7 +105,7 @@ export function OverviewScreen({ court }: { court: string }) {
           { label: "Capacity", value: event.capacity ? String(event.capacity) : "No limit" },
           { label: "Starts", value: when(event.eventStart) },
           { label: "Ends · bookings close", value: when(event.eventEnd) },
-          { label: "List due by", value: when(event.claimDeadline) },
+          { label: "Confirm who came by", value: when(event.claimDeadline) },
           { label: "Disputes", value: court },
         ]}
       />

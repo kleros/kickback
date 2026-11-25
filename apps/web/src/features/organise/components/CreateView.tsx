@@ -170,8 +170,9 @@ export function CreateScreen() {
       <div className="flex flex-col gap-2">
         <h1 className="kb-h1">Create an event</h1>
         <p className="og-lede">
-          Guests book with a refundable deposit. After the event you post who came; the no-shows&apos; deposits are
-          shared among the guests who did. Anyone left off can challenge, and Kleros jurors decide.
+          Guests book with a refundable deposit. After the event you confirm who actually came, and the no-shows&apos;
+          deposits are shared among the guests who did. A guest you leave off by mistake can challenge, and independent
+          jurors on Kleros Court decide who is right.
         </p>
       </div>
       {!address && (
@@ -207,8 +208,8 @@ export function CreateScreen() {
                 : form.asset === "ETH" &&
                     /^\d+(\.\d+)?$/.test(form.deposit.trim()) &&
                     parseUnits(form.deposit.trim(), 18) < fee
-                  ? `A guest left off pays Kleros's fee, now ${formatEther(fee)} ETH, to challenge: more than this deposit, so few will. Guests get less protection.`
-                  : `A guest left off pays Kleros's fee, now ${formatEther(fee)} ETH, to challenge.`
+                  ? `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH. That is more than this deposit, so guests are unlikely to challenge.`
+                  : `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH.`
             }
           >
             <input className="og-input" inputMode="decimal" value={form.deposit} onChange={set("deposit")} />
@@ -235,8 +236,8 @@ export function CreateScreen() {
             <input className="og-input" type="datetime-local" value={form.end} onChange={set("end")} />
           </Field>
           <Field
-            label="Post the list within, days"
-            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end`}
+            label="Days to confirm who came"
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end. Guests then have 1 day to challenge before payouts.`}
           >
             <input
               className="og-input"

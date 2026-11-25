@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "react-aria-components";
+import { useAccount } from "wagmi";
+
 
 import { GlassCard } from "@/components/ui/GlassCard";
 
@@ -20,11 +22,14 @@ import { openAddress } from "../model/view";
 export function OrganiseHome() {
   const router = useRouter();
   const events = useBrowserEvents();
+  const { address: wallet } = useAccount();
   const [text, setText] = useState("");
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   const open = () => {
     const result = openAddress(text);
     if (result.error) return setError({ text: result.error, at: Date.now() });
+    if (wallet && result.address!.toLowerCase() === wallet.toLowerCase())
+      return setError({ text: "That is your wallet address. Your events are listed above.", at: Date.now() });
     router.push(paths.organiseEvent.getHref(result.address!));
   };
   return (
@@ -36,6 +41,7 @@ export function OrganiseHome() {
       <Link href={paths.organiseNew.getHref()} className="kb-btn is-wide" data-testid="create-event">
         Create an event
       </Link>
+      <WalletEvents />
       <GlassCard as="section" className="og-card">
         <h2 className="og-h2">Open an event</h2>
         <p className="og-note">
@@ -66,7 +72,6 @@ export function OrganiseHome() {
           </Button>
         </form>
       </GlassCard>
-      <WalletEvents />
       <BrowserEvents events={events} />
     </div>
   );
