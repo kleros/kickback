@@ -15,6 +15,11 @@ test("the landing loads, links to create, and a mock account connects", async ({
 
   await wallet.connect("alice");
   await expect(page.getByText(shortenAddress(MOCK_ACCOUNTS.alice))).toBeVisible();
+
+  // the header chip opens a menu that disconnects
+  await page.getByTestId("wallet-chip").click();
+  await page.getByTestId("disconnect").click();
+  await expect(page.getByTestId("wallet-chip")).toHaveCount(0);
 });
 
 test("account keys and addresses have not drifted apart", () => {
