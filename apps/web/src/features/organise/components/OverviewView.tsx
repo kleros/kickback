@@ -61,8 +61,8 @@ export function OverviewScreen({ court }: { court: string }) {
         {phase === "Booking open" && (
           <div className="flex flex-col gap-2" data-testid="guest-link">
             <span className="og-label">Guest link</span>
-            <div className="og-input flex items-center gap-2">
-              <code className="is-mono min-w-0 flex-1 break-all">{guestLink}</code>
+            <div className="og-linkbox">
+              <code title={guestLink}>{guestLink}</code>
               <CopyButton value={guestLink} label="Copy guest link" />
             </div>
             <p className="og-note">
@@ -76,6 +76,7 @@ export function OverviewScreen({ court }: { court: string }) {
               href={paths.organiseEvent.getHref(address, undefined, step.tab)}
               className="kb-btn"
               data-testid="next-action"
+              prefetch
               onClick={() => window.scrollTo({ top: 0 })}
             >
               {step.title}
