@@ -9,10 +9,6 @@ describe.each(["Going 🎉 & bringing friends", "x".repeat(280)])("share URLs fo
   const urls = shareUrls(text, luma, guest);
   it("encodes X text", () =>
     expect(urls.X).toBe(`https://x.com/intent/post?text=${encodeURIComponent(`${text} ${luma}`)}`));
-  it("encodes Farcaster text and embed", () =>
-    expect(urls.Farcaster).toBe(
-      `https://farcaster.xyz/~/compose?text=${encodeURIComponent(text)}&embeds[]=${encodeURIComponent(luma)}`,
-    ));
   it("encodes LinkedIn's Luma URL", () =>
     expect(urls.LinkedIn).toBe(`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(luma)}`));
   it("encodes Telegram URL and text independently", () =>
@@ -20,11 +16,11 @@ describe.each(["Going 🎉 & bringing friends", "x".repeat(280)])("share URLs fo
       `https://t.me/share/url?url=${encodeURIComponent(luma)}&text=${encodeURIComponent(text)}`,
     ));
 });
-it("falls back to guest URL and omits an empty Farcaster embed", () => {
+it("falls back to guest URL", () => {
   const urls = shareUrls("Hello", "", guest);
   expect(new URL(urls.LinkedIn).searchParams.get("url")).toBe(guest);
   expect(new URL(urls.Telegram).searchParams.get("url")).toBe(guest);
-  expect(urls.Farcaster).not.toContain("embeds");
+  expect(Object.keys(urls)).toEqual(["X", "LinkedIn", "Telegram"]);
 });
 it("uses native sharing only on capable phones", () => {
   expect(supportsPhoneShare(() => {}, true)).toBe(true);
