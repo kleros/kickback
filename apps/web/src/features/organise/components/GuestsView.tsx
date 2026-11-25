@@ -7,6 +7,7 @@ import { GradientButton } from "@/components/ui/GradientButton";
 
 import { DEFAULT_CHAIN } from "@/config/chains";
 
+import { LumaMatch } from "./LumaMatch";
 import { Messages } from "./Messages";
 import { ConfirmDialog } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
@@ -105,6 +106,7 @@ export function GuestsScreen() {
         </div>
       )}
       <Messages event={event} />
+      <LumaMatch booked={data.guests.filter((g) => g.status === 1).map((g) => g.wallet)} />
       {!open && <p className="og-note">Guests can only be turned away before the attendance list is posted.</p>}
       <GlassCard className="og-selbar og-thumb">
         <span className="og-note" data-testid="selection">

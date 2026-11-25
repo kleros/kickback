@@ -701,3 +701,9 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+@media (min-width: 768px) {
+  .og-table.is-luma .og-thead,
+  .og-table.is-luma .og-row-main {
+    grid-template-columns: minmax(140px, 1.4fr) 130px 100px minmax(140px, 1fr);
+  }
+}
