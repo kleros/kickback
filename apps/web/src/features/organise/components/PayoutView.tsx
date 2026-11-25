@@ -61,7 +61,7 @@ export function PayoutScreen() {
       : now <= info.challengeEndsAt
         ? `The challenge window closes ${when(info.challengeEndsAt)}.`
         : stillOpen.length
-          ? `${stillOpen.length} challenge still waiting for your answer.`
+          ? `${stillOpen.length} ${stillOpen.length === 1 ? "challenge is" : "challenges are"} still waiting for your answer.`
           : null;
   const pool = info.depositAmount * BigInt(info.stakerCount);
   const shares = info.attendeeCount + info.openCases;
@@ -72,10 +72,10 @@ export function PayoutScreen() {
       <h2 className="kb-h1">Challenges and payout</h2>
       {info.phase === 0 || info.phase === 3 ? (
         <GlassCard className="og-card">
-          <h3 className="og-h2">{info.phase === 3 ? "The event was cancelled" : "Post the attendance list first"}</h3>
+          <h3 className="og-h2">{info.phase === 3 ? "The event was cancelled" : "Confirm who came first"}</h3>
           <p className="og-lede">
             {info.phase === 3
-              ? "Every booked guest withdraws their full deposit on the event page."
+              ? "Every guest can withdraw their full deposit on the event page."
               : "Payouts open once the list is closed and the challenge window is over."}
           </p>
         </GlassCard>
@@ -132,11 +132,11 @@ export function PayoutScreen() {
                     </div>
                     <p className="og-lede">
                       {c.state === 1 && now <= c.matchEndsAt
-                        ? `This guest says they came. They paid ${ethText(c.deposit)} to challenge. If they came: add them, and they get it back. If they did not: send it to Kleros, paying the same ${ethText(c.deposit)} from your wallet; jurors decide and the side they agree with gets its fee back. If you do nothing by ${when(c.matchEndsAt)}, they are added.`
+                        ? `This guest says they came and paid ${ethText(c.deposit)} to challenge. If they came, add them and they get the fee back. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet; jurors decide, and the side they agree with gets its fee back. If you do nothing by ${when(c.matchEndsAt)}, they are added.`
                         : c.state === 1
                           ? "You did not answer in time, so this guest is added automatically when you release payouts."
                           : c.state === 2
-                            ? "Kleros jurors are deciding. Send your evidence (Luma check-ins, photos) on the case page. Once ruled, settle it here."
+                            ? "Kleros jurors are deciding. Send your evidence (Luma check-ins, photos) on the case page. Once they rule, settle it here."
                             : came
                               ? "This guest was added to the list and gets a share."
                               : "Kleros jurors ruled this guest did not come."}
@@ -207,7 +207,7 @@ export function PayoutScreen() {
               <h3 className="og-h2">Release payouts</h3>
               <p className="og-lede">
                 Splits the pool among the attendees. A share is held for each open Kleros case until it is decided.
-                Anyone can press it once the window is over.
+                Anyone can release payouts once the challenge window is over.
               </p>
               <div className="og-actions">
                 <GradientButton isDisabled={!!releaseReason || event.busy} onPress={() => setConfirm("release")}>
@@ -258,7 +258,7 @@ export function PayoutScreen() {
             event.run(
               "Release",
               () => tx.releasePayouts(info.contract, expired),
-              "Payouts released. Attendees can claim now.",
+              "Payouts released. Attendees can now claim.",
             );
           }}
         />

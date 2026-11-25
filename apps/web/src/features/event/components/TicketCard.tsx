@@ -227,8 +227,9 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         <Disclosure title="Proof of Presence contract" icon={<ShieldCheckIcon className="ok" />}>
           <div className="tk-vrows">
             <p className="tk-vnote">
-              Made by this site&apos;s factory, with disputes in Kleros Court. This checks the code, not the organiser:
-              anyone can create an event, so make sure you came here from the organiser&apos;s own event page.
+              Created by this site&apos;s factory, with disputes settled in Kleros Court. This verifies the code, not
+              the organiser: anyone can create an event, so make sure you came here from the organiser&apos;s own event
+              page.
             </p>
             <div className="tk-vrow">
               <span>Code</span>

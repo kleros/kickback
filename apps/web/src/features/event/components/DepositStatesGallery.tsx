@@ -44,7 +44,7 @@ function Card({ state }: { state: GalleryState }) {
       />
       <ReceiptExtras
         view={view}
-        text="I just locked my spot at Builders' Dinner with a refundable deposit. Join: https://luma.com/example"
+        text="I just locked my spot at Builders' Dinner with a refundable deposit. Join me: https://luma.com/example"
         luma="https://luma.com/example"
         guestLink={`/event/${VERIFIED.contract}`}
       />

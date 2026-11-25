@@ -204,7 +204,8 @@ export const txHref = (explorer: string | undefined, hash: Hash) => (explorer ? 
 function guestsLine(guests: number | undefined, capacity: number | undefined): StatusLine {
   if (guests === undefined) return { text: "" };
   if (guests === 0) return { text: "Be the first to deposit" };
-  const left = capacity ? ` · ${Math.max(0, capacity - guests)} spots left` : "";
+  const spots = capacity ? Math.max(0, capacity - guests) : 0;
+  const left = capacity ? ` · ${spots} ${spots === 1 ? "spot" : "spots"} left` : "";
   return { text: `${guests} ${guests === 1 ? "deposit" : "deposits"} so far${left}` };
 }
 
@@ -366,7 +367,7 @@ export function depositState(input: DepositInput): DepositView {
       "claim",
       "Ready to claim",
       value,
-      [{ text: eth ? "Money back from your challenge." : `${fmt(value)} ${sym} is yours to take.` }, ...both],
+      [{ text: eth ? "Your challenge money is back." : `${fmt(value)} ${sym} is yours to take.` }, ...both],
       unit,
     );
   }
@@ -401,7 +402,7 @@ export function depositState(input: DepositInput): DepositView {
           tone: "pri",
           link: kleros(challenge.arbitratorDisputeID),
         },
-        { text: "Add proof there (Luma QR, photos). Takes days." },
+        { text: "Add proof (Luma QR, photos). It takes days." },
       ],
       amount,
       undefined,
@@ -463,7 +464,7 @@ export function depositState(input: DepositInput): DepositView {
         "With Kleros",
         [
           { text: "Kleros jurors are deciding.", tone: "pri", link: kleros(challenge.arbitratorDisputeID) },
-          { text: "Add proof there (Luma QR, photos). Takes days." },
+          { text: "Add proof (Luma QR, photos). It takes days." },
         ],
         amount,
         undefined,
@@ -532,7 +533,7 @@ export function depositState(input: DepositInput): DepositView {
               ? `The organiser returned your deposit on ${input.dayText(history.refundedAt)}.`
               : "The organiser returned your deposit in full.",
         },
-        { text: "This wallet cannot book this event again." },
+        { text: "This wallet cannot deposit again." },
       ],
       action: "none",
       button: "Deposit returned",
@@ -618,30 +619,27 @@ export function depositState(input: DepositInput): DepositView {
       // two lines fit: a wallet with no booking gets the fix instead of the reason
       lines:
         connected && !guest?.status
-          ? [
-              { text: `No deposit from ${me}.`, tone: "warn" as const },
-              { text: "Booked with another wallet? Switch to it." },
-            ]
+          ? [{ text: `No deposit from ${me}.`, tone: "warn" as const }, { text: "Used another wallet? Switch to it." }]
           : [
               {
                 text:
                   input.phase === 3
                     ? "The event was cancelled."
                     : input.phase !== 0
-                      ? "The attendance list is out."
+                      ? "Attendance is confirmed."
                       : "The event has ended.",
               },
-              ...(!connected && input.phase === 0 ? [{ text: "Booked? Connect that wallet to see it." }] : []),
+              ...(!connected && input.phase === 0 ? [{ text: "Deposited? Connect that wallet." }] : []),
             ],
       action: "none",
-      button: "Bookings closed",
+      button: "Deposits closed",
       disabled: true,
       foot: null,
     };
   // never offer a deposit before we know this wallet has not booked already
   if (connected && input.guestUnknown)
     return {
-      ...readOnly("checking", "Refundable deposit", [{ text: "Checking your booking." }]),
+      ...readOnly("checking", "Refundable deposit", [{ text: "Checking your deposit." }]),
       button: "Checking deposits",
       glyph: "arc",
     };
@@ -649,7 +647,7 @@ export function depositState(input: DepositInput): DepositView {
     return {
       key: "full",
       label: "Refundable deposit",
-      lines: [{ text: `All ${input.capacity} spots are booked.` }, { text: "A spot opens if a guest is turned away." }],
+      lines: [{ text: `All ${input.capacity} spots are taken.` }, { text: "A spot opens if a guest is turned away." }],
       action: "none",
       button: "Event full",
       disabled: true,

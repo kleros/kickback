@@ -67,7 +67,11 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
                   {STATUS_TEXT[status]}
                 </span>
               )}
-              {data && <span className="kb-num">{data.stakerCount} booked</span>}
+              {data && (
+                <span className="kb-num">
+                  {data.stakerCount} {data.stakerCount === 1 ? "deposit" : "deposits"}
+                </span>
+              )}
             </span>
           </span>
         </Link>

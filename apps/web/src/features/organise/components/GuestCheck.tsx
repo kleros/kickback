@@ -69,7 +69,7 @@ export function GuestCheck({
     const name = nameOf(wallet);
     const who = name ? `${name} on Luma. ` : "";
     if (!row || row.status === 0)
-      return { tone: "err", title: "No deposit: do not approve", text: "No booking from this wallet.", wallet };
+      return { tone: "err", title: "No deposit: do not approve", text: "This wallet has not deposited.", wallet };
     if (row.status === 2)
       return { tone: "err", title: "Turned away: do not approve", text: "Their deposit was refunded.", wallet };
     if (row.status === 3) return { tone: "err", title: "Refunded: do not approve", wallet };
@@ -83,7 +83,7 @@ export function GuestCheck({
       };
     return {
       tone: "ok",
-      title: "Booked: approve",
+      title: "Deposit found: approve",
       text: viaTx
         ? `${who}Approve if this is the Ethereum address on their Luma request.`
         : `${who}Deposit found for this wallet.`,
@@ -104,7 +104,7 @@ export function GuestCheck({
           return setResult({
             tone: "warn",
             title: "Still confirming: check again in a minute",
-            text: "The deposit is sent but not on the blockchain yet.",
+            text: "The deposit was sent but is not on the blockchain yet.",
           });
         const receipt = await client.getTransactionReceipt({ hash: hash as Hash });
         if (latest.current !== value) return;
@@ -132,7 +132,7 @@ export function GuestCheck({
     setBusy(false);
     const wallet = normAddress(value);
     if (wallet) return setResult(walletVerdict(wallet, false));
-    if (value.trim()) setResult({ tone: "warn", title: "Paste a wallet (0x…) or a transaction link" });
+    if (value.trim()) setResult({ tone: "warn", title: "Paste a wallet address (0x…) or a transaction link" });
   };
 
   const take = (value: string) => {
@@ -193,7 +193,7 @@ export function GuestCheck({
                 setResult({ ...result, tone: "ok", title: "Recorded as approved", text: "Now approve it on Luma." });
               }}
             >
-              I approve it: record
+              Record as approved
             </button>
           )}
         </div>

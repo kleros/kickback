@@ -70,8 +70,8 @@ export function ShellView({
           data &&
           !event.isOwner && (
             <p className="og-note" data-testid="not-owner">
-              The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can read
-              everything. Only the organiser can send its actions, except matching a challenge, which anyone can do.
+              The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
+              everything. Only the organiser can act on it, except for matching a challenge, which anyone can do.
             </p>
           )
         ) : (

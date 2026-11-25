@@ -176,7 +176,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         className="how-fig"
         viewBox="0 0 408 112"
         role="img"
-        aria-label={`${example.deposits} deposits; ${example.attend} attend and ${example.noShows} do not. The no-shows' ${pool} ${unit} is split ${example.attend} ways.`}
+        aria-label={`${example.deposits} deposits; ${example.attend} guests attend and ${example.noShows} do not. The no-shows' ${pool} ${unit} is split ${example.attend} ways.`}
       >
         <Axis id={axis} />
         {attendX.map((x, i) => (
@@ -213,7 +213,10 @@ function SplitPanel({ example }: { example: ShareExample }) {
       </svg>
       <div className="how-caps two">
         <span>
-          <b>{example.attend} attend</b>+{bonus} {unit} each
+          <b>
+            {example.attend} {example.attend === 1 ? "attends" : "attend"}
+          </b>
+          +{bonus} {unit} each
         </span>
         <span>
           <b>
@@ -229,7 +232,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         </b>
       </div>
       <p className="how-note">
-        {example.real ? `With ${example.deposits} guests registered.` : "An example with ten deposits."}
+        {example.real ? `Based on the ${example.deposits} deposits so far.` : "An example with ten deposits."}
       </p>
     </Panel>
   );
@@ -270,8 +273,8 @@ function ListPanel({ court, challengeFee }: { court: string; challengeFee?: bigi
       </div>
       <p className="how-note" data-testid="challenge-fee">
         Each side pays the Kleros fee up front
-        {challengeFee ? `, now ${unitsText(challengeFee, 18)} ETH (it follows Kleros's price)` : ""}. The side the
-        jurors agree with gets it back.
+        {challengeFee ? `, currently ${unitsText(challengeFee, 18)} ETH (set by Kleros)` : ""}. The side the jurors
+        agree with gets it back.
       </p>
     </Panel>
   );
@@ -294,7 +297,7 @@ function TimelinePanel({
   const stroke = `url(#${axis})`;
   const rows = [
     ["Deposits close", eventEnd],
-    ["List due by", claimDeadline],
+    ["Attendance confirmed by", claimDeadline],
     ...(challengeEndsAt ? ([["Challenges close", challengeEndsAt]] as const) : []),
   ] as const;
   return (
@@ -303,7 +306,7 @@ function TimelinePanel({
         className="how-fig"
         viewBox="0 0 408 48"
         role="img"
-        aria-label={`Deposits close when the event ends; the list is posted by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`}
+        aria-label={`Deposits close when the event ends; who came is confirmed by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`}
       >
         <Axis id={axis} />
         <path d="M16 34h376" className="ln" />
@@ -322,14 +325,14 @@ function TimelinePanel({
           <b>Ends</b>deposits close
         </span>
         <span>
-          <b>List</b>by the deadline
+          <b>Attendance</b>confirmed by the deadline
         </span>
         <span>
           <b>Challenges</b>
           {spanText(challengePeriod)}
         </span>
         <span>
-          <b>Claimed</b>by attendees
+          <b>Payouts</b>claimed by attendees
         </span>
       </div>
       <div className="how-caps" style={{ marginTop: 16 }}>
@@ -343,7 +346,7 @@ function TimelinePanel({
           </div>
         ))}
       </div>
-      <p className="how-note">No list by the deadline? Withdraw your deposit in full.</p>
+      <p className="how-note">Not confirmed by the deadline? Withdraw your full deposit.</p>
     </Panel>
   );
 }

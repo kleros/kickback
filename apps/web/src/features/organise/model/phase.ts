@@ -34,20 +34,20 @@ export interface NextStep {
 
 export const NEXT_STEP: Record<Phase, NextStep> = {
   "Booking open": {
-    title: "Check who booked",
+    title: "Check who deposited",
     detail: "Set up Luma once, then approve each request that has a deposit.",
     tab: "guests",
   },
   "Live now": {
     title: "Check a guest",
     detail:
-      "Walk-ins register on Luma and deposit, then you check them here and approve them on Luma. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
+      "Walk-ins register on Luma and deposit, then you check them here and approve them on Luma. Scan every guest's Luma QR at the door: only checked-in guests count as attendees.",
     tab: "guests",
   },
   "Attendance due": {
     title: "Confirm who came",
     detail:
-      "Export the Luma guest list (it has check-ins and wallets) and load it here. Review who came and confirm it before the deadline. It is recorded on the blockchain, not published anywhere else.",
+      "Export the Luma guest list (it includes check-ins and wallets) and load it here. Review who came and confirm it before the deadline. The list is recorded on the blockchain and not published anywhere else.",
     tab: "attendance",
   },
   "Adding names": {
@@ -58,12 +58,13 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Challenge window": {
     title: "Answer challenges",
     detail:
-      "Guests left off the list can challenge. You have 1 day to add them, or send the challenge to Kleros if they did not come.",
+      "Guests left off the list can challenge. You have 1 day to add them or, if they did not come, send the challenge to Kleros.",
     tab: "payout",
   },
   "Payouts ready": {
     title: "Release payouts",
-    detail: "The challenge window is over. Release the pool: attendees get their deposit back plus a share.",
+    detail:
+      "The challenge window is over. Release payouts: attendees get their deposit back plus a share of the no-shows' deposits.",
     tab: "payout",
   },
   "Payouts released": {
@@ -77,8 +78,8 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     tab: null,
   },
   "Past the deadline": {
-    title: "No list was posted",
-    detail: "The deadline for the attendance list has passed. Guests can withdraw their full deposit.",
+    title: "Attendance was not confirmed",
+    detail: "The deadline to confirm who came has passed. Guests can withdraw their full deposits.",
     tab: null,
   },
 };

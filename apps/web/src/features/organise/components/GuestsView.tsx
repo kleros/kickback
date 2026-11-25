@@ -17,12 +17,12 @@ import { assetText, shortHex } from "../model/view";
 import type { GuestRow } from "../operations/read";
 import { tx } from "../operations/tx";
 
-const STATUS = ["Not booked", "Booked", "Turned away", "Refunded"] as const;
+const STATUS = ["No deposit", "Deposited", "Turned away", "Refunded"] as const;
 const TONE = ["end", "ok", "warn", "end"] as const;
 
 function statusText(row: GuestRow, phase: number) {
   if (row.status !== 1) return STATUS[row.status] ?? "Unknown";
-  if (phase === 0) return "Booked";
+  if (phase === 0) return "Deposited";
   if (row.attended) return "Came";
   if (row.challenge?.state === 1) return "Challenged";
   if (row.challenge?.state === 2) return "With Kleros";
@@ -71,7 +71,8 @@ export function GuestsScreen() {
       <div className="flex flex-col gap-1">
         <h2 className="kb-h1">Guests</h2>
         <p className="og-lede" data-testid="guest-count">
-          <b>{info.stakerCount}</b> booked{info.capacity ? ` of ${info.capacity}` : ""}
+          <b>{info.stakerCount}</b> {info.stakerCount === 1 ? "deposit" : "deposits"}
+          {info.capacity ? ` of ${info.capacity} spots` : ""}
           {fresh > 0 && ` · ${fresh} new since you opened this page`}
         </p>
       </div>
@@ -91,11 +92,11 @@ export function GuestsScreen() {
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
-          <h2 className="og-h2">All bookings</h2>
+          <h2 className="og-h2">All deposits</h2>
           <p className="og-lede">
             {open
-              ? `Newest first. Until the event starts you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot book again.`
-              : "Newest first. Turning guests away closed when the event started."}
+              ? `Newest first. Until the event starts you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
+              : "Newest first. Guests could only be turned away until the event started."}
           </p>
         </div>
         {guests.length > 0 && (
@@ -110,8 +111,8 @@ export function GuestsScreen() {
         )}
         {guests.length === 0 ? (
           <GlassCard className="og-card" data-testid="guests-empty">
-            <h3 className="og-h2">No bookings yet</h3>
-            <p className="og-lede">Guests show here as soon as they deposit on the event page.</p>
+            <h3 className="og-h2">No deposits yet</h3>
+            <p className="og-lede">Guests appear here as soon as they deposit on the event page.</p>
           </GlassCard>
         ) : (
           <div className={`og-table is-guests${explorer ? "" : " no-explorer"}`} role="table" aria-label="Guests">
@@ -203,7 +204,7 @@ export function GuestsScreen() {
         <ConfirmDialog
           isOpen
           title="Turn guests away"
-          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot book this event again.`}
+          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.`}
           words={[]}
           figures={[
             { label: "Wallets", value: String(chosen.length) },

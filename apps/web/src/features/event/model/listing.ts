@@ -33,10 +33,10 @@ export function listedEvents(
 export type EventStatus = "booking" | "started" | "overdue" | "listed" | "paid" | "cancelled";
 
 export const STATUS_TEXT: Record<EventStatus, string> = {
-  booking: "Booking open",
+  booking: "Deposits open",
   started: "Attendance due",
   overdue: "Past the deadline",
-  listed: "List posted",
+  listed: "Attendance confirmed",
   paid: "Payouts released",
   cancelled: "Cancelled",
 };

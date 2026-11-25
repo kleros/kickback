@@ -18,7 +18,7 @@ const EXAMPLE = payoutExample(parseEther("0.01"), 10, 8);
 const STEPS = [
   {
     title: "Register and deposit",
-    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away gets it all back.",
+    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away gets their deposit back in full.",
   },
   {
     title: "Show up",
@@ -50,7 +50,7 @@ function Example() {
           <dd className="kb-num">{ethText(EXAMPLE.pool)} ETH</dd>
         </div>
         <div>
-          <dt>Each of the {EXAMPLE.came} who came gets</dt>
+          <dt>Each of the {EXAMPLE.came} who show up gets</dt>
           <dd className="kb-num is-ok">{ethText(EXAMPLE.share)} ETH</dd>
         </div>
         <div>
@@ -73,14 +73,14 @@ export function HomeScreen({ events }: { events: ReactNode }) {
       <section className="home-hero">
         <div className="home-hero-text">
           <h1 className="home-title">
-            Turn signups into guests.
+            Turn sign-ups into guests.
             <span>Reward the people who show up.</span>
           </h1>
           <p className="home-lede">
-            Web3 events get thousands of signups and only a fraction of the guests actually show up. Proof of Presence
-            asks every guest for a small refundable deposit, which turns each booking into a real commitment. Everyone
-            who attends gets their deposit back plus a share of the no-shows&apos; deposits, and a fair attendance list
-            backed by Kleros settles any dispute.
+            Web3 events get thousands of sign-ups, but only a fraction of guests actually show up. Proof of Presence
+            asks every guest for a small refundable deposit, which turns each sign-up into a real commitment. Everyone
+            who attends gets their deposit back plus a share of the no-shows&apos; deposits, and Kleros jurors settle
+            any dispute over the attendance list.
           </p>
           <div className="home-actions">
             <Link href={paths.organiseNew.getHref()} className="kb-btn" data-testid="home-create">

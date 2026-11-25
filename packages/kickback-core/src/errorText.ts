@@ -19,8 +19,8 @@ export const KLEROS_ERRORS: readonly (readonly [RegExp, string])[] = [
     "The appeal window for this answer is closed. (The answer the jurors did not vote for can only be funded during the first half of the window.)",
   ],
   [/Appeal fee has already been paid/i, "This answer is already fully funded. Nothing more is needed for it."],
-  [/no such ruling to fund/i, "Choose an answer to fund: Yes, attended or No, did not attend."],
-  [/dispute should be solved/i, "Appeal money can only be collected once the case has its final ruling."],
+  [/no such ruling to fund/i, 'Choose an answer to fund: "Yes, attended" or "No, did not attend".'],
+  [/dispute should be solved/i, "Appeal funds can only be collected once the case has its final ruling."],
   [
     /Cannot submit evidence to a resolved dispute/i,
     "This Kleros case already has its final ruling, so it takes no more evidence.",
@@ -53,30 +53,30 @@ export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => s
   TooEarly: () => "Too early: this is not possible yet. Check the times on the page.",
   Reentrancy: () => "The contract refused a nested call.",
   AlreadyStaker: ([x]) => `${x} already has a deposit for this event.`,
-  WasRejected: ([x]) => `The organiser turned ${x} away, so it cannot book again.`,
+  WasRejected: ([x]) => `The organiser turned ${x} away, so this wallet cannot deposit again.`,
   EventFull: ([x]) => `The event is full (${String(x)} spots).`,
   NotAStaker: ([x]) => `${x} has no deposit in this event.`,
   DuplicateAttendee: ([x]) => `${x} appears twice in the list.`,
   NoAttendees: () => "The attendance list is empty: add at least one guest who came, or cancel the event.",
   NothingToWithdraw: () => "There is nothing to withdraw for this wallet.",
   TransferFailed: ([x]) =>
-    `The transfer to ${x} did not go through (check the token balance and approval, or the receiving wallet refuses payments). Nothing was sent.`,
+    `The transfer to ${x} did not go through (check the token balance and approval, or whether the receiving wallet refuses payments). Nothing was sent.`,
   WrongAmount: ([x, y]) => `The amount must be exactly ${eth(x)} (sent ${eth(y)}).`,
-  TokenEvent: () => "This event takes its deposit in a token, not ETH: use the Book button on the event page.",
+  TokenEvent: () => "This event takes its deposit in a token, not ETH: use the Deposit button on the event page.",
   AlreadyAttending: ([x]) => `${x} is already on the attendance list.`,
   AlreadyChallenged: ([x]) => `${x} has already challenged.`,
   NoChallenge: ([x]) => `${x} has not challenged.`,
-  WrongChallengeState: ([x]) => `The challenge of ${x} is not at a step that allows this.`,
+  WrongChallengeState: ([x]) => `The challenge from ${x} is not at a step that allows this.`,
   ArbitrationCostTooHigh: ([x, y]) =>
     `The Kleros fee went up since the challenge was opened (now ${eth(x)}, the two deposits cover ${eth(y)}), so no case can be created. Nothing was sent.`,
-  NotRuled: ([x]) => `Kleros has not given its final ruling yet on the challenge of ${x}.`,
+  NotRuled: ([x]) => `Kleros has not yet given its final ruling on the challenge from ${x}.`,
   ChallengesPending: ([x]) =>
-    `${String(x)} challenge(s) still wait for a match. Payouts can be released once their match window is over.`,
+    `${String(x)} challenge(s) are still waiting for an answer. Payouts can be released once their answer window is over.`,
   OnlyNumberedRulings: () => "Kleros returned a ruling this contract does not know. Nothing was changed.",
   InDispute: ([x]) => `${x} is in a Kleros case, so the jurors decide; this cannot be changed by hand.`,
-  NotAppealable: ([x]) => `The challenge of ${x} is not in a Kleros case that can be appealed.`,
+  NotAppealable: ([x]) => `The challenge from ${x} is not in a Kleros case that can be appealed.`,
   NotEnoughGas: () =>
-    "The transaction ran short of gas while paying someone. Nothing changed. Try again, with a higher gas limit if it happens again.",
+    "The transaction ran out of gas while paying someone. Nothing changed. Try again, and use a higher gas limit if it fails again.",
   SpareTooLow: ([x]) => `The contract only holds ${eth(x)} of spare money.`,
   BadTemplate: () => "The case description template does not fit the contract.",
   NotAnImplementation: () => "That address is not a Proof of Presence event implementation.",
@@ -175,7 +175,7 @@ export function errorText(error: unknown, abi: Abi = PRESENCE_ERRORS_ABI): strin
   if (objs.some((o) => o instanceof InsufficientFundsError) || /insufficient funds/i.test(brief))
     return "This wallet does not have enough ETH for this (amount plus network fee).";
   if (objs.some((o) => o instanceof TimeoutError) || codes.includes("TIMEOUT"))
-    return "No answer from the network in time. Check the last sent transaction's link before trying again.";
+    return "The network did not answer in time. Check the link of the last transaction you sent before trying again.";
   if (error instanceof BaseError) return error.shortMessage;
   return raw || String(error);
 }

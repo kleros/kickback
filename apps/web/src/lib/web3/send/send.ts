@@ -182,7 +182,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
     throw new SendError(
       "refused",
       `This would need a gas limit of about ${(estimate > gas ? estimate : gas).toLocaleString("en")}, more than the ` +
-        `${TX_GAS_CAP.toLocaleString("en")} one Ethereum transaction may use, so nothing was sent.`,
+        `${TX_GAS_CAP.toLocaleString("en")} that one Ethereum transaction may use, so nothing was sent.`,
     );
   }
 
@@ -229,7 +229,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
   } catch (error) {
     throw new SendError(
       "unconfirmed",
-      "Sent, not confirmed yet. It may still go through: check it before trying again.",
+      "Sent but not confirmed yet. It may still go through: check it before trying again.",
       hash,
       { cause: error },
     );
@@ -242,7 +242,11 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
   if (minedHash !== hash) {
     if (replacedBecause !== "repriced") {
       sent?.forget(chainId, recordKey, hash);
-      throw new SendError("replaced", "Your wallet cancelled or replaced this transaction, so it was not done.", hash);
+      throw new SendError(
+        "replaced",
+        "Your wallet cancelled or replaced this transaction, so it did not go through.",
+        hash,
+      );
     }
     const current = sent?.read(chainId, recordKey, account);
     if (current?.hash === hash) sent?.save({ ...current, hash: minedHash });

@@ -163,12 +163,12 @@ test("organiser creates, guests book, Luma check-ins pick who came, a challenge,
   await expect(page.getByText(/3 rows not used/)).toBeVisible();
   await shot(page, "05-attendance-from-luma");
   await page
-    .getByRole("button", { name: /post and close/i })
+    .getByRole("button", { name: /confirm and close/i })
     .first()
     .click();
   const confirm = page.getByRole("dialog");
   await confirm.getByLabel(/Type POST/).fill("POST");
-  await confirm.getByRole("button", { name: /post and close/i }).click();
+  await confirm.getByRole("button", { name: /confirm and close/i }).click();
   await expect(page.getByText(/challenge window is open/i)).toBeVisible({ timeout: 60_000 });
   await shot(page, "06-list-posted");
   await page.goto(`/organise/${contract}`);

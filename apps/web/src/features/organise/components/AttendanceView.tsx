@@ -67,7 +67,7 @@ export function AttendanceScreen() {
       <GlassCard className="og-card" data-testid="attendance-early">
         <h2 className="og-h2">Attendance opens when the event ends</h2>
         <p className="og-lede">
-          Bookings stay open until {when(info.eventEnd)}. Then load your check-in list here and post who came, by{" "}
+          Deposits stay open until {when(info.eventEnd)}. Then load your check-in list here and confirm who came by{" "}
           {when(info.claimDeadline)}.
         </p>
       </GlassCard>
@@ -78,10 +78,10 @@ export function AttendanceScreen() {
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
           {info.phase === 2
-            ? `${info.attendeeCount} attendees were paid out.`
+            ? `Payouts were released to ${info.attendeeCount} ${info.attendeeCount === 1 ? "attendee" : "attendees"}.`
             : info.phase === 3
               ? "The event was cancelled."
-              : "The deadline for the list has passed: guests can withdraw their deposits."}
+              : "The deadline to confirm who came has passed: guests can withdraw their deposits."}
         </p>
       </div>
     );
@@ -104,12 +104,12 @@ export function AttendanceScreen() {
     const first = parts[0] ?? [];
     const closeNow = close && parts.length <= 1;
     event.run(
-      closeNow ? "Post and close" : `Post ${first.length}`,
+      closeNow ? "Confirm and close" : `Save ${first.length}`,
       () => tx.postAttendance(info.contract, first, closeNow),
       closeNow
-        ? "The list is posted and closed. The challenge window is open."
+        ? "The list is confirmed and closed. The challenge window is open."
         : parts.length > 1
-          ? `${first.length} posted. Send the next batch.`
+          ? `${first.length} saved. Send the next batch.`
           : `${first.length} names saved. Close the list when it is complete.`,
     );
   };
@@ -121,7 +121,7 @@ export function AttendanceScreen() {
         <p className="og-lede">
           {listed
             ? `The list is closed. Until ${when(info.challengeEndsAt)} you can still add guests left off by mistake.`
-            : `Load the Luma export: everyone checked in is ticked. Check the ticks, then post the list by ${when(info.claimDeadline)}. Once posted, names cannot be removed, and guests left off have ${Math.round(info.challengePeriod / 3600)} hours to challenge.`}
+            : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once confirmed, names cannot be removed, and guests left off have ${Math.round(info.challengePeriod / 3600)} hours to challenge.`}
         </p>
       </div>
       {!listed && (
@@ -142,7 +142,7 @@ export function AttendanceScreen() {
           <summary>
             {plan.skipped.length} rows not used
             {unscanned > 0 &&
-              ` · ${unscanned} paid but were not checked in: tick any you saw at the door, or they may challenge`}
+              ` · ${unscanned} deposited but did not check in: tick any you saw at the door, or they may challenge`}
           </summary>
           <ul>
             {plan.skipped.map((s) => (
@@ -156,7 +156,7 @@ export function AttendanceScreen() {
       )}
       <Figures
         rows={[
-          { label: "Booked", value: String(booked.length) },
+          { label: "Deposits", value: String(booked.length) },
           { label: "On the list", value: String(total) },
           { label: "No-shows", value: String(noShows) },
           {
@@ -165,7 +165,7 @@ export function AttendanceScreen() {
           },
         ]}
       />
-      <div className="og-table" role="table" aria-label="Booked guests">
+      <div className="og-table" role="table" aria-label="Guests with deposits">
         <div className="og-thead" role="row">
           <span>Guest</span>
           <span />
@@ -187,7 +187,7 @@ export function AttendanceScreen() {
                 <span className="og-cell-status">
                   <span className="og-dot" data-tone={isOn(w) ? "ok" : "warn"} aria-hidden />
                   <span>
-                    {on ? "Already on the list" : isOn(w) ? (csv ? "Came (from Luma)" : "Came") : "Didn't come"}
+                    {on ? "Already on the list" : isOn(w) ? (csv ? "Came (from Luma)" : "Came") : "Did not come"}
                   </span>
                 </span>
                 <span className="og-ticks">
@@ -215,8 +215,8 @@ export function AttendanceScreen() {
       <Messages event={event} />
       {!listed && (
         <p className="og-note">
-          Save for now records these names on the blockchain and lets you keep adding. Post and close is final and
-          starts the challenge window. Each is one transaction from your wallet.
+          “Save for now” records these names on the blockchain and lets you keep adding. “Confirm and close” is final
+          and starts the challenge window. Each is one transaction from your wallet.
         </p>
       )}
       <GlassCard className="og-selbar og-thumb">
@@ -238,7 +238,7 @@ export function AttendanceScreen() {
                 {`Save ${toAdd.length} for now`}
               </GradientButton>
               <GradientButton isDisabled={!canAdd || total === 0} onPress={() => setConfirm("close")}>
-                {parts.length > 1 ? `Post ${BATCH_SIZE} of ${toAdd.length} first` : "Post and close the list"}
+                {parts.length > 1 ? `Save ${BATCH_SIZE} of ${toAdd.length} first` : "Confirm and close"}
               </GradientButton>
             </>
           )}
@@ -247,10 +247,10 @@ export function AttendanceScreen() {
       {confirm && (
         <ConfirmDialog
           isOpen
-          title={confirm === "close" ? "Post and close the list" : listed ? "Add to the list" : "Save names"}
+          title={confirm === "close" ? "Confirm and close the list" : listed ? "Add to the list" : "Save names"}
           intro={
             confirm === "close"
-              ? "Guests left off can then challenge. The pool is split among the guests on the list."
+              ? "Guests left off can then challenge. The no-shows' deposits are split among the guests on the list."
               : "These wallets are added to the attendance list."
           }
           words={confirm === "close" ? [TYPED_WORDS.post] : []}
@@ -259,7 +259,7 @@ export function AttendanceScreen() {
             { label: "On the list after", value: String(total) },
             { label: "No-shows", value: String(noShows) },
           ]}
-          action={confirm === "close" ? "Post and close" : `Add ${toAdd.length}`}
+          action={confirm === "close" ? "Confirm and close" : `Add ${toAdd.length}`}
           busy={event.busy}
           error={null}
           onClose={() => setConfirm(null)}

@@ -179,9 +179,9 @@ export function CreateScreen() {
       <div className="flex flex-col gap-2">
         <h1 className="kb-h1">Create an event</h1>
         <p className="og-lede">
-          Guests book with a refundable deposit. After the event you confirm who actually came, and the no-shows&apos;
-          deposits are shared among the guests who did. A guest you leave off by mistake can challenge, and independent
-          jurors on Kleros Court decide who is right.
+          Guests pay a refundable deposit to attend. After the event, you confirm who actually came, and the
+          no-shows&apos; deposits are shared among the guests who did. A guest you leave off by mistake can challenge,
+          and independent jurors on Kleros Court decide who is right.
         </p>
       </div>
       {!address && (
@@ -191,7 +191,7 @@ export function CreateScreen() {
       )}
       <GlassCard as="section" className="og-card">
         <div className="og-form" data-testid="create-form">
-          <Field label="Event name" full hint="Shown to guests and to Kleros jurors if there is a dispute">
+          <Field label="Event name" full hint="Shown to guests, and to Kleros jurors if there is a dispute.">
             <input className="og-input" value={form.name} maxLength={120} onChange={set("name")} />
           </Field>
           <Field label="Luma event page" full hint="Guests register there; Kickback only holds the deposits.">
@@ -217,8 +217,8 @@ export function CreateScreen() {
                 : form.asset === "ETH" &&
                     /^\d+(\.\d+)?$/.test(form.deposit.trim()) &&
                     parseUnits(form.deposit.trim(), 18) < fee
-                  ? `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH. A guest you wrongly leave off can win it back from you, so mark everyone who came.`
-                  : `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH.`
+                  ? `A guest you leave off can challenge by paying the court fee, currently ${formatEther(fee)} ETH. A guest you wrongly leave off can win it back from you, so mark everyone who came.`
+                  : `A guest you leave off can challenge by paying the court fee, currently ${formatEther(fee)} ETH.`
             }
           >
             <input className="og-input" inputMode="decimal" value={form.deposit} onChange={set("deposit")} />
@@ -231,7 +231,7 @@ export function CreateScreen() {
                 token.data
                   ? `${token.data.symbol}, ${token.data.decimals} decimals`
                   : token.isError
-                    ? "Not a token on this network"
+                    ? "Not a token on this network."
                     : "0x…"
               }
             >
@@ -241,7 +241,7 @@ export function CreateScreen() {
           <Field
             label="Time zone of the event"
             full
-            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Where the event happens, as on Luma; your device is on ${deviceZone.replace(/_/g, " ")}.`}
+            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Where the event takes place, as set on Luma. Your device is set to ${deviceZone.replace(/_/g, " ")}.`}
           >
             <select className="og-input" value={form.zone} onChange={set("zone")}>
               {zoneList(form.zone).map((z) => (
@@ -254,12 +254,12 @@ export function CreateScreen() {
           <Field label="Starts" hint={`In ${form.zone.replace(/_/g, " ")} time`}>
             <input className="og-input" type="datetime-local" value={form.start} onChange={set("start")} />
           </Field>
-          <Field label="Ends" hint="Bookings stay open until then, for walk-ins">
+          <Field label="Ends" hint="Deposits stay open until then, for walk-ins.">
             <input className="og-input" type="datetime-local" value={form.end} onChange={set("end")} />
           </Field>
           <Field
             label="Days to confirm who came"
-            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the end. Miss it and every guest gets their deposit back. Then 1 day for challenges.`}
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the event is over, then 1 day for challenges. Miss the deadline and every guest gets their deposit back.`}
           >
             <input
               className="og-input"
@@ -270,7 +270,7 @@ export function CreateScreen() {
               onChange={set("deadlineDays")}
             />
           </Field>
-          <Field label="Capacity" hint="Empty for no limit">
+          <Field label="Capacity" hint="Leave empty for no limit.">
             <input className="og-input" type="number" min={0} value={form.capacity} onChange={set("capacity")} />
           </Field>
         </div>
@@ -280,10 +280,10 @@ export function CreateScreen() {
         Create the event
       </Primary>
       <p className="og-note">
-        Runs on {DEFAULT_CHAIN.name}. Creating an event is free: one transaction from your wallet, you pay only the
-        network fee. The event&apos;s rules are fixed in the contract: nobody, including you, can change them or take
-        the deposits. After the event, a guest you leave off the list can challenge; you then have 1 day to add them, or
-        send it to Kleros{fee === undefined ? "" : ` (${formatEther(fee)} ETH now)`}.
+        Runs on {DEFAULT_CHAIN.name}. Creating an event is free apart from the network fee: it takes one transaction
+        from your wallet. The event&apos;s rules are fixed in the contract: nobody, including you, can change them or
+        take the deposits. After the event, a guest you leave off the list can challenge; you then have 1 day to add
+        them or send the case to Kleros{fee === undefined ? "" : ` (currently ${formatEther(fee)} ETH)`}.
       </p>
     </div>
   );

@@ -35,7 +35,9 @@ export function OrganiseHome() {
     <div className="og-page og-narrow" data-testid="organise-home">
       <div className="flex flex-col gap-2">
         <h1 className="kb-h1">Organise an event</h1>
-        <p className="og-lede">Take refundable deposits, post who came, and pay the pool to the guests who did.</p>
+        <p className="og-lede">
+          Take refundable deposits, confirm who came, and share the no-shows&apos; deposits among the guests who did.
+        </p>
       </div>
       <Link href={paths.organiseNew.getHref()} className="kb-btn is-wide" data-testid="create-event">
         Create an event
@@ -44,7 +46,7 @@ export function OrganiseHome() {
       <GlassCard as="section" className="og-card">
         <h2 className="og-h2">Open an event</h2>
         <p className="og-note">
-          Lost the link? Connect the wallet that created the event: your events are listed below.
+          Lost the link? Connect the wallet that created the event: your events are listed above.
         </p>
         <form
           className="flex flex-col gap-3"

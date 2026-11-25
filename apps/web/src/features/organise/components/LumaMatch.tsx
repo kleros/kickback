@@ -58,14 +58,14 @@ export function LumaMatch({
           <p className="og-lede" data-testid="luma-summary">
             {found.length} of {rows.length} requests have a deposit: approve them on Luma ({toApprove.length} left).{" "}
             {toDecline.length > 0 &&
-              `${toDecline.length} pending have no deposit: decline them, or ask them to deposit first. `}
+              `${toDecline.length} pending requests have no deposit: decline them, or ask them to deposit first. `}
             {dups.length > 0 && `${dups.length} share a wallet with another request: approve only one of each. `}
             {wronglyIn.length > 0 &&
-              `${wronglyIn.length} approved on Luma have no deposit (not paid, or turned away): decline them on Luma.`}
+              `${wronglyIn.length} approved on Luma have no deposit (never paid, or turned away): decline them on Luma.`}
           </p>
           {toApprove.some((r) => r.email) && (
             <p className="og-note flex items-center gap-2">
-              Emails to approve (on Luma: Guests, search each)
+              Emails to approve (on Luma, search each one under Guests)
               <CopyButton value={emails(toApprove)} label="Copy emails to approve" />
             </p>
           )}

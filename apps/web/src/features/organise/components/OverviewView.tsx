@@ -36,7 +36,7 @@ const LUMA_SETUP = [
   "Copy the guest link and put it in your Luma ticket's description.",
   'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet", and add a required question: "Paste your Kickback deposit link".',
   "Guests deposit, then paste their transaction link in the Luma request.",
-  "Approve each request with a deposit: check them on the Guests tab.",
+  "Approve each request that has a deposit; you can check them on the Guests tab.",
 ];
 
 export function OverviewScreen({ court }: { court: string }) {
@@ -60,9 +60,9 @@ export function OverviewScreen({ court }: { court: string }) {
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
     phase === "Booking open"
-      ? `Starts ${when(info.eventStart)} · bookings open until the end`
+      ? `Starts ${when(info.eventStart)} · deposits open until the end`
       : phase === "Live now"
-        ? `The event is on · walk-ins can book until ${when(info.eventEnd)}`
+        ? `The event is on · walk-ins can deposit until ${when(info.eventEnd)}`
         : phase === "Attendance due" || phase === "Adding names"
           ? `Confirm who came by ${when(info.claimDeadline)}`
           : phase === "Challenge window"
@@ -103,7 +103,7 @@ export function OverviewScreen({ court }: { court: string }) {
             ))}
             <li className="og-step">
               <span className="og-step-n">!</span>
-              <span>On the day, scan every guest&apos;s Luma QR code: only checked-in guests count as came.</span>
+              <span>On the day, scan every guest&apos;s Luma QR code: only checked-in guests count as attendees.</span>
             </li>
           </ol>
         )}
@@ -130,9 +130,9 @@ export function OverviewScreen({ court }: { court: string }) {
         big
         testId="counts"
         rows={[
-          { label: "Booked", value: <NumberPop value={String(info.stakerCount)} still /> },
+          { label: "Deposits", value: <NumberPop value={String(info.stakerCount)} still /> },
           {
-            label: "Confirmed as came",
+            label: "Confirmed attendees",
             value: info.phase === 0 || info.phase === 3 ? "—" : <NumberPop value={String(info.attendeeCount)} still />,
           },
           { label: "Open challenges", value: <NumberPop value={String(open)} still /> },
@@ -146,7 +146,7 @@ export function OverviewScreen({ court }: { court: string }) {
             { label: "Deposit", value: assetText(info.depositAmount, info) },
             { label: "Capacity", value: info.capacity ? String(info.capacity) : "No limit" },
             { label: "Starts", value: when(info.eventStart) },
-            { label: "Ends · bookings close", value: when(info.eventEnd) },
+            { label: "Ends · deposits close", value: when(info.eventEnd) },
             { label: "Confirm who came by", value: when(info.claimDeadline) },
             { label: "Disputes", value: court },
           ]}
@@ -155,7 +155,9 @@ export function OverviewScreen({ court }: { court: string }) {
       {canCancel && (
         <section className="og-danger flex flex-col gap-2" data-testid="danger-zone">
           <h2 className="og-h2">Cancel the event</h2>
-          <p className="og-note">Every booked guest can then withdraw their full deposit. This cannot be undone.</p>
+          <p className="og-note">
+            Every guest who deposited can then withdraw their full deposit. This cannot be undone.
+          </p>
           <div>
             <GradientButton className="is-quiet" isDisabled={event.busy} onPress={() => setCancel(true)}>
               Cancel the event
@@ -168,9 +170,9 @@ export function OverviewScreen({ court }: { court: string }) {
         <ConfirmDialog
           isOpen
           title="Cancel the event"
-          intro="Every booked guest can then withdraw their full deposit. This cannot be undone."
+          intro="Every guest who deposited can then withdraw their full deposit. This cannot be undone."
           words={[TYPED_WORDS.cancel]}
-          figures={[{ label: "Booked guests", value: String(info.stakerCount) }]}
+          figures={[{ label: "Guests with deposits", value: String(info.stakerCount) }]}
           action="Cancel the event"
           busy={event.busy}
           error={null}
@@ -180,7 +182,7 @@ export function OverviewScreen({ court }: { court: string }) {
             event.run(
               "Cancel",
               () => tx.cancel(info.contract),
-              "The event is cancelled. Guests can withdraw their deposits.",
+              "The event is cancelled. Guests can now withdraw their deposits.",
             );
           }}
         />
