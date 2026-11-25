@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 
-import { CopyPrimaryButton } from "@/components/ui/CopyButton";
+import { CopyButton } from "@/components/ui/CopyButton";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { NumberPop } from "@/components/ui/NumberPop";
 
@@ -61,8 +61,10 @@ export function OverviewScreen({ court }: { court: string }) {
         {phase === "Booking open" && (
           <div className="flex flex-col gap-2" data-testid="guest-link">
             <span className="og-label">Guest link</span>
-            <code className="og-input is-mono break-all">{guestLink}</code>
-            <CopyPrimaryButton value={guestLink}>Copy guest link</CopyPrimaryButton>
+            <div className="og-input flex items-center gap-2">
+              <code className="is-mono min-w-0 flex-1 break-all">{guestLink}</code>
+              <CopyButton value={guestLink} label="Copy guest link" />
+            </div>
             <p className="og-note">
               Bookmark this organiser page too. If you lose it, connect this wallet on Organise to find your events.
             </p>
@@ -74,6 +76,7 @@ export function OverviewScreen({ court }: { court: string }) {
               href={paths.organiseEvent.getHref(address, undefined, step.tab)}
               className="kb-btn"
               data-testid="next-action"
+              onClick={() => window.scrollTo({ top: 0 })}
             >
               {step.title}
             </Link>

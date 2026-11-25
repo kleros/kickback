@@ -7,7 +7,6 @@ import { useState } from "react";
 import { Button } from "react-aria-components";
 import { useAccount } from "wagmi";
 
-
 import { GlassCard } from "@/components/ui/GlassCard";
 
 import { paths } from "@/config/paths";
