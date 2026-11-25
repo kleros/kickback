@@ -34,7 +34,7 @@ const when = (unix: number) =>
 
 const LUMA_SETUP = [
   "Copy the guest link and put it in your Luma ticket's description.",
-  'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet".',
+  'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet", and add a required question: "Paste your Kickback deposit link".',
   "Guests deposit, then paste their transaction link in the Luma request.",
   "Approve each request with a deposit: check them on the Guests tab.",
 ];
@@ -46,7 +46,16 @@ export function OverviewScreen({ court }: { court: string }) {
   const data = overview.data;
   if (!data || !phase) return <p className="og-note">Reading the event…</p>;
   const info = data.event;
-  const step = NEXT_STEP[phase];
+  const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
+  // nothing to answer yet: say when to come back instead
+  const step =
+    phase === "Challenge window" && open === 0
+      ? {
+          title: "Come back to release payouts",
+          detail: `No challenges so far. After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
+          tab: "payout" as const,
+        }
+      : NEXT_STEP[phase];
   const booking = phase === "Booking open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
@@ -59,7 +68,7 @@ export function OverviewScreen({ court }: { court: string }) {
           : phase === "Challenge window"
             ? `Challenges close ${when(info.challengeEndsAt)}`
             : null;
-  const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
+
   const canCancel = event.isOwner && info.phase === 0 && data.now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">

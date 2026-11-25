@@ -37,5 +37,6 @@ export function useLumaBook(contract: string) {
     [contract],
   );
   const nameOf = useCallback((wallet: string) => names[wallet.toLowerCase()]?.name, [names]);
-  return { names, checked, add, check, nameOf };
+  const approvedAt = useCallback((wallet: string) => checked[wallet.toLowerCase()], [checked]);
+  return { names, checked, add, check, nameOf, approvedAt };
 }

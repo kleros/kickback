@@ -213,6 +213,12 @@ export function AttendanceScreen() {
         </Button>
       )}
       <Messages event={event} />
+      {!listed && (
+        <p className="og-note">
+          Save for now records these names on the blockchain and lets you keep adding. Post and close is final and
+          starts the challenge window. Each is one transaction from your wallet.
+        </p>
+      )}
       <GlassCard className="og-selbar og-thumb">
         <span className="og-note">
           {total} came · {noShows} no-shows

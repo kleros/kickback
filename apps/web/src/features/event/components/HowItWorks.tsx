@@ -329,7 +329,7 @@ function TimelinePanel({
           {spanText(challengePeriod)}
         </span>
         <span>
-          <b>Paid out</b>to attendees
+          <b>Claimed</b>by attendees
         </span>
       </div>
       <div className="how-caps" style={{ marginTop: 16 }}>

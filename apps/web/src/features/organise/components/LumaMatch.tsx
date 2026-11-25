@@ -26,6 +26,8 @@ export function LumaMatch({
   const found = rows?.filter((r) => r.match === "deposit" && !r.dupOf) ?? [];
   const toApprove = found.filter((r) => r.luma === "pending");
   const toDecline = rows?.filter((r) => r.match === "none" && r.luma === "pending") ?? [];
+  // approved on Luma, but no booked deposit (never paid, or turned away and refunded): their Luma QR still works
+  const wronglyIn = rows?.filter((r) => r.match === "none" && r.luma === "approved") ?? [];
   const dups = rows?.filter((r) => r.dupOf) ?? [];
   const emails = (list: readonly LumaMatchRow[]) =>
     list
@@ -54,8 +56,12 @@ export function LumaMatch({
       {rows && (
         <GlassCard className="og-card">
           <p className="og-lede" data-testid="luma-summary">
-            {found.length} of {rows.length} requests have a deposit. {toApprove.length} still to approve on Luma.
-            {dups.length > 0 && ` ${dups.length} share a wallet with another request: approve only one of each.`}
+            {found.length} of {rows.length} requests have a deposit: approve them on Luma ({toApprove.length} left).{" "}
+            {toDecline.length > 0 &&
+              `${toDecline.length} pending have no deposit: decline them, or ask them to deposit first. `}
+            {dups.length > 0 && `${dups.length} share a wallet with another request: approve only one of each. `}
+            {wronglyIn.length > 0 &&
+              `${wronglyIn.length} approved on Luma have no deposit (not paid, or turned away): decline them on Luma.`}
           </p>
           {toApprove.some((r) => r.email) && (
             <p className="og-note flex items-center gap-2">
@@ -67,6 +73,12 @@ export function LumaMatch({
             <p className="og-note flex items-center gap-2">
               Pending with no deposit
               <CopyButton value={emails(toDecline)} label="Copy emails with no deposit" />
+            </p>
+          )}
+          {wronglyIn.some((r) => r.email) && (
+            <p className="og-note flex items-center gap-2">
+              Approved with no deposit
+              <CopyButton value={emails(wronglyIn)} label="Copy emails to decline" />
             </p>
           )}
           <div className="og-table is-luma" role="table" aria-label="Luma registrations">

@@ -177,7 +177,7 @@ export interface DepositView {
   shake?: boolean;
 }
 
-export const DEFAULT_FOOT = "Yours back when you check in.";
+export const DEFAULT_FOOT = "Then paste the tx link in Luma.";
 const PENDING_STAGE_2_MS = 60_000;
 const PENDING_STAGE_3_MS = 5 * 60_000;
 
@@ -203,9 +203,9 @@ export const txHref = (explorer: string | undefined, hash: Hash) => (explorer ? 
 
 function guestsLine(guests: number | undefined, capacity: number | undefined): StatusLine {
   if (guests === undefined) return { text: "" };
-  if (guests === 0) return { text: "Be the first to book" };
+  if (guests === 0) return { text: "Be the first to deposit" };
   const left = capacity ? ` · ${Math.max(0, capacity - guests)} spots left` : "";
-  return { text: `${guests} ${guests === 1 ? "guest" : "guests"} booked${left}` };
+  return { text: `${guests} ${guests === 1 ? "deposit" : "deposits"} so far${left}` };
 }
 
 export const depositsOpen = (phase: number, eventEnd: number, chainNow: number | undefined) =>
@@ -245,7 +245,7 @@ export function depositState(input: DepositInput): DepositView {
   const owed = (units: bigint, unit?: string) => (unit === "ETH" ? ethText(units) : fmt(units)).replace(/^~/, "");
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
-    label: "Booked",
+    label: "Deposit sent",
     lines: awaitingList
       ? [
           { text: listDue ? `List due ${listDue}, then claim here.` : "Next: the list of who came.", tone: "pri" },
@@ -544,7 +544,13 @@ export function depositState(input: DepositInput): DepositView {
 
   if (connected && guest?.status === 1) {
     if (history?.txHash) return done(history.txHash, history.at ?? input.chainNow ?? 0);
-    return { ...readOnly("already", "Booked", [{ text: "You're booked for this event." }]), button: "Booked" };
+    return {
+      ...readOnly("already", "Deposit sent", [
+        { text: "Your deposit is in." },
+        { text: "Paste the link in Luma for approval." },
+      ]),
+      button: "Deposit sent",
+    };
   }
 
   if (send.status === "success" && send.hash && connected) return done(send.hash);
@@ -613,7 +619,7 @@ export function depositState(input: DepositInput): DepositView {
       lines:
         connected && !guest?.status
           ? [
-              { text: `No booking from ${me}.`, tone: "warn" as const },
+              { text: `No deposit from ${me}.`, tone: "warn" as const },
               { text: "Booked with another wallet? Switch to it." },
             ]
           : [
@@ -656,7 +662,7 @@ export function depositState(input: DepositInput): DepositView {
       return {
         key: "nowallet",
         label: "Refundable deposit",
-        lines: [{ text: "No wallet in this browser." }, { text: "Connect by QR from your phone." }],
+        lines: [{ text: "No wallet in this browser." }, { text: "Open this page in your wallet app." }],
         action: "connect",
         button: "Connect wallet",
         foot: DEFAULT_FOOT,

@@ -651,3 +651,10 @@
     animation: none;
   }
 }
+
+.receipt-share-label {
+  padding: 0 4px 6px;
+  color: var(--kb-text-2);
+  font-size: 13px;
+  font-weight: 500;
+}

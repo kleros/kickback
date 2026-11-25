@@ -22,6 +22,7 @@ export function ShareRow({ text, luma, guestLink }: { text: string; luma: string
   const share = useShare(text, luma || guestLink);
   return (
     <div>
+      <p className="receipt-share-label">Tell friends you&apos;re going (shares the Luma link)</p>
       <div className="receipt-share" aria-label="Share your deposit" data-testid="share-row">
         {share.native ? (
           <Button className="kb-icon-btn" aria-label="Share" onPress={() => void share.share()}>

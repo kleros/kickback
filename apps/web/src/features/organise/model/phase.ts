@@ -7,7 +7,7 @@ export type Phase =
   | "Adding names"
   | "Challenge window"
   | "Payouts ready"
-  | "Paid out"
+  | "Payouts released"
   | "Cancelled"
   | "Past the deadline";
 
@@ -17,7 +17,7 @@ export function phaseOf(
   now: number,
 ): Phase {
   if (event.phase === 3) return "Cancelled";
-  if (event.phase === 2) return "Paid out";
+  if (event.phase === 2) return "Payouts released";
   if (event.phase === 1) return now <= event.challengeEndsAt ? "Challenge window" : "Payouts ready";
   if (now > event.claimDeadline) return "Past the deadline";
   if (now < event.eventStart) return "Booking open";
@@ -41,7 +41,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Live now": {
     title: "Check a guest",
     detail:
-      "Walk-ins register on Luma and can still deposit until the end. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
+      "Walk-ins register on Luma and deposit, then you check them here and approve them on Luma. Scan every guest's Luma QR at the door: only checked-in guests count as came.",
     tab: "guests",
   },
   "Attendance due": {
@@ -66,9 +66,9 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     detail: "The challenge window is over. Release the pool: attendees get their deposit back plus a share.",
     tab: "payout",
   },
-  "Paid out": {
+  "Payouts released": {
     title: "Send the payouts",
-    detail: "Attendees can withdraw on the event page, or you can push their share to every wallet.",
+    detail: "Attendees claim their share on the event page. You can also send it to every wallet yourself.",
     tab: "payout",
   },
   Cancelled: {

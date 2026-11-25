@@ -86,7 +86,7 @@ export function PayoutScreen() {
             rows={[
               { label: "Pool", value: assetText(pool, info) },
               { label: "Attendees", value: String(info.attendeeCount) },
-              { label: info.phase === 2 ? "Each got" : "Each gets", value: assetText(share, info) },
+              { label: "Each gets", value: assetText(share, info) },
               {
                 label: "Challenges",
                 value: stillOpen.length
@@ -134,7 +134,7 @@ export function PayoutScreen() {
                       {c.state === 1 && now <= c.matchEndsAt
                         ? `This guest says they came. They paid ${ethText(c.deposit)} to challenge. If they came: add them, and they get it back. If they did not: send it to Kleros, paying the same ${ethText(c.deposit)} from your wallet; jurors decide and the side they agree with gets its fee back. If you do nothing by ${when(c.matchEndsAt)}, they are added.`
                         : c.state === 1
-                          ? "You did not answer in time, so this guest is added to the list. It is done when you release payouts, or press Accept."
+                          ? "You did not answer in time, so this guest is added automatically when you release payouts."
                           : c.state === 2
                             ? "Kleros jurors are deciding. Send your evidence (Luma check-ins, photos) on the case page. Once ruled, settle it here."
                             : came
@@ -150,7 +150,6 @@ export function PayoutScreen() {
                       {canMatch && (
                         <>
                           <GradientButton
-                            className="is-quiet"
                             isDisabled={!canSend}
                             onPress={() =>
                               event.run(
@@ -163,6 +162,7 @@ export function PayoutScreen() {
                             They came: add them
                           </GradientButton>
                           <GradientButton
+                            className="is-quiet"
                             isDisabled={!canMatchAsAnyone}
                             onPress={() =>
                               event.run(
@@ -180,7 +180,7 @@ export function PayoutScreen() {
                           </GradientButton>
                         </>
                       )}
-                      {(c.state === 2 || (c.state === 1 && now > c.matchEndsAt)) && info.phase !== 0 && (
+                      {c.state === 2 && info.phase !== 0 && (
                         <GradientButton
                           className="is-quiet"
                           isDisabled={event.busy}
@@ -192,7 +192,7 @@ export function PayoutScreen() {
                             )
                           }
                         >
-                          {c.state === 1 ? "Accept: add them to the list" : "Settle the ruling"}
+                          Settle the ruling
                         </GradientButton>
                       )}
                     </div>

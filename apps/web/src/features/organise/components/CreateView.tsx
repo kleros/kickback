@@ -185,7 +185,7 @@ export function CreateScreen() {
           <Field label="Event name" full hint="Shown to guests and to Kleros jurors if there is a dispute">
             <input className="og-input" value={form.name} maxLength={120} onChange={set("name")} />
           </Field>
-          <Field label="Event page" full hint="Optional: your Luma (or other) page, https://…">
+          <Field label="Luma event page" full hint="Guests register there; Kickback only holds the deposits.">
             <input
               className="og-input"
               type="url"
@@ -208,7 +208,7 @@ export function CreateScreen() {
                 : form.asset === "ETH" &&
                     /^\d+(\.\d+)?$/.test(form.deposit.trim()) &&
                     parseUnits(form.deposit.trim(), 18) < fee
-                  ? `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH. That is more than this deposit, so guests are unlikely to challenge.`
+                  ? `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH. A guest you wrongly leave off can win it back from you, so mark everyone who came.`
                   : `A guest you leave off can challenge by paying the court fee, now ${formatEther(fee)} ETH.`
             }
           >

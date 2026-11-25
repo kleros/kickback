@@ -100,7 +100,7 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
               {preview?.image && <Image src={preview.image} alt="" width={960} height={540} unoptimized />}
               <span className="ed-preview-text">
                 <span className="ed-label">{preview?.siteName || "Registration"}</span>
-                <strong>{preview?.title || "Open registration"}</strong>
+                <strong>{preview?.title || "Register on Luma"}</strong>
                 <span className="ed-domain">{registration.domain}</span>
               </span>
             </a>

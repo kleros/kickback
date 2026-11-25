@@ -39,11 +39,14 @@ export function GuestCheck({
   contract,
   guests,
   nameOf,
+  approvedAt,
   check: remember,
 }: {
   contract: Address;
   guests: readonly GuestRow[];
   nameOf: (wallet: string) => string | undefined;
+  /** When this browser recorded the wallet as approved on Luma. */
+  approvedAt: (wallet: string) => number | undefined;
   check: (wallet: string) => number | undefined;
 }) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
@@ -70,12 +73,12 @@ export function GuestCheck({
     if (row.status === 2)
       return { tone: "err", title: "Turned away: do not approve", text: "Their deposit was refunded.", wallet };
     if (row.status === 3) return { tone: "err", title: "Refunded: do not approve", wallet };
-    const before = remember(wallet);
+    const before = approvedAt(wallet);
     if (before !== undefined)
       return {
         tone: "warn",
-        title: "Already checked: approve only one",
-        text: `${who}This deposit was confirmed here at ${clock(before)}. One deposit is one ticket.`,
+        title: "Already approved: approve only one",
+        text: `${who}A request with this deposit was approved here at ${clock(before)}. One deposit is one ticket.`,
         wallet,
       };
     return {
@@ -97,6 +100,20 @@ export function GuestCheck({
       try {
         const tx = await client.getTransaction({ hash: hash as Hash });
         if (latest.current !== value) return;
+        if (tx.blockNumber === null)
+          return setResult({
+            tone: "warn",
+            title: "Still confirming: check again in a minute",
+            text: "The deposit is sent but not on the blockchain yet.",
+          });
+        const receipt = await client.getTransactionReceipt({ hash: hash as Hash });
+        if (latest.current !== value) return;
+        if (receipt.status !== "success")
+          return setResult({
+            tone: "err",
+            title: "Failed transaction: do not approve",
+            text: "Nothing was deposited.",
+          });
         if (tx.to?.toLowerCase() !== contract.toLowerCase())
           return setResult({
             tone: "err",
@@ -137,8 +154,8 @@ export function GuestCheck({
     <section className="flex flex-col gap-2" id="check" data-testid="guest-check">
       <h2 className="og-h2">Check a guest</h2>
       <p className="og-lede">
-        Paste the Ethereum address or transaction link from a Luma request. It is checked against this event&apos;s
-        deposits on the blockchain, so a fake link fails.
+        Paste the Ethereum address Luma verified on the request (safest), or the deposit link they pasted. It is checked
+        against this event&apos;s deposits on the blockchain, so a fake link fails.
       </p>
       <div className="og-check-row">
         <input
@@ -167,6 +184,18 @@ export function GuestCheck({
           <p className="og-verdict-title">{busy ? "Checking the transaction…" : result?.title}</p>
           {!busy && result?.wallet && <WalletText wallet={result.wallet} />}
           {!busy && result?.text && <p className="og-verdict-text">{result.text}</p>}
+          {!busy && result?.tone === "ok" && result.wallet && result.title !== "Recorded as approved" && (
+            <button
+              type="button"
+              className="og-paste self-start"
+              onClick={() => {
+                remember(result.wallet!);
+                setResult({ ...result, tone: "ok", title: "Recorded as approved", text: "Now approve it on Luma." });
+              }}
+            >
+              I approve it: record
+            </button>
+          )}
         </div>
       )}
     </section>

@@ -37,7 +37,7 @@ export const STATUS_TEXT: Record<EventStatus, string> = {
   started: "Attendance due",
   overdue: "Past the deadline",
   listed: "List posted",
-  paid: "Paid out",
+  paid: "Payouts released",
   cancelled: "Cancelled",
 };
 

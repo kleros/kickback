@@ -21,8 +21,10 @@ export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow
   const cols = detectColumns(rows[0] ? Object.keys(rows[0]) : []);
   const paid = new Set(booked.map((w) => w.toLowerCase()));
   const out = rows.map((r, i): LumaMatchRow => {
-    const wallet =
-      (cols.wallet && normAddress(r[cols.wallet])) || Object.values(r).map(normAddress).find(Boolean) || null;
+    // only the column Luma verified: an address typed in a free-text answer proves nothing
+    const wallet = cols.wallet
+      ? normAddress(r[cols.wallet]) || null
+      : Object.values(r).map(normAddress).find(Boolean) || null;
     return {
       name: (cols.name && r[cols.name]) || `Row ${i + 2}`,
       email: (cols.email && r[cols.email]) || "",

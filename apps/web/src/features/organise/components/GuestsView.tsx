@@ -77,7 +77,13 @@ export function GuestsScreen() {
       </div>
 
       <GlassCard className="og-card">
-        <GuestCheck contract={event.address} guests={guests} nameOf={luma.nameOf} check={luma.check} />
+        <GuestCheck
+          contract={event.address}
+          guests={guests}
+          nameOf={luma.nameOf}
+          approvedAt={luma.approvedAt}
+          check={luma.check}
+        />
       </GlassCard>
       <GlassCard className="og-card">
         <LumaMatch booked={booked} onRows={luma.add} />
@@ -185,7 +191,7 @@ export function GuestsScreen() {
                 glyph={event.running?.startsWith("Turn away") ? "arc" : undefined}
                 onPress={() => setConfirm(true)}
               >
-                {`Turn away ${chosen.length}`}
+                {`Turn away ${chosen.length} · refund now`}
               </GradientButton>
             </div>
           </GlassCard>
