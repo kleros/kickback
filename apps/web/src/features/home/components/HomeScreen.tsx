@@ -17,16 +17,16 @@ const EXAMPLE = payoutExample(parseEther("0.01"), 10, 8);
 
 const STEPS = [
   {
-    title: "Book a spot",
-    body: "Guests send the deposit (ETH or a token like USDC) from their own wallet, and they are in. Bookings stay open until the event ends, for walk-ins. Anyone the organiser turns away gets it all back.",
+    title: "Register and deposit",
+    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away gets it all back.",
   },
   {
     title: "Show up",
-    body: "After the event, the organiser posts who came. Anyone left off can challenge the list, and Kleros jurors decide.",
+    body: "Get your Luma QR scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
-    body: "The pool is split equally among everyone on the list. No-shows lose their deposit.",
+    body: "Everyone who came claims their deposit back, plus an equal share of the no-shows' deposits. No-shows get nothing back.",
   },
 ] as const;
 
@@ -40,25 +40,27 @@ function Example() {
       data-testid="home-example"
     >
       <h2 id="home-example-title" className="home-eyebrow">
-        {EXAMPLE.booked} guests book at {ethText(EXAMPLE.deposit)} ETH, {EXAMPLE.came} come
+        Example: {EXAMPLE.booked} guests deposit {ethText(EXAMPLE.deposit)} ETH each, {EXAMPLE.came} show up
       </h2>
       <dl className="home-rows">
         <div>
-          <dt>Pool</dt>
+          <dt>
+            All deposits ({EXAMPLE.booked} × {ethText(EXAMPLE.deposit)})
+          </dt>
           <dd className="kb-num">{ethText(EXAMPLE.pool)} ETH</dd>
         </div>
         <div>
-          <dt>Each guest who came</dt>
+          <dt>Each of the {EXAMPLE.came} who came gets</dt>
           <dd className="kb-num is-ok">{ethText(EXAMPLE.share)} ETH</dd>
         </div>
         <div>
-          <dt>Each no-show</dt>
+          <dt>Each of the {noShows} no-shows gets</dt>
           <dd className="kb-num is-err">0 ETH</dd>
         </div>
       </dl>
       <p className="home-note">
-        Guests who came get their {ethText(EXAMPLE.deposit)} ETH back, plus an equal share of the {noShows}{" "}
-        no-shows&apos; deposits.
+        That is their own {ethText(EXAMPLE.deposit)} ETH back, plus {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from
+        the no-shows&apos; deposits.
       </p>
     </GlassCard>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import { eventConfig, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
@@ -21,11 +21,11 @@ import { PROTOCOL } from "@/config/protocol";
 import { ErrorLine, Primary } from "./parts";
 import { saveDeployment } from "../model/browserEvents";
 import { gate } from "../model/shared";
+import { browserZone, zonedUnix, zoneLabel, zoneList } from "../model/zone";
 import { tx } from "../operations/tx";
 
 /** "2026-11-24T18:00" in the browser's zone, for a datetime-local input. */
 const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-const unix = (value: string) => Math.floor(new Date(value).getTime() / 1000);
 
 function initialForm(now = new Date()) {
   const start = new Date(now.getTime() + 7 * 86_400_000);
@@ -39,6 +39,8 @@ function initialForm(now = new Date()) {
     deposit: "0.01",
     start: local(start),
     end: local(end),
+    // set to the device's zone once in the browser (the server would render its own)
+    zone: "UTC",
     deadlineDays: "7",
     capacity: "",
   };
@@ -105,6 +107,13 @@ export function CreateScreen() {
   const router = useRouter();
   const { address } = useAccount();
   const [form, setForm] = useState<Form>(() => initialForm());
+  // the server renders in its own zone: take the device's once in the browser
+  const [deviceZone, setDeviceZone] = useState("UTC");
+  useEffect(() => {
+    const zone = browserZone();
+    setDeviceZone(zone);
+    setForm((f) => ({ ...f, zone }));
+  }, []);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   const token = useToken(form.asset === "token" ? form.token : "");
   const fee = useChallengeFee().data;
@@ -118,13 +127,13 @@ export function CreateScreen() {
     if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
     if (!/^\d+(\.\d+)?$/.test(form.deposit.trim()))
       throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
-    const end = unix(form.end);
+    const end = zonedUnix(form.end, form.zone);
     return eventConfig({
       name: form.name,
       url: form.url,
       token: form.asset === "ETH" ? undefined : (form.token as Address),
       depositAmount: parseUnits(form.deposit.trim(), asset.decimals),
-      eventStart: unix(form.start),
+      eventStart: zonedUnix(form.start, form.zone),
       eventEnd: end,
       claimDeadline: end + Math.max(7, Number(form.deadlineDays) || 7) * 86_400,
       capacity: Number(form.capacity) || 0,
@@ -229,7 +238,20 @@ export function CreateScreen() {
               <input className="og-input is-mono" value={form.token} spellCheck={false} onChange={set("token")} />
             </Field>
           )}
-          <Field label="Starts" hint="In your local time">
+          <Field
+            label="Time zone of the event"
+            full
+            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Where the event happens, as on Luma; your device is on ${deviceZone.replace(/_/g, " ")}.`}
+          >
+            <select className="og-input" value={form.zone} onChange={set("zone")}>
+              {zoneList(form.zone).map((z) => (
+                <option key={z} value={z}>
+                  {z.replace(/_/g, " ")}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Starts" hint={`In ${form.zone.replace(/_/g, " ")} time`}>
             <input className="og-input" type="datetime-local" value={form.start} onChange={set("start")} />
           </Field>
           <Field label="Ends" hint="Bookings stay open until then, for walk-ins">
