@@ -58,7 +58,7 @@ export function ShellView({
               {shortHex(address)}
               <CopyButton value={address} label="Copy contract address" />
             </span>
-            <Link href={paths.event.getHref(address)} className="kb-link text-sm">
+            <Link href={paths.event.getHref(address)} className="kb-link text-sm" target="_blank" rel="noopener">
               Guest page ↗
             </Link>
           </div>

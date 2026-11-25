@@ -237,14 +237,18 @@ export function depositState(input: DepositInput): DepositView {
     wallet: wallet.address!,
     when: when === undefined ? undefined : input.dayText(when),
   });
+  // after the end, before the list: tell a booked guest what happens next
+  const awaitingList = input.phase === 0 && input.chainNow !== undefined && input.chainNow >= input.eventEnd;
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
     label: "Booked",
-    lines: [],
+    lines: awaitingList
+      ? [{ text: "Next: the organiser confirms who came, then 1 day for challenges. Then claim here.", tone: "pri" }]
+      : [],
     receipt: receipt(tx, when),
     action: "copy",
-    button: "Copy link for Luma",
-    foot: "Paste in Luma. Check in.",
+    button: awaitingList ? "Copy transaction link" : "Copy link for Luma",
+    foot: awaitingList ? null : "Paste in Luma. Check in.",
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);
@@ -544,6 +548,13 @@ export function depositState(input: DepositInput): DepositView {
                 ? "The attendance list is out."
                 : "The event has ended.",
         },
+        ...(connected && !guest?.status
+          ? [
+              {
+                text: `No booking from ${wallet.address!.slice(0, 6)}…${wallet.address!.slice(-4)}. Booked with another wallet? Switch to it.`,
+              },
+            ]
+          : []),
       ],
       action: "none",
       button: "Bookings closed",
