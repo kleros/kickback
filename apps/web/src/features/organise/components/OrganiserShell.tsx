@@ -53,7 +53,8 @@ export function ShellView({
             {event.phase && <PhasePill phase={event.phase} />}
           </div>
           <div className="og-head-row">
-            <span className="og-addr">
+            <span className="og-addr" title="The event's own contract: it holds the deposits. Not a wallet.">
+              <span className="og-note mr-1.5 font-sans">Event contract</span>
               {shortHex(address)}
               <CopyButton value={address} label="Copy contract address" />
             </span>
