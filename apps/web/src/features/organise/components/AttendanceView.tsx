@@ -78,7 +78,8 @@ export function AttendanceScreen() {
           s.reason === "not-checked-in" &&
           s.wallet &&
           isBooked.has(s.wallet.toLowerCase()) &&
-          !already.has(s.wallet.toLowerCase()),
+          // a second, checked-in registration or a hand tick already counts this guest
+          !isOn(s.wallet as Address),
       )
       .map((s) => s.wallet!.toLowerCase()),
   ).size;
@@ -151,9 +152,11 @@ export function AttendanceScreen() {
         <p className="og-lede">
           {listed
             ? data.now > info.challengeEndsAt
-              ? `The list is final: the time to add guests ended on ${when(info.challengeEndsAt)}. Release payouts on the Payout tab.`
+              ? data.challenges.some((c) => c.state === 1 || c.state === 2)
+                ? `The time to add guests ended on ${when(info.challengeEndsAt)}. Guests who challenged can still be added, by a Kleros ruling or when payouts are released. See the Payout tab.`
+                : `The list is final: the time to add guests ended on ${when(info.challengeEndsAt)}. Release payouts on the Payout tab.`
               : `The list is closed. Until ${when(info.challengeEndsAt)}, you can still add guests left off by mistake.`
-            : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once it is confirmed, names cannot be removed, and guests left off have ${spanText(info.challengePeriod)} to challenge.`}
+            : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once it is confirmed, guests cannot be removed, and guests left off have ${spanText(info.challengePeriod)} to challenge.`}
         </p>
       </div>
       {!listed && event.isOwner && (
@@ -212,7 +215,9 @@ export function AttendanceScreen() {
           { label: "No-shows", value: String(noShows) },
           {
             label: "Each attendee gets",
-            value: total ? assetText((info.depositAmount * BigInt(booked.length)) / BigInt(total), info) : "—",
+            value: total
+              ? assetText((info.depositAmount * BigInt(booked.length)) / BigInt(total + info.openCases), info)
+              : "—",
           },
         ]}
       />
@@ -279,7 +284,7 @@ export function AttendanceScreen() {
       <Messages event={event} />
       {!listed && (
         <p className="og-note">
-          “Save for now” records these names on the blockchain: they cannot be removed later, but you can keep adding.
+          “Save for now” records these wallets on the blockchain: they cannot be removed later, but you can keep adding.
           “Confirm and close” is final and starts the challenge window. Each is one transaction from your wallet.
         </p>
       )}

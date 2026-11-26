@@ -166,7 +166,7 @@ describe("checkSentTx against the network", () => {
 });
 
 describe("the store", () => {
-  it("one record per chain and contract, read back only for the account that sent it", () => {
+  it("one record per chain, contract and account, read back only for the account that sent it", () => {
     const storage = memoryStorage();
     const store = createSentTxStore(storage);
     store.save(record());
@@ -174,17 +174,25 @@ describe("the store", () => {
     expect(store.read(1, EVENT, BOB)).toBeNull();
     expect(store.read(1, OTHER_EVENT, ALICE)).toBeNull();
     expect(store.read(31337, EVENT, ALICE)).toBeNull();
-    expect([...storage.map.keys()]).toEqual([sentTxKey(1, EVENT)]);
+    expect([...storage.map.keys()]).toEqual([sentTxKey(1, EVENT, ALICE)]);
+  });
+
+  it("another account's send to the same event keeps this account's record", () => {
+    const store = createSentTxStore(memoryStorage());
+    store.save(record());
+    store.save(record({ account: BOB, hash: NEWER }));
+    expect(store.read(1, EVENT, ALICE)?.hash).toBe(HASH);
+    expect(store.read(1, EVENT, BOB)?.hash).toBe(NEWER);
   });
 
   it("forgetting an older hash leaves a newer send's record alone", () => {
     const storage = memoryStorage();
     const store = createSentTxStore(storage);
     store.save(record({ hash: NEWER }));
-    store.forget(1, EVENT, HASH);
+    store.forget(1, EVENT, ALICE, HASH);
     expect(store.read(1, EVENT, ALICE)?.hash).toBe(NEWER);
     expect(createSentTxStore(storage).read(1, EVENT, ALICE)?.hash).toBe(NEWER);
-    store.forget(1, EVENT, NEWER);
+    store.forget(1, EVENT, ALICE, NEWER);
     expect(store.read(1, EVENT, ALICE)).toBeNull();
     expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toBeNull();
   });
@@ -203,7 +211,7 @@ describe("the store", () => {
     ["a time that is no number", { at: "yesterday" }],
   ])("a stored record with %s is no record", async (_, broken) => {
     const storage = memoryStorage();
-    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...record(), ...broken }));
+    storage.map.set(sentTxKey(1, EVENT, ALICE), JSON.stringify({ ...record(), ...broken }));
     const store = createSentTxStore(storage);
     expect(store.read(1, EVENT, ALICE)).toBeNull();
     await expect(
@@ -213,14 +221,14 @@ describe("the store", () => {
 
   it.each([["3"], [3.5], [-1]])("a stored nonce of %j reads back as unknown", (txNonce) => {
     const storage = memoryStorage();
-    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...record(), txNonce }));
+    storage.map.set(sentTxKey(1, EVENT, ALICE), JSON.stringify({ ...record(), txNonce }));
     expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toEqual(record({ txNonce: null }));
   });
 
   it("a stored record with only a guessed `nonce` reads back with its nonce unknown, so it is never replaced", async () => {
     const storage = memoryStorage();
     const { txNonce: _, ...rest } = record({ at: NOW - 60_000 });
-    storage.map.set(sentTxKey(1, EVENT), JSON.stringify({ ...rest, nonce: 0 }));
+    storage.map.set(sentTxKey(1, EVENT, ALICE), JSON.stringify({ ...rest, nonce: 0 }));
     const store = createSentTxStore(storage);
     expect(store.read(1, EVENT, ALICE)?.txNonce).toBeNull();
     await expect(
@@ -243,7 +251,7 @@ describe("the store", () => {
 
   it("an unreadable stored value is no record", () => {
     const storage = memoryStorage();
-    storage.map.set(sentTxKey(1, EVENT), "{not json");
+    storage.map.set(sentTxKey(1, EVENT, ALICE), "{not json");
     expect(createSentTxStore(storage).read(1, EVENT, ALICE)).toBeNull();
   });
 });

@@ -162,7 +162,7 @@ export function PayoutScreen() {
                         : c.state === 1 && now <= c.matchEndsAt
                           ? `This guest says they came, and has paid ${ethText(c.deposit)} to challenge. The time to add guests has passed. If they came, do nothing: they will be added when payouts are released after ${when(c.matchEndsAt)}. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet before then. Kleros jurors then decide, and whichever side wins gets back what is left of the two fees.`
                           : c.state === 1
-                            ? "You did not answer in time, so this guest will be added automatically when payouts are released."
+                            ? `${event.isOwner ? "You" : "The organiser"} did not answer in time, so this guest will be added automatically when payouts are released.`
                             : c.state === 2
                               ? "Kleros jurors are deciding. Send your evidence (Luma check-in, photos) on the case page. Once they rule, settle it here."
                               : !wentToKleros

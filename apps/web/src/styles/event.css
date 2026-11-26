@@ -611,6 +611,9 @@
   overflow-wrap: anywhere;
   line-height: 1.65;
 }
+.ed-more {
+  margin-top: 8px;
+}
 .ed-hosts,
 .ed-links {
   display: flex;

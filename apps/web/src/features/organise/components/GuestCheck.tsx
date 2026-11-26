@@ -77,7 +77,12 @@ export function GuestCheck({
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const queries = useQueryClient();
   const [text, setText] = useState("");
-  const [result, setResult] = useState<Verdict>(null);
+  // verdicts with no wallet are kept as they are; a wallet's verdict is worked out on each render, so a Luma
+  // export loaded later, an approval from another tab or a disconnect shows at once
+  const [fixed, setResult] = useState<Verdict>(null);
+  const [checked, setChecked] = useState<{ wallet: string; viaTx: boolean; live?: number; marked?: boolean } | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const latest = useRef("");
   const input = useRef<HTMLInputElement>(null);
@@ -152,6 +157,7 @@ export function GuestCheck({
   const check = async (value: string) => {
     latest.current = value;
     setResult(null);
+    setChecked(null);
     const hash = extractTxHash(value);
     if (hash && client) {
       setBusy(true);
@@ -197,7 +203,7 @@ export function GuestCheck({
         const staker = stakers[0]!;
         const status = await liveStatus(staker);
         if (latest.current !== value) return;
-        setResult(walletVerdict(staker, true, status));
+        setChecked({ wallet: staker, viaTx: true, live: status });
         void queries.invalidateQueries({ queryKey: organiserKey(contract) });
       } catch (e) {
         if (latest.current === value)
@@ -217,10 +223,10 @@ export function GuestCheck({
       setBusy(true);
       try {
         const status = await liveStatus(wallet as Address);
-        if (latest.current === value) setResult(walletVerdict(wallet, false, status));
+        if (latest.current === value) setChecked({ wallet, viaTx: false, live: status });
       } catch {
         // the network did not answer: the list read a few seconds ago still counts
-        if (latest.current === value) setResult(walletVerdict(wallet, false));
+        if (latest.current === value) setChecked({ wallet, viaTx: false });
       } finally {
         if (latest.current === value) setBusy(false);
       }
@@ -243,6 +249,18 @@ export function GuestCheck({
     }
     input.current?.select();
   };
+
+  const result: Verdict = checked
+    ? checked.marked
+      ? {
+          tone: "ok",
+          title: "Marked as approved",
+          text: "Saved in this browser only, so this deposit is not approved twice.",
+          wallet: checked.wallet,
+          done: true,
+        }
+      : walletVerdict(checked.wallet, checked.viaTx, checked.live)
+    : fixed;
 
   return (
     <section className="flex flex-col gap-2" id="check" data-testid="guest-check">
@@ -294,13 +312,7 @@ export function GuestCheck({
               className="og-paste self-start"
               onClick={() => {
                 remember(result.wallet!);
-                setResult({
-                  ...result,
-                  tone: "ok",
-                  done: true,
-                  title: "Marked as approved",
-                  text: "Saved in this browser only, so this deposit is not approved twice.",
-                });
+                setChecked((c) => (c ? { ...c, marked: true } : c));
               }}
             >
               I approved them on Luma

@@ -125,7 +125,9 @@ describe("useSend", () => {
 
     const recorded = renderHook(() => useSend({ record: true }), { wrapper });
     await act(() => recorded.result.current.mutateAsync(deposit));
-    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}`)).toContain(HASH);
+    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}:${ALICE.toLowerCase()}`)).toContain(
+      HASH,
+    );
   });
 
   it("on a mainnet fork, refuses a wallet other than the dev wallet", async () => {
@@ -162,7 +164,9 @@ describe("useSentTx", () => {
       sending = sender.result.current.mutateAsync(deposit).catch((error: unknown) => error);
     });
     await vi.waitFor(() => expect(client.waitForTransactionReceipt).toHaveBeenCalled());
-    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}`)).toContain(HASH);
+    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}:${ALICE.toLowerCase()}`)).toContain(
+      HASH,
+    );
     await act(() => vi.advanceTimersByTimeAsync(12_000));
     expect(watcher.result.current.sent.data).toMatchObject({ record: { hash: HASH }, outcome: "pending" });
     await act(async () => {

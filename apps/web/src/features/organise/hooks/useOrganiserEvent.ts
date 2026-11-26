@@ -35,7 +35,10 @@ export function useOrganiserEventSource(address: Address) {
   const onChain = !!account && chainId === DEFAULT_CHAIN_ID;
   const data = overview.data;
   const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
-  const phase = data ? phaseOf(data.event, data.now) : null;
+  // a late challenge still inside its answer time holds up the release: the pill says so
+  const phase = data
+    ? phaseOf(data.event, data.now, data.challenges.filter((c) => c.state === 1 && data.now <= c.matchEndsAt).length)
+    : null;
 
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);

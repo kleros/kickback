@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { getConnectorClient } from "@wagmi/core";
@@ -22,6 +22,13 @@ export function ConnectWallet({ text = "Connect wallet", className }: { text?: s
   const { open: isOpen } = useAppKitState();
   const { switchChain, switchChainAsync, isPending, error, reset } = useSwitchChain();
   const [addFailed, setAddFailed] = useState(false);
+  // the add-chain prompt is open in the wallet: a second request would be refused as "already pending"
+  const [adding, setAdding] = useState(false);
+  // an old answer belongs to the wallet and network it was given on
+  useEffect(() => {
+    reset();
+    setAddFailed(false);
+  }, [address, chainId, reset]);
 
   if (isConnected && address) {
     if (chainId !== DEFAULT_CHAIN_ID) {
@@ -31,18 +38,22 @@ export function ConnectWallet({ text = "Connect wallet", className }: { text?: s
         <>
           <GradientButton
             className={className}
-            isPending={isPending}
-            glyph={isPending ? "ring" : undefined}
+            isPending={isPending || adding}
+            glyph={isPending || adding ? "ring" : undefined}
             onPress={() => {
-              setAddFailed(false);
               if (unknown) {
+                if (adding) return;
+                setAdding(true);
+                setAddFailed(false);
                 void getConnectorClient(wagmiConfig)
                   .then((client) => addChain(client, { chain: DEFAULT_CHAIN }))
                   .then(() => switchChainAsync({ chainId: DEFAULT_CHAIN_ID }))
                   .then(() => reset())
-                  .catch(() => setAddFailed(true));
+                  .catch(() => setAddFailed(true))
+                  .finally(() => setAdding(false));
                 return;
               }
+              setAddFailed(false);
               reset();
               switchChain({ chainId: DEFAULT_CHAIN_ID });
             }}

@@ -37,10 +37,10 @@ export function OverviewScreen({ court }: { court: string }) {
   const lastAnswer = Math.max(0, ...waiting.map((c) => c.matchEndsAt));
   // nothing to answer yet: say when to come back instead
   const step: NextStep =
-    phase === "Payouts ready" && waiting.length > 0
+    phase === "Challenges pending" && waiting.length > 0
       ? {
           title: "Answer challenges",
-          detail: `The challenge window is over, but ${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} still waiting for your answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released. You can release payouts after ${when(lastAnswer)}.`,
+          detail: `The challenge window is over, but ${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} ${event.isOwner ? "still waiting for your answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released." : "still waiting for the organiser's answer."} You can release payouts after ${when(lastAnswer)}.`,
           tab: "payout",
           action: "Open Payout",
         }
@@ -79,7 +79,7 @@ export function OverviewScreen({ court }: { court: string }) {
           ? `Confirm who came by ${when(info.claimDeadline)}`
           : phase === "Challenge window"
             ? `Challenges close ${when(info.challengeEndsAt)}`
-            : phase === "Payouts ready" && waiting.length > 0
+            : phase === "Challenges pending" && waiting.length > 0
               ? `Answer by ${when(lastAnswer)}`
               : null;
 

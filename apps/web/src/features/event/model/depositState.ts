@@ -70,6 +70,8 @@ export interface GuestState {
     ruling?: number;
     /** A case with Kleros: the jurors' ruling is final, so anyone can settle it. Undefined when unknown. */
     isRuled?: boolean;
+    /** ETH paid to Kleros when the challenge was matched. */
+    arbitrationPaid?: bigint;
   };
 }
 
@@ -128,6 +130,12 @@ export interface DepositInput {
     needsChain: boolean;
     /** Adding the chain to the wallet failed or was declined. */
     chainFailed?: boolean;
+    /** The add-chain prompt is open in the wallet. */
+    addingChain?: boolean;
+    /** The network-switch prompt is open in the wallet. */
+    switching?: boolean;
+    /** The last network switch was declined or failed. */
+    switchFailed?: "declined" | "failed";
     /** The wallet is restoring the last session (page load), not a connect the guest started. */
     restoring?: boolean;
   };
@@ -267,7 +275,16 @@ const SHORT_ERRORS: Partial<Record<SendErrorKind, string>> = {
   "account-changed": "Wallet switched accounts. Try again.",
   "wrong-chain": "Wrong network. Switch and try again.",
   "no-account": "Connect your wallet first.",
+  replaced: "Replaced in your wallet. Try again.",
+  network: "Network did not answer. Try again.",
 };
+
+/** What settling a ruled case pays the guest: what is left of both fees, or half of it when Kleros refused to rule. */
+export function resolveRefund(c: { deposit?: bigint; arbitrationPaid?: bigint; ruling?: number }): bigint {
+  const deposit = c.deposit ?? 0n;
+  const left = 2n * deposit - (c.arbitrationPaid ?? deposit);
+  return c.ruling === 1 ? left : left / 2n;
+}
 
 /** A wallet-side failure: only a rejection is the guest's own cancel. */
 function walletText(message: string | undefined): string {
@@ -334,13 +351,32 @@ export function depositState(input: DepositInput): DepositView {
     const href = txHref(explorer, hash);
     return href ? { label: "Etherscan", href } : undefined;
   };
+  // the wallet's network prompt: one short line, so the card keeps its height
+  const switchLine: StatusLine | undefined = wallet.switchFailed
+    ? {
+        text:
+          wallet.switchFailed === "declined"
+            ? "You declined the switch. Try again."
+            : `Switch to ${chain.name} in your wallet app.`,
+        tone: "err",
+      }
+    : undefined;
+  const prompting = wallet.needsChain ? wallet.addingChain : wallet.switching;
   const switchOr = <T extends DepositView>(view: T): DepositView =>
     onChain
       ? view
       : {
           ...view,
+          lines: switchLine && !wallet.needsChain ? [switchLine, ...view.lines.slice(1, 2)] : view.lines,
           action: wallet.needsChain ? "add-chain" : "switch",
-          button: wallet.needsChain ? `Add ${chain.name} to your wallet` : `Switch to ${chain.name}`,
+          button: prompting
+            ? "Confirm in your wallet"
+            : wallet.needsChain
+              ? `Add ${chain.name} to your wallet`
+              : `Switch to ${chain.name}`,
+          glyph: prompting ? "ring" : undefined,
+          disabled: prompting || undefined,
+          shake: view.shake || (switchLine !== undefined && !wallet.needsChain) || undefined,
         };
 
   const moneySend =
@@ -358,7 +394,9 @@ export function depositState(input: DepositInput): DepositView {
                   ? "It failed. Only the network fee was spent."
                   : moneySend.errorKind === "wallet"
                     ? walletText(moneySend.error)
-                    : (moneySend.error ?? "Nothing was sent. Try again."),
+                    : ((moneySend.errorKind && SHORT_ERRORS[moneySend.errorKind]) ??
+                      moneySend.error ??
+                      "Nothing was sent. Try again."),
           tone: moneySend.errorKind === "unconfirmed" ? "warn" : "err",
         }
       : undefined;
@@ -415,7 +453,11 @@ export function depositState(input: DepositInput): DepositView {
               ? "Sending challenge"
               : moneySend.action === "release"
                 ? "Releasing payouts"
-                : "Sending",
+                : moneySend.action === "resolve"
+                  ? "Settling the ruling"
+                  : moneySend.action === "approve"
+                    ? "Allowing"
+                    : "Sending",
         signed
           ? [{ text: `Confirming on ${chain.name}.`, tone: "pri", link: etherscan(moneySend.hash!) }]
           : [{ text: "Open your wallet to confirm.", tone: "pri" }, { text: "Then wait for the network." }],
@@ -526,7 +568,7 @@ export function depositState(input: DepositInput): DepositView {
     return switchOr({
       key: "resolve",
       label: "Kleros has ruled",
-      amount: ethText(c.deposit ?? 0n),
+      amount: ethText(resolveRefund(c)),
       unit: "ETH",
       lines: error
         ? [error]
@@ -535,7 +577,9 @@ export function depositState(input: DepositInput): DepositView {
               text: c.ruling === 1 ? "Kleros jurors ruled you attended." : "Kleros jurors did not rule either way.",
               tone: "pri",
             },
-            { text: "Confirm to settle the ruling." },
+            {
+              text: c.ruling === 1 ? "Join the list to settle the ruling." : "Settle the ruling to end the challenge.",
+            },
           ],
       action: "resolve",
       button: c.ruling === 1 ? "Join the list" : "Settle the ruling",
@@ -992,7 +1036,9 @@ export function depositState(input: DepositInput): DepositView {
             : { text: `${chain.name} is not in your wallet yet.`, tone: "warn" },
         ],
         action: "add-chain",
-        button: `Add ${chain.name} to your wallet`,
+        button: wallet.addingChain ? "Confirm in your wallet" : `Add ${chain.name} to your wallet`,
+        glyph: wallet.addingChain ? "ring" : undefined,
+        disabled: wallet.addingChain || undefined,
         foot: DEFAULT_FOOT,
       };
     const theirs = wallet.chainId === undefined ? undefined : input.chainName?.(wallet.chainId);
@@ -1000,11 +1046,17 @@ export function depositState(input: DepositInput): DepositView {
       key: "wrongnet",
       label: "Refundable deposit",
       lines: [
-        { text: theirs ? `Your wallet is on ${theirs}.` : "Your wallet is on another network.", tone: "warn" },
+        switchLine ?? {
+          text: theirs ? `Your wallet is on ${theirs}.` : "Your wallet is on another network.",
+          tone: "warn",
+        },
         { text: `This event is on ${chain.name}.` },
       ],
       action: "switch",
-      button: `Switch to ${chain.name}`,
+      button: wallet.switching ? "Confirm in your wallet" : `Switch to ${chain.name}`,
+      glyph: wallet.switching ? "ring" : undefined,
+      disabled: wallet.switching || undefined,
+      shake: switchLine !== undefined || undefined,
       foot: DEFAULT_FOOT,
     };
   }

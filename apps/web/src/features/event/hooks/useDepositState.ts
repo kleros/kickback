@@ -13,7 +13,7 @@ import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
-import { isUnknownChain } from "@/lib/web3/chainErrors";
+import { isRejected, isUnknownChain } from "@/lib/web3/chainErrors";
 import { connectWallet, hasInjectedWallet, installedWallets } from "@/lib/web3/connect";
 import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
@@ -116,6 +116,10 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
   const [asked, setAsked] = useState(false);
   const [needsChain, setNeedsChain] = useState(false);
   const [chainFailed, setChainFailed] = useState(false);
+  // the wallet's network prompts: one at a time, and a decline is said on the card
+  const [switching, setSwitching] = useState(false);
+  const [switchFailed, setSwitchFailed] = useState<"declined" | "failed" | undefined>();
+  const [addingChain, setAddingChain] = useState(false);
   const [hasProvider, setHasProvider] = useState(true);
   useEffect(() => setHasProvider(hasInjectedWallet()), []);
   // a connected guest starts over: a later disconnect should not show "no wallet" straight away
@@ -126,6 +130,9 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
   useEffect(() => {
     setNeedsChain(false);
     setChainFailed(false);
+    setSwitching(false);
+    setSwitchFailed(undefined);
+    setAddingChain(false);
   }, [address, chainId, status]);
 
   const connected = status === "connected" && address !== undefined;
@@ -213,6 +220,9 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
       asked,
       needsChain,
       chainFailed,
+      addingChain,
+      switching,
+      switchFailed,
       restoring,
     },
     balance: balance.data?.value,
@@ -260,18 +270,30 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
       void connectWallet(() => open({ view: "Connect" }));
     },
     switchChain: () => {
-      switchChainAsync({ chainId: DEFAULT_CHAIN_ID }).then(
-        () => setNeedsChain(false),
-        (error: unknown) => setNeedsChain(isUnknownChain(error)),
-      );
+      // a second prompt while the first is open is refused by the wallet as "already pending"
+      if (switching) return;
+      setSwitching(true);
+      setSwitchFailed(undefined);
+      void switchChainAsync({ chainId: DEFAULT_CHAIN_ID })
+        .then(
+          () => setNeedsChain(false),
+          (error: unknown) => {
+            if (isUnknownChain(error)) setNeedsChain(true);
+            else setSwitchFailed(isRejected(error) ? "declined" : "failed");
+          },
+        )
+        .finally(() => setSwitching(false));
     },
     addChain: () => {
+      if (addingChain) return;
+      setAddingChain(true);
       setChainFailed(false);
       void getConnectorClient(wagmiConfig)
         .then((client) => addChain(client, { chain: DEFAULT_CHAIN }))
         .then(() => switchChainAsync({ chainId: DEFAULT_CHAIN_ID }))
         .then(() => setNeedsChain(false))
-        .catch(() => setChainFailed(true));
+        .catch(() => setChainFailed(true))
+        .finally(() => setAddingChain(false));
     },
     deposit: () => {
       send.reset();

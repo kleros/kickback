@@ -107,7 +107,9 @@ function Field({
 export function CreateScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { address, chainId } = useAccount();
+  const { address, chainId, status } = useAccount();
+  // wagmi is restoring a saved session: no Connect prompt yet
+  const restoring = !address && status === "reconnecting";
   const [form, setForm] = useState<Form>(() => initialForm());
   // the server renders in its own zone: take the device's once in the browser
   const [deviceZone, setDeviceZone] = useState("UTC");
@@ -169,7 +171,9 @@ export function CreateScreen() {
   const reason = !PROTOCOL
     ? "Events cannot be created on this network yet."
     : !address
-      ? "Connect the wallet that will organise the event."
+      ? restoring
+        ? "Checking your wallet."
+        : "Connect the wallet that will organise the event."
       : chainId !== DEFAULT_CHAIN_ID
         ? `Switch your wallet to ${DEFAULT_CHAIN.name}.`
         : check;
@@ -221,7 +225,7 @@ export function CreateScreen() {
         </p>
       </div>
       {/* connect, or switch a wallet that is on another network; nothing once it is ready */}
-      {(!address || chainId !== DEFAULT_CHAIN_ID) && (
+      {!restoring && (!address || chainId !== DEFAULT_CHAIN_ID) && (
         <div className="og-actions">
           <ConnectWallet text="Connect wallet" />
         </div>
@@ -302,7 +306,7 @@ export function CreateScreen() {
           </Field>
           <Field
             label="Days to confirm who came"
-            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the event ends, then 1 day for challenges. Miss the deadline and every guest can withdraw their full deposit.`}
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the event ends. Once you confirm the list, guests left off have 1 day to challenge. Miss the deadline and every guest can withdraw their full deposit.`}
           >
             <input
               className="og-input"
@@ -333,8 +337,10 @@ export function CreateScreen() {
       <p className="og-note">
         Runs on {DEFAULT_CHAIN.name}. Creating an event is free apart from the network fee: it takes one transaction
         from your wallet. The event&apos;s rules are fixed in the contract: nobody, including you, can change them or
-        take the deposits. After the event, a guest you leave off the list can challenge; you then have 1 day to add
-        them or send the case to Kleros{fee === undefined ? "" : ` (currently ${formatEther(fee)} ETH)`}.
+        take the deposits. After the event, a guest you leave off the list can challenge. You can add them until the
+        1-day challenge window closes, or send the case to Kleros
+        {fee === undefined ? "" : ` (currently ${formatEther(fee)} ETH)`} within 1 day of their challenge. If you do
+        neither, they are added.
       </p>
     </div>
   );

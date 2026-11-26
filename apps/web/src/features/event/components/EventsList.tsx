@@ -12,24 +12,29 @@ import { useChainTime } from "@/lib/web3/chain-time";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 
-import { useEvent } from "../api/useEvent";
+import { useEvent, type KickbackEvent } from "../api/useEvent";
 import { unitsText } from "../model/depositState";
-import { eventStatus, STATUS_TEXT, type ListedEvent } from "../model/listing";
+import type { ListedEvent } from "../model/listing";
 import { eventDateText, isShowableTime } from "../model/when";
+
+/** A row's status pill: its words and its colour ("live", "ok", "warn" or "end"). */
+export type RowStatus = (event: KickbackEvent, now: number) => { text: string; tone: string };
 
 function EventRow({
   row,
   now,
   hrefOf,
+  statusOf,
 }: {
   row: ListedEvent;
   now: number | undefined;
   hrefOf?: (row: ListedEvent) => string;
+  statusOf?: RowStatus;
 }) {
   const event = useEvent(row.contract);
   const href = hrefOf ? hrefOf(row) : paths.event.getHref(row.contract, row.from);
   const data = event.data;
-  const status = data && now !== undefined ? eventStatus(data.phase, data.eventEnd, data.claimDeadline, now) : null;
+  const status = data && now !== undefined && statusOf ? statusOf(data, now) : null;
 
   return (
     <li>
@@ -70,8 +75,8 @@ function EventRow({
             </span>
             <span className="home-event-meta">
               {status && (
-                <span className="home-status" data-status={status}>
-                  {STATUS_TEXT[status]}
+                <span className="home-status" data-status={status.tone}>
+                  {status.text}
                 </span>
               )}
               {data && (
@@ -87,8 +92,19 @@ function EventRow({
   );
 }
 
-/** A list of events, each row linking to `hrefOf` (the guest page by default). Renders nothing when empty. */
-export function EventsList({ rows, hrefOf }: { rows: readonly ListedEvent[]; hrefOf?: (row: ListedEvent) => string }) {
+/**
+ * A list of events, each row linking to `hrefOf` (the guest page by default), with the pill `statusOf` gives.
+ * Renders nothing when empty.
+ */
+export function EventsList({
+  rows,
+  hrefOf,
+  statusOf,
+}: {
+  rows: readonly ListedEvent[];
+  hrefOf?: (row: ListedEvent) => string;
+  statusOf?: RowStatus;
+}) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;
 
@@ -97,7 +113,7 @@ export function EventsList({ rows, hrefOf }: { rows: readonly ListedEvent[]; hre
     <ul className="home-events" data-testid="home-events">
       {rows.map((row) => (
         <ErrorBoundary key={row.contract.toLowerCase()} fallback={null}>
-          <EventRow row={row} now={now} hrefOf={hrefOf} />
+          <EventRow row={row} now={now} hrefOf={hrefOf} statusOf={statusOf} />
         </ErrorBoundary>
       ))}
     </ul>

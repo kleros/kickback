@@ -6,19 +6,29 @@ export type Phase =
   | "Attendance due"
   | "Adding names"
   | "Challenge window"
+  | "Challenges pending"
   | "Payouts ready"
   | "Payouts released"
   | "Cancelled"
   | "Past the deadline";
 
-/** The event's step in plain words, from the contract's phase and the chain's time. */
+/**
+ * The event's step in plain words, from the contract's phase and the chain's time. `stillWaiting` counts the
+ * challenges still inside their answer time: releasing payouts waits for them.
+ */
 export function phaseOf(
   event: Pick<EventInfo, "phase" | "eventStart" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount">,
   now: number,
+  stillWaiting = 0,
 ): Phase {
   if (event.phase === 3) return "Cancelled";
   if (event.phase === 2) return "Payouts released";
-  if (event.phase === 1) return now <= event.challengeEndsAt ? "Challenge window" : "Payouts ready";
+  if (event.phase === 1)
+    return now <= event.challengeEndsAt
+      ? "Challenge window"
+      : stillWaiting > 0
+        ? "Challenges pending"
+        : "Payouts ready";
   if (now > event.claimDeadline) return "Past the deadline";
   if (now < event.eventStart) return "Deposits open";
   if (now < event.eventEnd) return "Live now";
@@ -53,7 +63,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Attendance due": {
     title: "Confirm who came",
     detail:
-      "Export the Luma guest list (it includes check-ins and wallets) and load it here. Review who came and confirm the list before the deadline. Only wallet addresses go on the blockchain; names and emails stay in this browser.",
+      "Export the Luma guest list (it includes check-ins and wallets) and load it on the Attendance tab. Review who came and confirm the list before the deadline. Only wallet addresses go on the blockchain; names and emails stay in this browser.",
     tab: "attendance",
     action: "Open Attendance",
   },
@@ -67,6 +77,13 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     title: "Answer challenges",
     detail:
       "Guests left off the list can challenge until the window closes. Add anyone who came. If a guest did not come, send their case to Kleros within 1 day of their challenge, or they will be added.",
+    tab: "payout",
+    action: "Open Payout",
+  },
+  "Challenges pending": {
+    title: "Answer challenges",
+    detail:
+      "The challenge window is over, but a challenge is still waiting for an answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released.",
     tab: "payout",
     action: "Open Payout",
   },

@@ -1,9 +1,8 @@
 "use client";
 
 import Image from "next/image";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
-import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { ExternalIcon } from "@/components/ui/icons";
 
@@ -49,6 +48,10 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
   const registration = visibleLink(details.link);
   const isLuma = !!registration && /^(?:www\.)?(?:lu\.ma|luma\.com)$/.test(registration.domain);
   const title = details.title ?? details.name;
+  // a long description is cut at the last space before 240 characters, then shown whole on "Read more"
+  const [more, setMore] = useState(false);
+  const cut = description.length > 240 ? description.slice(0, 241).search(/\s\S*$/) : -1;
+  const long = cut > 0;
   if (
     !title &&
     !details.when &&
@@ -80,11 +83,11 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
         {!title && !coverUrl && details.when && <p>{details.when}</p>}
         {description && (
           <div className="ed-description">
-            <p>{description.length > 240 ? `${description.slice(0, 240).trimEnd()}…` : description}</p>
-            {description.length > 240 && (
-              <Disclosure title="Read more">
-                <p>{description.slice(240)}</p>
-              </Disclosure>
+            <p>{long && !more ? `${description.slice(0, cut).trimEnd()}…` : description}</p>
+            {long && (
+              <button type="button" className="kb-link ed-more" aria-expanded={more} onClick={() => setMore((v) => !v)}>
+                {more ? "Show less" : "Read more"}
+              </button>
             )}
           </div>
         )}

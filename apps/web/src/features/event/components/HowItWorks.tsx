@@ -170,12 +170,19 @@ function SplitPanel({ example }: { example: ShareExample }) {
     : example.deposits <= 10
       ? example.noShows
       : Math.min(shown - 1, Math.max(1, Math.round((shown * example.noShows) / example.deposits)));
+  // a guest still with Kleros after the payout: neither ticked nor pooled, a share is held for them
+  const shownHeld = example.deposits <= 10 ? example.held : 0;
+  const ways = example.attend + example.held;
+  const heldNote = example.held
+    ? ` One share is held for ${example.held === 1 ? "the open Kleros case" : `each of the ${example.held} open Kleros cases`} until it is decided.`
+    : "";
   // the event is over once the list exists: what happened is told in the past tense
   const past = example.basis === "paid" || example.basis === "list";
   const paid = example.basis === "paid";
   const gap = 388 / shown;
   const xs = Array.from({ length: shown }, (_, i) => 10 + gap / 2 + i * gap);
-  const attendX = xs.slice(0, shown - shownNo);
+  const attendX = xs.slice(0, shown - shownNo - shownHeld);
+  const heldX = xs.slice(shown - shownNo - shownHeld, shown - shownNo);
   const noX = xs.slice(shown - shownNo);
   // a rounded amount carries "≈" once, where it is correct maths: on the sum, not on each figure
   const cut = (s: string) => s.replace(/^[~≈]/, "");
@@ -190,11 +197,12 @@ function SplitPanel({ example }: { example: ShareExample }) {
     ? Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, pillW / 2 + 6), 402 - pillW / 2)
     : 204;
   const noShowsPossessive = example.noShows === 1 ? "no-show's" : "no-shows'";
+  const depositsText = `${example.deposits} ${example.deposits === 1 ? "deposit" : "deposits"}`;
   const note: ReactNode =
     example.basis === "paid" ? (
-      `This event's result: ${example.deposits} deposits and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.`
+      `This event's result: ${depositsText} and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.${heldNote}`
     ) : example.basis === "list" ? (
-      `Based on this event's ${example.deposits} deposits and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
+      `Based on this event's ${depositsText} and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
     ) : example.basis === "estimate" ? (
       <>
         An example with this event&apos;s {example.deposits} deposits and{" "}
@@ -208,17 +216,17 @@ function SplitPanel({ example }: { example: ShareExample }) {
       </>
     );
   const split = paid
-    ? example.attend === 1
+    ? ways === 1
       ? "went to the one attendee"
-      : `was split ${example.attend} ways`
+      : `was split ${ways} ways`
     : example.attend === 1
       ? "goes to the one attendee"
       : `is split ${example.attend} ways`;
   const ariaLabel = none
-    ? `${example.deposits} deposits: everyone ${past ? "attended" : "attends"}, so each attendee ${paid ? "got" : "gets"} their deposit back.`
+    ? `${depositsText}: everyone ${past ? "attended" : "attends"}, so each attendee gets their deposit back.`
     : past
-      ? `${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`
-      : `${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`;
+      ? `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.${heldNote}`
+      : `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`;
 
   return (
     <Panel title="What happens to no-shows' deposits?" testId="how-split">
@@ -229,6 +237,9 @@ function SplitPanel({ example }: { example: ShareExample }) {
             <circle cx={x} cy={20} r={Math.min(13, gap / 2 - 3)} className="coin" stroke={stroke} />
             <path d={`M${x - 5} 20.5l3.5 3.5 7-8`} className="ok" />
           </g>
+        ))}
+        {heldX.map((x, i) => (
+          <circle key={`h${i}`} cx={x} cy={20} r={Math.min(13, gap / 2 - 3)} className="coin" stroke={stroke} />
         ))}
         {noX.map((x, i) => (
           <g key={`n${i}`}>
@@ -262,7 +273,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
               />
             ))}
             <text x={poolX - pillW / 2 - 10} y={106} textAnchor="end" className="dim">
-              ÷ {example.attend}
+              ÷ {ways}
             </text>
           </>
         )}
@@ -282,7 +293,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         </span>
       </div>
       <div className="how-sum" data-testid="how-sum" data-back={example.back.toString()} data-attend={example.attend}>
-        <span>{paid ? "Each attendee got back" : "Each attendee gets back"}</span>
+        <span>Each attendee gets back</span>
         <b>
           {amount} + {bonus} {approx ? "≈" : "="} {cut(backRaw)} {unit}
         </b>

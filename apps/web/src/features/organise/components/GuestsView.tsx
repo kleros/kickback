@@ -123,7 +123,9 @@ export function GuestsScreen() {
               ? `Newest first. Until the event starts, you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
               : live
                 ? "Newest first. Guests can only be turned away before the event starts, so let in every walk-in who has deposited."
-                : "Newest first. Guests could only be turned away before the event started."}
+                : info.phase === 3
+                  ? "Newest first. The event was cancelled, so every guest can withdraw their full deposit on the guest page."
+                  : "Newest first. Guests could only be turned away before the event started."}
           </p>
         </div>
         {guests.length > 0 && (

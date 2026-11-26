@@ -1,5 +1,5 @@
 import { gasLimitFor, TX_GAS_CAP } from "@kickback/core";
-import type { Address, Hash, TransactionReceipt } from "viem";
+import { HttpRequestError, type Address, type Hash, type TransactionReceipt } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sendLock } from "../lock";
@@ -250,6 +250,18 @@ describe("refusals before the wallet prompt", () => {
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it("a chain read that fails inside prepare is a network error, not a refusal", async () => {
+    const { deps, wallet } = setup();
+    const prepare = vi.fn(async () => {
+      throw new HttpRequestError({ url: "https://rpc.example", details: "fetch failed" });
+    });
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "network",
+      message: "The network did not answer, so nothing was sent. Try again.",
+    });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
   it("a wallet refusal is put in plain words", async () => {
     const { deps, prepare, wallet } = setup();
     wallet.sendTransaction.mockRejectedValueOnce(new Error("User rejected the request."));
@@ -301,7 +313,7 @@ describe("the pending record", () => {
     client.getTransaction.mockRejectedValue(new Error("not found"));
     let seen: unknown;
     client.waitForTransactionReceipt.mockImplementationOnce(async () => {
-      seen = JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null");
+      seen = JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE)) ?? "null");
       return receipt("success");
     });
 
@@ -322,14 +334,14 @@ describe("the pending record", () => {
   it("is forgotten when the transaction fails on-chain", async () => {
     const { deps, prepare, storage } = setup({ status: "reverted" });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "reverted", hash: HASH });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
   });
 
   it("is kept when no receipt comes in time: the transaction may still land", async () => {
     const { client, deps, prepare, storage } = setup();
     client.waitForTransactionReceipt.mockRejectedValueOnce(new Error("timed out"));
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "unconfirmed", hash: HASH });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(true);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(true);
   });
 
   it("is not written when the caller keeps no record", async () => {
@@ -364,7 +376,7 @@ describe("the receipt", () => {
         return receipt("success", REPLACEMENT);
       });
       await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "replaced", hash: HASH });
-      expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+      expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
     },
   );
 
@@ -381,7 +393,7 @@ describe("the receipt", () => {
       return receipt("success", REPLACEMENT);
     });
     await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ transactionHash: REPLACEMENT });
-    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toMatchObject({ hash: REPLACEMENT });
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE))!)).toMatchObject({ hash: REPLACEMENT });
   });
 
   it("a sped-up copy that reverts is reported failed under its own hash", async () => {
@@ -391,13 +403,13 @@ describe("the receipt", () => {
       return receipt("reverted", REPLACEMENT);
     });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "reverted", hash: REPLACEMENT });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
   });
 });
 
 describe("the recorded nonce", () => {
   const storedNonce = (storage: ReturnType<typeof memoryStorage>) =>
-    (JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null") as { txNonce: number | null } | null)?.txNonce;
+    (JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE)) ?? "null") as { txNonce: number | null } | null)?.txNonce;
 
   /** Holds the receipt until `release` is called, so the send stays in flight. */
   const holdReceipt = (client: ReturnType<typeof setup>["client"]) => {
@@ -478,7 +490,7 @@ describe("the recorded nonce", () => {
     sent.save(newer);
     answer({ nonce: 9 });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toEqual(newer);
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE))!)).toEqual(newer);
     release();
     await running;
   });

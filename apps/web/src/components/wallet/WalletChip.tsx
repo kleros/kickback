@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { Button, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 
@@ -14,6 +16,10 @@ export function WalletChip() {
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
   const { switchChain, error, reset } = useSwitchChain();
+  // an old switch error belongs to the wallet and network it happened on
+  useEffect(() => {
+    reset();
+  }, [address, chainId, reset]);
   if (!isConnected || !address) return null;
   const wrongNet = chainId !== DEFAULT_CHAIN_ID;
 

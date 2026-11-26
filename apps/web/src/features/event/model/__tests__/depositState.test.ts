@@ -1,3 +1,4 @@
+import { parseEther } from "viem";
 import { describe, expect, it } from "vitest";
 
 import { depositState } from "../depositState";
@@ -93,6 +94,33 @@ describe("depositState", () => {
       guest: { ...g.guest!, challenge: { ...g.guest!.challenge, isRuled: false } },
     });
     expect(unruled.label).toBe("With Kleros");
+  });
+
+  it("shows the money a ruled case pays back, and short one-line errors for the money actions", () => {
+    const g = galleryInput("ruled");
+    const c = { ...g.guest!.challenge, deposit: parseEther("0.03"), arbitrationPaid: parseEther("0.03") };
+    expect(depositState({ ...g, guest: { ...g.guest!, challenge: c } }).amount).toBe("0.03");
+    const refused = depositState({ ...g, guest: { ...g.guest!, challenge: { ...c, ruling: 0 } } });
+    expect(refused.amount).toBe("0.015");
+    expect(refused.lines[1]!.text).toBe("Settle the ruling to end the challenge.");
+    const busy = depositState({
+      ...g,
+      moneySend: { account: g.wallet.address, action: "resolve", status: "error", errorKind: "busy", error: "long" },
+    });
+    expect(busy.lines[0]!.text).toBe("Wait for the other action to finish.");
+  });
+
+  it("says when the network switch is open in the wallet or was declined, on one line", () => {
+    const g = galleryInput("ready");
+    const off = { ...g.wallet, chainId: 10 };
+    const open = depositState({ ...g, wallet: { ...off, switching: true } });
+    expect(open.button).toBe("Confirm in your wallet");
+    expect(open.glyph).toBe("ring");
+    const declined = depositState({ ...g, wallet: { ...off, switchFailed: "declined" } });
+    expect(declined.lines.map((l) => l.text)).toEqual([
+      "You declined the switch. Try again.",
+      "This event is on Ethereum.",
+    ]);
   });
 
   it("says a signed claim is confirming instead of asking to confirm again", () => {

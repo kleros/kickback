@@ -40,6 +40,7 @@ export const PHASE_TONE: Record<Phase, Tone> = {
   "Attendance due": "warn",
   "Adding names": "warn",
   "Challenge window": "live",
+  "Challenges pending": "warn",
   "Payouts ready": "ok",
   "Payouts released": "end",
   Cancelled: "end",

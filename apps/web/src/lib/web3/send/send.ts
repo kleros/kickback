@@ -1,5 +1,7 @@
 import { TX_GAS_CAP } from "@kickback/core";
 import {
+  BaseError,
+  ContractFunctionRevertedError,
   isAddressEqual,
   zeroAddress,
   type Address,
@@ -84,7 +86,9 @@ export type SendErrorKind =
   | "wallet"
   | "reverted"
   | "replaced"
-  | "unconfirmed";
+  | "unconfirmed"
+  /** A chain read before the wallet prompt failed: nothing was sent, and nothing about the action is wrong. */
+  | "network";
 
 export class SendError extends Error {
   override name = "SendError";
@@ -148,7 +152,23 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   if (expectedAccount && !isAddressEqual(account, expectedAccount))
     throw new SendError("account-changed", "Your wallet switched accounts, so nothing was sent. Try again.");
 
-  const request = await prepare();
+  let request: TxRequest;
+  try {
+    request = await prepare();
+  } catch (error) {
+    // the app's own refusals ("The Kleros fee changed. Try again.") keep their words; viem errors get plain ones
+    if (error instanceof SendError || !(error instanceof BaseError)) throw error;
+    if (error.walk((e) => e instanceof ContractFunctionRevertedError))
+      throw new SendError(
+        "refused",
+        `${errorText(error).replace(/\s*Nothing was (sent|changed)\.?$/, "")} Nothing was sent.`,
+        undefined,
+        { cause: error },
+      );
+    throw new SendError("network", "The network did not answer, so nothing was sent. Try again.", undefined, {
+      cause: error,
+    });
+  }
   const data = request.data ?? "0x";
   if (!request.to && data === "0x")
     throw new SendError("refused", "There is no contract code to deploy, so nothing was sent.");
@@ -254,7 +274,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   const minedHash = receipt.transactionHash;
   if (minedHash !== hash) {
     if (replacedBecause !== "repriced") {
-      sent?.forget(chainId, recordKey, hash);
+      sent?.forget(chainId, recordKey, account, hash);
       throw new SendError(
         "replaced",
         "Your wallet cancelled or replaced this transaction, so it did not go through.",
@@ -266,7 +286,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   }
 
   if (receipt.status !== "success") {
-    sent?.forget(chainId, recordKey, minedHash);
+    sent?.forget(chainId, recordKey, account, minedHash);
     throw new SendError("reverted", "The transaction failed. Only the network fee was spent.", minedHash);
   }
   if (!request.to && !receipt.contractAddress) {

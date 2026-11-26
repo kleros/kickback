@@ -33,6 +33,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
     event.stakerCount,
     event.phase === 2 ? event.payoutShare : undefined,
     listed,
+    event.phase === 2 ? event.openCases : 0,
   );
 
   // the fragment is set before the page has height; land on it once the section exists

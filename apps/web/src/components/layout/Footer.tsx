@@ -93,10 +93,13 @@ export function Footer() {
       </div>
       <div className="kb-page kb-footer-base">
         <span>
-          {siteConfig.name} · Proof of Presence protocol · Powered by{"\u00a0"}
-          <a href="https://kleros.io" {...out}>
-            Kleros
-          </a>
+          {siteConfig.name} · Proof of Presence protocol ·{" "}
+          <span className="whitespace-nowrap">
+            Powered by{" "}
+            <a href="https://kleros.io" {...out}>
+              Kleros
+            </a>
+          </span>
         </span>
         <span>
           Open source,{" "}

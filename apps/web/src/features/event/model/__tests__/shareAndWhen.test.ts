@@ -41,6 +41,18 @@ describe("shareExample", () => {
     expect(shareExample(parseEther("0.01"), 4, 1n, 3).basis).toBe("paid");
     expect(shareExample(parseEther("0.01"), 4, undefined, 0).basis).toBe("estimate");
   });
+
+  it("after the payout, a guest still with Kleros is neither an attendee nor a no-show", () => {
+    const share = (parseEther("0.01") * 4n) / 3n;
+    expect(shareExample(parseEther("0.01"), 4, share, 2, 1)).toMatchObject({
+      attend: 2,
+      noShows: 1,
+      held: 1,
+      pool: parseEther("0.01"),
+    });
+    // before the payout no share is held: everyone left off is a no-show so far
+    expect(shareExample(parseEther("0.01"), 4, undefined, 2, 1)).toMatchObject({ noShows: 2, held: 0 });
+  });
 });
 
 describe("dates on the event's clock", () => {

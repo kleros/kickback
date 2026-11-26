@@ -68,7 +68,9 @@ export function ShellView({
         </div>
         {event.restoring ? null : !event.connected ? (
           <div className="og-actions">
-            <p className="og-note">Connect the organiser&apos;s wallet to act on this event.</p>
+            <p className="og-note">
+              Connect a wallet to act on this event. Only the organiser&apos;s wallet can manage guests and the list.
+            </p>
             <ConnectWallet text="Connect wallet" className="is-quiet" />
           </div>
         ) : (
@@ -83,7 +85,7 @@ export function ShellView({
           <p className="og-note" data-testid="not-owner">
             The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
             everything. Only the organiser can turn guests away, confirm the list, add guests or cancel the event.
-            Anyone can send a case to Kleros, settle a ruling, release payouts or send attendees their share.
+            Anyone can settle a ruling, release payouts or send attendees their share.
           </p>
         )}
         {event.overview.isError ? (

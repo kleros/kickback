@@ -116,6 +116,9 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
   const [copyFailed, setCopyFailed] = useState(false);
   const copyValue = view.receipt?.txLink ?? view.copy;
   useEffect(() => setCopyFailed(false), [copyValue]);
+  // a blocked clipboard (wallet in-app browsers): show the text to copy by hand, in the slot's own two rows
+  const manualCopy = copyFailed && (view.receipt !== undefined || view.copy !== undefined);
+  const copyIsLink = view.receipt !== undefined || (view.copy?.includes("/") ?? false);
 
   const press = {
     connect: actions.connect,
@@ -204,9 +207,19 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
             </div>
           </>
         ) : null}
-        {view.lines.map((line, i) => (
-          <Line key={i} line={line} onRecheck={actions.recheck} />
-        ))}
+        {view.lines.map((line, i) =>
+          i === 1 && copyFailed && !view.receipt && view.copy ? (
+            <div className="tk-rcpt" key={i}>
+              <span className="k">{copyIsLink ? "Wallet link" : "Wallet"}</span>
+              <span className="v kb-mono tk-select" data-testid="copy-text">
+                {view.copy}
+              </span>
+              <span className="acts" />
+            </div>
+          ) : (
+            <Line key={i} line={line} onRecheck={actions.recheck} />
+          ),
+        )}
       </div>
       <div className="tk-btn">
         {view.action === "copy" && copyValue ? (
@@ -230,14 +243,14 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         )}
       </div>
       <div className="tk-foot">
-        {copyFailed && view.receipt ? (
-          <span>Press and hold the link to copy.</span>
+        {manualCopy ? (
+          <span>{copyIsLink ? "Press and hold the link to copy." : "Press and hold the address to copy."}</span>
         ) : (
           view.foot && <span>{view.foot}</span>
         )}
         {done && lumaUrl && (
           <>
-            {(view.foot || (copyFailed && view.receipt)) && (
+            {(view.foot || manualCopy) && (
               <span className="tk-sep" aria-hidden>
                 ·
               </span>

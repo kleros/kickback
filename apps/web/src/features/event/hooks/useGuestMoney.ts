@@ -11,7 +11,7 @@ import { SendError, useSend } from "@/lib/web3/send";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import { depositsKey, eventKey } from "../api/useEvent";
-import type { MoneyAction } from "../model/depositState";
+import { resolveRefund, type MoneyAction } from "../model/depositState";
 import { claimAmount, prepareGuestMoney, readGuestMoney } from "../operations/guestMoney";
 
 export const moneyKey = (contract: Address) => ["guest-money", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
@@ -60,7 +60,9 @@ export function useGuestMoney(
         : action === "approve"
           ? depositAmount
           : action === "resolve"
-            ? (data?.challenge.deposit ?? 0n)
+            ? data?.challenge.state === 2
+              ? resolveRefund(data.challenge)
+              : (data?.challenge.deposit ?? 0n)
             : action === "release"
               ? depositAmount
               : data && claimAmount(data.claimable, data.claimableEth, token);

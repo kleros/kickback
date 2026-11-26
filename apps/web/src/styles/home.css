@@ -84,6 +84,7 @@
   font-size: 15px;
   line-height: 22px;
   max-width: 40rem;
+  text-wrap: pretty;
 }
 .home-mine {
   margin-top: 8px;
@@ -190,11 +191,11 @@
   color: var(--kb-text-2);
   font-weight: 500;
 }
-.home-status[data-status="booking"] {
+.home-status[data-status="live"],
+.home-status[data-status="ok"] {
   color: var(--kb-ok);
 }
-.home-status[data-status="overdue"],
-.home-status[data-status="cancelled"] {
+.home-status[data-status="warn"] {
   color: var(--kb-warn);
 }
 @media (max-width: 479px) {
