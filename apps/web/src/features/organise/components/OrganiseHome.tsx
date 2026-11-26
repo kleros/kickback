@@ -11,16 +11,13 @@ import { GlassCard } from "@/components/ui/GlassCard";
 
 import { paths } from "@/config/paths";
 
-import { BrowserEvents } from "./BrowserEvents";
 import { ErrorLine } from "./parts";
 import { WalletEvents } from "./WalletEvents";
-import { useBrowserEvents } from "../hooks/useMyEvents";
 import { openAddress } from "../model/view";
 
 /** Open an event by its contract address, or create one. */
 export function OrganiseHome() {
   const router = useRouter();
-  const events = useBrowserEvents();
   const { address: wallet } = useAccount();
   const [text, setText] = useState("");
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
@@ -73,7 +70,6 @@ export function OrganiseHome() {
           </Button>
         </form>
       </GlassCard>
-      <BrowserEvents events={events} />
     </div>
   );
 }

@@ -40,7 +40,7 @@ function Example() {
       data-testid="home-example"
     >
       <h2 id="home-example-title" className="home-eyebrow">
-        Example: {EXAMPLE.booked} guests deposit {ethText(EXAMPLE.deposit)} ETH each, {EXAMPLE.came} show up
+        Example: {EXAMPLE.booked} guests deposited {ethText(EXAMPLE.deposit)} ETH each, and {EXAMPLE.came} showed up
       </h2>
       <dl className="home-rows">
         <div>
@@ -50,7 +50,7 @@ function Example() {
           <dd className="kb-num">{ethText(EXAMPLE.pool)} ETH</dd>
         </div>
         <div>
-          <dt>Each of the {EXAMPLE.came} who show up gets</dt>
+          <dt>Each of the {EXAMPLE.came} who showed up gets</dt>
           <dd className="kb-num is-ok">{ethText(EXAMPLE.share)} ETH</dd>
         </div>
         <div>

@@ -1,9 +1,12 @@
+import { writeFile } from "node:fs/promises";
+
 import { type Page } from "@playwright/test";
 import { formatEther, type Address } from "viem";
 
 import { MOCK_ACCOUNTS } from "@/lib/web3/mock-account";
 
 import { expect, test } from "../fixtures";
+import { pageWords } from "../utils/pageWords";
 
 /**
  * The whole life of one event, through the pages only: an organiser creates it, guests book,
@@ -30,6 +33,7 @@ async function shot(page: Page, name: string) {
   // the page as a phone and a laptop see it, once it has settled
   const size = page.viewportSize();
   await page.waitForTimeout(400);
+  await writeFile(`${dir}/${name}.txt`, await pageWords(page));
   for (const width of [375, 1280]) {
     await page.setViewportSize({ width, height: width === 375 ? 812 : 800 });
     await page.waitForTimeout(250);
