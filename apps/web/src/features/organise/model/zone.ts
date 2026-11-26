@@ -1,10 +1,32 @@
-/** The browser's time zone ("Europe/Paris"), or UTC when it cannot tell. */
+/** A named zone ("Europe/Paris", "America/Argentina/Buenos_Aires", "UTC"): kept as the browser gives it. */
+const NAMED_ZONE = /^[A-Za-z]+\/[A-Za-z_\-+0-9/]+$/;
+
+/**
+ * The browser's time zone ("Europe/Paris"), or UTC when it cannot tell. An offset id ("+00:00", "-05:30") or an
+ * unknown one becomes a readable zone with the same offset: "UTC" or "Etc/GMT-9" for +09:00 (the sign is inverted
+ * in these ids); a half-hour offset keeps its id, which Intl still accepts.
+ */
 export function browserZone(): string {
+  let zone: string;
   try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    zone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   } catch {
     return "UTC";
   }
+  return normalZone(zone);
+}
+
+export function normalZone(zone: string, now = Date.now()): string {
+  if (zone === "UTC" || (NAMED_ZONE.test(zone) && !/^Etc\/Unknown$/i.test(zone))) return zone;
+  let offset: number;
+  try {
+    offset = offsetMinutes(zone, now);
+  } catch {
+    return "UTC";
+  }
+  if (offset === 0) return "UTC";
+  if (offset % 60 === 0) return `Etc/GMT${offset > 0 ? "-" : "+"}${Math.abs(offset / 60)}`;
+  return zone;
 }
 
 /** Every zone this browser knows, with the given one kept in the list. */

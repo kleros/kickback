@@ -70,3 +70,11 @@ export const resolverCaseUrl = (chainId: number, localDisputeID: bigint): string
   const resolver = KLEROS[chainId]?.resolver;
   return resolver ? `${resolver}${localDisputeID}` : undefined;
 };
+
+/**
+ * The arbitrator records a final ruling for anyone (executeRuling): Kleros Court on its own network, or the
+ * local mock. Any other arbitrator only gets the case link.
+ */
+export const canRecordRuling = (chainId: number, arbitrator: Address): boolean =>
+  CHAIN_MODE === "hardhat" ||
+  (!!KLEROS[chainId] && KLEROS[chainId]!.arbitrator.toLowerCase() === arbitrator.toLowerCase());

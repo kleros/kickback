@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 import { attendanceFromCsv, batches, BATCH_SIZE } from "@kickback/core";
 import { Button } from "react-aria-components";
@@ -12,11 +12,13 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { spanText } from "@/utils/time";
 
 import { Messages } from "./Messages";
-import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, TxLink } from "./parts";
+import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, Locked, TxLink } from "./parts";
 import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { matchLuma } from "../model/lumaMatch";
+import { projectedShare } from "../model/payout";
+import { gate } from "../model/shared";
 import { assetText, shortHex, TYPED_WORDS, when } from "../model/view";
 import { tx } from "../operations/tx";
 
@@ -37,6 +39,7 @@ export function AttendanceScreen() {
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [confirm, setConfirm] = useState<"close" | "save" | null>(null);
+  const emptyId = useId();
   const data = event.overview.data;
   const booked = useMemo(() => data?.booked ?? [], [data]);
   const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked) : null), [csv, booked]);
@@ -100,7 +103,9 @@ export function AttendanceScreen() {
   if (info.phase === 2) {
     // the final record, read only: who came, who did not, and how each challenge ended
     const came = booked.filter((w) => already.has(w.toLowerCase()));
-    const noShowCount = booked.length - info.attendeeCount;
+    // a guest still with Kleros is neither an attendee nor a no-show yet: a share is held for them
+    const open = info.openCases;
+    const noShowCount = booked.length - info.attendeeCount - open;
     const releasedTx = record.data?.released?.tx;
     return (
       <div className="flex flex-col gap-5" data-testid="attendance-final">
@@ -115,7 +120,12 @@ export function AttendanceScreen() {
             { label: "Deposits", value: String(booked.length) },
             { label: "Came", value: String(info.attendeeCount) },
             { label: "Did not come", value: String(Math.max(0, noShowCount)) },
-            { label: "Each attendee got", value: assetText(info.payoutShare, info) },
+            ...(open > 0 ? [{ label: "With Kleros", value: String(open) }] : []),
+            {
+              // a lost case's held share is split among the attendees: the share can still rise
+              label: open > 0 ? "Each attendee gets so far" : "Each attendee got",
+              value: assetText(info.payoutShare, info),
+            },
           ]}
         />
         {(listClosedTx || releasedTx) && (
@@ -221,6 +231,18 @@ export function AttendanceScreen() {
     );
   };
 
+  // the same figure as the Payout tab and the contract's release: open cases and waiting challenges take a share
+  const projected = projectedShare(info, data.challenges, toAdd);
+  const counted = projected.waiting + info.openCases;
+  const challengeOf = new Map(data.challenges.map((c) => [c.wallet.toLowerCase(), c]));
+  const now = event.now ?? data.now;
+  // the contract refuses an empty list: say what to do, and the way out when nobody came
+  const emptyGate = gate(
+    !listed && canAdd && total === 0
+      ? "Tick at least one guest who came. If nobody came, cancel the event on the Overview tab: every guest can then withdraw their full deposit on the guest page."
+      : null,
+  );
+
   return (
     <div className="flex flex-col gap-5" data-testid="attendance">
       <div className="flex flex-col gap-1">
@@ -297,9 +319,11 @@ export function AttendanceScreen() {
           { label: "No-shows", value: String(noShows) },
           {
             label: "Each attendee gets",
-            value: total
-              ? assetText((info.depositAmount * BigInt(booked.length)) / BigInt(total + info.openCases), info)
-              : "—",
+            value: projected.share === null ? "—" : assetText(projected.share, info),
+            note:
+              counted > 0
+                ? `Counts ${counted} open ${counted === 1 ? "challenge" : "challenges"}; can change until payouts are released`
+                : undefined,
           },
         ]}
       />
@@ -314,6 +338,16 @@ export function AttendanceScreen() {
         {booked.map((w) => {
           const on = already.has(w.toLowerCase());
           const withKleros = !on && inCase.has(w.toLowerCase());
+          // a challenge still waiting for the organiser's answer
+          const ch = challengeOf.get(w.toLowerCase());
+          const challenged = !on && ch?.state === 1;
+          const challengedText = !challenged
+            ? ""
+            : now <= ch.matchEndsAt
+              ? canAdd
+                ? "Challenged · add them or answer on the Payout tab"
+                : "Challenged · answer on the Payout tab"
+              : "Challenged · added when payouts are released";
           return (
             <div key={w} className="og-row" data-testid="attendance-row">
               <div className="og-row-main">
@@ -328,17 +362,19 @@ export function AttendanceScreen() {
                   <span>
                     {withKleros
                       ? "With Kleros"
-                      : on
-                        ? "Already on the list"
-                        : isOn(w)
-                          ? csv
-                            ? "Came (from Luma)"
-                            : "Came"
-                          : csv
-                            ? listed
+                      : challenged && !isOn(w)
+                        ? challengedText
+                        : on
+                          ? "Already on the list"
+                          : isOn(w)
+                            ? csv
+                              ? "Came (from Luma)"
+                              : "Came"
+                            : listed
                               ? "Not on the list"
-                              : "Did not come"
-                            : "Not ticked"}
+                              : csv
+                                ? "Did not come"
+                                : "Not ticked"}
                   </span>
                 </span>
                 <span className="og-ticks">
@@ -396,10 +432,12 @@ export function AttendanceScreen() {
                 )}
                 <GradientButton
                   isDisabled={!canAdd || total === 0}
+                  aria-describedby={emptyGate.enabled ? undefined : emptyId}
                   onPress={() => setConfirm(batched ? "save" : "close")}
                 >
                   {batched ? `Save ${first.length} of ${toAdd.length} first` : "Confirm and close"}
                 </GradientButton>
+                <Locked gate={emptyGate} id={emptyId} />
               </>
             )}
           </div>
@@ -426,7 +464,7 @@ export function AttendanceScreen() {
                   ? `These guests will be added to the attendance list. You can add more until ${when(info.challengeEndsAt)}.`
                   : "These guests will be added to the attendance list. You can keep adding until you close it."
           }
-          words={final ? [TYPED_WORDS.post] : []}
+          words={final ? [TYPED_WORDS.close] : []}
           figures={[
             { label: "Adding now", value: String(first.length) },
             { label: "On the list after", value: String(afterSend) },

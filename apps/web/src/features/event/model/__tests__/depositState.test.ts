@@ -239,14 +239,108 @@ describe("challenge window while the chain's time loads", () => {
         },
       });
     const lost = appeal(2, now + 600, now + 1200);
-    expect(lost.lines[0]?.text).toBe("Jurors ruled you were not there.");
+    expect(lost.lines[0]?.text).toBe("Jurors ruled you did not come.");
     expect(lost.lines[1]?.text).toContain("Appeal by");
     expect(lost.button).toBe("Appeal period");
     const won = appeal(1, now + 600, now + 1200);
-    expect(won.lines[0]?.text).toBe("Jurors ruled you attended.");
+    expect(won.lines[0]?.text).toBe("Jurors ruled you came.");
     expect(won.lines[1]?.text).toContain("The organiser can appeal until");
     const over = appeal(1, now - 600, now - 60);
     expect(over.lines[1]?.text).toBe("Appeals have closed. The ruling becomes final soon.");
     expect(over.button).toBe("Waiting for the final ruling");
+  });
+});
+
+describe("depositState: round 2 fixes", () => {
+  const guest = (over: Record<string, unknown> = {}) => ({
+    status: 1,
+    attended: false,
+    claimable: 0n,
+    claimableEth: 0n,
+    sharePaid: 0n,
+    challenge: { state: 0, matchEndsAt: 0, arbitratorDisputeID: 0n },
+    ...over,
+  });
+  const text = (v: ReturnType<typeof depositState>) => v.lines.map((l) => `${l.text} ${l.link?.label ?? ""}`).join(" ");
+
+  it("the organiser's own wallet with no deposit is told it is their event, with no deposit button", () => {
+    const view = depositState({
+      ...baseInput(),
+      organiser: true,
+      organiserHref: "/organise/0xabc",
+      guest: guest({ status: 0 }),
+    });
+    expect(view.key).toBe("organiser");
+    expect(view.action).toBe("none");
+    expect(view.foot).toBeNull();
+    expect(text(view)).toContain("You created this event");
+    expect(view.lines[1]?.link?.href).toBe("/organise/0xabc");
+    // after the end too: no "No deposit from 0x…"
+    const after = depositState({ ...baseInput(), organiser: true, chainNow: baseInput().eventEnd + 60 });
+    expect(after.key).toBe("organiser");
+  });
+
+  it("an organiser who deposited keeps the guest views for their own money", () => {
+    const b = baseInput();
+    const view = depositState({ ...b, organiser: true, phase: 2, guest: guest({ attended: true, claimable: 1n }) });
+    expect(view.key).toBe("claim");
+    expect(depositState({ ...galleryInput("withdraw"), organiser: true }).key).toBe("withdraw");
+  });
+
+  it("says Both spots for a capacity of two", () => {
+    expect(text(depositState({ ...baseInput(), capacity: 2, stakerCount: 2 }))).toContain("Both spots are taken.");
+    expect(text(depositState({ ...baseInput(), capacity: 3, stakerCount: 3 }))).toContain("All 3 spots are taken.");
+  });
+
+  it("a refunded guest keeps the reason", () => {
+    expect(text(depositState({ ...baseInput(), phase: 3, guest: guest({ status: 3 }) }))).toContain(
+      "The organiser cancelled the event.",
+    );
+    const missed = depositState({
+      ...baseInput(),
+      phase: 0,
+      guest: guest({ status: 3 }),
+      history: { paidTx: FIXTURE.tx },
+    });
+    expect(text(missed)).toContain("Attendance was not confirmed in time.");
+    expect(text(missed)).toContain("Refund transaction");
+  });
+
+  it("explains money from a split Kleros share, and not for an undelivered share", () => {
+    const share = parseEther("0.013");
+    const extra = parseEther("0.002");
+    const paid = depositState({
+      ...baseInput(),
+      phase: 2,
+      heldSplit: extra,
+      guest: guest({ attended: true, sharePaid: share, claimable: extra }),
+    });
+    expect(text(paid)).toContain("You already have your share.");
+    // a refused push: the claimable is the guest's own share, more than the split
+    const owed = depositState({
+      ...baseInput(),
+      phase: 2,
+      heldSplit: extra,
+      guest: guest({ attended: true, sharePaid: share + extra, claimable: share + extra }),
+    });
+    expect(text(owed)).toBe("Thanks for coming. Here is your payout. ");
+    const unclaimed = depositState({
+      ...baseInput(),
+      phase: 2,
+      heldSplit: extra,
+      guest: guest({ attended: true, claimable: share + extra }),
+    });
+    expect(text(unclaimed)).toContain("It includes 0.002 ETH from a split Kleros case share.");
+  });
+
+  it("a final ruling not recorded yet is never 'jurors are deciding'", () => {
+    const view = depositState(galleryInput("execute"));
+    expect(view.key).toBe("execute");
+    expect(view.action).toBe("execute");
+    expect(text(view)).toContain("Jurors ruled you came.");
+    expect(text(view)).not.toContain("deciding");
+    const plain = depositState({ ...galleryInput("execute"), canExecute: false });
+    expect(plain.key).toBe("disputed");
+    expect(plain.button).toBe("Waiting for the ruling to be recorded");
   });
 });

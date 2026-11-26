@@ -1,4 +1,5 @@
-import { KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
+import { presenceEventAbi } from "@kickback/contracts";
+import { challengeOf, KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
@@ -18,6 +19,10 @@ export interface KickbackEvent extends EventInfo {
   clock: EventClock | null;
   /** The registration page, when the event's link is a Luma page. */
   lumaUrl?: string;
+  /** Challenges ever made (only once the list is closed); undefined when they could not be read. */
+  challengeCount?: number;
+  /** Challenges the organiser sent to Kleros (cases open or settled). */
+  casesSent?: number;
 }
 
 export class EventRefused extends Error {
@@ -54,8 +59,28 @@ export async function loadEvent(
     if (reason) throw new EventRefused(/^0x[0-9a-fA-F]{40}$/.test(contract) ? reason : "not-address", contract);
     throw error;
   }
+  // challenges exist only once the list is closed; a failed read keeps the plain wording
+  let challengeCount: number | undefined;
+  let casesSent: number | undefined;
+  if (info.challengeEndsAt > 0)
+    try {
+      const c = { address: info.contract, abi: presenceEventAbi } as const;
+      const challengers = await client.readContract({ ...c, functionName: "challengers" });
+      const raw = await Promise.all(
+        challengers.map((s) => client.readContract({ ...c, functionName: "challenges", args: [s] })),
+      );
+      challengeCount = challengers.length;
+      // a matched challenge has a matcher: with Kleros (2), or settled by Kleros (3)
+      casesSent = raw
+        .map(challengeOf)
+        .filter((ch) => ch.state === 2 || (ch.state === 3 && !/^0x0{40}$/i.test(ch.matcher))).length;
+    } catch {
+      // unknown
+    }
   return {
     ...info,
+    challengeCount,
+    casesSent,
     eventName: info.name,
     clock: null,
     lumaUrl: LUMA_URL.test(info.url) ? info.url : undefined,

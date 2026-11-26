@@ -60,7 +60,7 @@ describe("foldRecord: what each payment was for", () => {
         log("Paid", 10, { account: A, to: A, amount: 15n, eth: true }),
         // Kleros refused to rule: what is left is split between C and the matcher
         log("ChallengeResolved", 11, { staker: C, attended: false, ruling: 0n }),
-        log("HeldShareSplit", 11, { staker: C, each: 2n }),
+        log("HeldShareSplit", 11, { staker: C, each: 2n, attendees: 1n, openCases: 0n }),
         log("Paid", 11, { account: C, to: C, amount: 7n, eth: true }),
         log("Paid", 11, { account: ORG, to: ORG, amount: 8n, eth: true }),
       ],
@@ -77,13 +77,15 @@ describe("foldRecord: what each payment was for", () => {
     expect(c.challenge).toMatchObject({
       answer: { kind: "kleros", matcher: ORG, caseId: 1001n },
       resolved: { ruling: 0, attended: false },
-      heldSplit: { each: 2n },
+      heldSplit: { each: 2n, attendees: 1n, openCases: 0n },
     });
     expect(c.payments.map((p) => p.kind)).toEqual(["challenge"]);
     const org = r.wallets.get(ORG.toLowerCase())!;
     expect(org.klerosFees).toMatchObject([{ staker: C, amount: 15n, caseId: 1001n }]);
     expect(org.payments.map((p) => p.kind)).toEqual(["challenge"]);
     expect(r.created?.block).toBe(1n);
+    // a guest released: the record names the wallet
+    expect(r.released).toMatchObject({ share: 15n, by: B });
   });
 
   it("tells an organiser's add from an unanswered challenge, and a refund from a payout", () => {
@@ -132,10 +134,20 @@ describe("recordCsv", () => {
     );
     const lines = csv.trim().split("\n");
     expect(lines[0]).toBe(
-      "Name,Wallet,Status,Deposit,Deposit transaction,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Challenge money back,Challenge money transactions,Notes,Event transaction",
+      "Name,Wallet,Status,Deposit,Deposit transaction,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Kleros fee paid,Sent to Kleros transactions,Challenge money back,Challenge money transactions,Notes,Event transaction",
     );
-    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,0.02 ETH,t1 | t2,,,,,,,,,,`);
-    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,t3");
+    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,0.02 ETH,t1 | t2,,,,,,,,,,,,`);
+    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,,,t3");
+    // a wallet that sent a case to Kleros: its fee and transaction under their own headers, not the challenge's
+    const matcher = recordCsv([{ wallet: B, klerosFee: "0.03 ETH", klerosTxs: "t4" }], [])
+      .trim()
+      .split("\n")[1]!
+      .split(",");
+    const at = (h: string) => lines[0]!.split(",").indexOf(h);
+    expect(matcher[at("Challenge transaction")]).toBe("");
+    expect(matcher[at("Challenge fee paid")]).toBe("");
+    expect(matcher[at("Sent to Kleros transactions")]).toBe("t4");
+    expect(matcher[at("Kleros fee paid")]).toBe("0.03 ETH");
     expect(
       recordCsv([{ name: "=SUM(A1)" }], [])
         .split("\n")[1]

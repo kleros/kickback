@@ -50,8 +50,32 @@ describe("shareExample", () => {
       held: 1,
       pool: parseEther("0.01"),
     });
-    // before the payout no share is held: everyone left off is a no-show so far
-    expect(shareExample(parseEther("0.01"), 4, undefined, 2, 1)).toMatchObject({ noShows: 2, held: 0 });
+    // before the payout an open case already takes a share: the release holds one for it
+    expect(shareExample(parseEther("0.01"), 4, undefined, 2, 1)).toMatchObject({ noShows: 1, held: 1 });
+  });
+
+  it("counts waiting challenges and open cases as the release will", () => {
+    const pool = parseEther("0.01") * 8n;
+    // 2 listed, 5 challenges waiting for an answer
+    expect(shareExample(parseEther("0.01"), 8, undefined, 2, 0, 5)).toMatchObject({
+      attend: 2,
+      pending: 5,
+      held: 0,
+      noShows: 1,
+      back: pool / 7n,
+    });
+    // 3 listed, 3 cases with Kleros, 1 challenge waiting
+    expect(shareExample(parseEther("0.01"), 8, undefined, 3, 3, 1)).toMatchObject({
+      attend: 3,
+      pending: 1,
+      held: 3,
+      noShows: 1,
+      back: pool / 7n,
+    });
+    // after the windows: 4 listed and 2 cases, the contract's release share
+    expect(shareExample(parseEther("0.01"), 8, undefined, 4, 2, 0).back).toBe(pool / 6n);
+    // after the release nothing waits
+    expect(shareExample(parseEther("0.01"), 8, pool / 6n, 4, 2, 3).pending).toBe(0);
   });
 });
 

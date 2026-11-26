@@ -2,6 +2,7 @@ import { presenceEventAbi } from "@kickback/contracts";
 import { challengeOf, type ChallengeInfo } from "@kickback/core";
 import { parseAbi, zeroAddress, type Address, type PublicClient } from "viem";
 
+import { readSolved } from "@/lib/kleros/ruling";
 import { loadEvent, type KickbackEvent } from "@/lib/presence";
 
 export interface GuestRow {
@@ -20,8 +21,15 @@ export interface OrganiserState {
   /** Booked wallets (status 1). */
   booked: Address[];
   attendees: Address[];
-  /** Attendees whose share is not paid out yet (only after payouts are released). */
-  unpaid: Address[];
+  /**
+   * Attendees whose share is not paid out yet (only after payouts are released), with what each is still owed: a
+   * partly paid attendee claimed before a lost Kleros case's held share was split.
+   */
+  unpaid: { wallet: Address; owed: bigint; partlyPaid: boolean }[];
+  /** Lower-case attendee wallet → its sharePaid (only after payouts are released). */
+  sharePaid: Map<string, bigint>;
+  /** Attendees whose wallet refused a pushed payment that is still waiting for them (owed > 0). */
+  refused: Address[];
   /**
    * Challenges, oldest first; a case with Kleros carries whether it is ruled, and the ruling, and while it is not
    * final, the jurors' current ruling and its appeal window.
@@ -40,6 +48,8 @@ export interface AppealInfo {
   loserEnd: number;
   costAttended: bigint;
   costAbsent: bigint;
+  /** The ruling is final on the arbitrator but not recorded yet (executeRuling not called). */
+  final?: boolean;
 }
 
 const RESOLVER_ABI = parseAbi(["function disputes(uint256) view returns (bytes, bool, uint256, uint256)"]);
@@ -62,9 +72,12 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
   const listed = challengers.map((wallet, i) => ({ wallet, ...challengeOf(raw[i]!) }));
   // the contract's own test for a share still owed: sharePaid below payoutShare (claimable() would keep
   // picking a wallet that refuses the push)
-  const [paid, rulings] = await Promise.all([
+  const [paid, owed, rulings] = await Promise.all([
     event.phase === 2
       ? Promise.all(attendees.map((a) => client.readContract({ ...c, functionName: "sharePaid", args: [a] })))
+      : Promise.resolve([] as bigint[]),
+    event.phase === 2
+      ? Promise.all(attendees.map((a) => client.readContract({ ...c, functionName: "owed", args: [a] })))
       : Promise.resolve([] as bigint[]),
     Promise.all(
       listed.map((ch) =>
@@ -87,20 +100,34 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
       ch.state === 2 && rulings[i]?.isRuled !== true
         ? client
             .readContract({ ...c, functionName: "appealStatus", args: [ch.wallet] })
-            .then(([ruling, start, end, loserEnd, costAttended, costAbsent]) => ({
+            .then(async ([ruling, start, end, loserEnd, costAttended, costAbsent]) => ({
               ruling: Number(ruling),
               start: Number(start),
               end: Number(end),
               loserEnd: Number(loserEnd),
               costAttended,
               costAbsent,
+              // no appeal window: still deciding, or final and waiting to be recorded
+              final:
+                Number(end) === 0
+                  ? await readSolved(client, event.contract, ch.arbitratorDisputeID, event.arbitrator)
+                  : false,
             }))
             .catch(() => undefined)
         : Promise.resolve(undefined),
     ),
   );
   const challenges = listed.map((ch, i) => ({ ...ch, ...rulings[i], appeal: appeals[i] }));
-  const unpaid = event.phase === 2 ? attendees.filter((_, i) => paid[i]! < event.payoutShare) : [];
+  const unpaid =
+    event.phase === 2
+      ? attendees.flatMap((wallet, i) =>
+          paid[i]! < event.payoutShare
+            ? [{ wallet, owed: event.payoutShare - paid[i]!, partlyPaid: paid[i]! > 0n }]
+            : [],
+        )
+      : [];
+  const sharePaid = new Map(event.phase === 2 ? attendees.map((a, i) => [a.toLowerCase(), paid[i]!] as const) : []);
+  const refused = event.phase === 2 ? attendees.filter((_, i) => owed[i]! > 0n) : [];
   const byWallet = new Map(challenges.map((ch) => [ch.wallet.toLowerCase(), ch]));
   const guests = stakers.map((wallet, i) => ({
     wallet,
@@ -115,6 +142,8 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
     booked: guests.filter((g) => g.status === 1).map((g) => g.wallet),
     attendees: [...attendees],
     unpaid,
+    sharePaid,
+    refused,
     challenges,
   };
 }

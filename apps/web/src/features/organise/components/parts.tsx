@@ -3,6 +3,7 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "react-aria-components";
+import { getAddress, isAddress } from "viem";
 
 import { Dialog } from "@/components/ui/Dialog";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -11,14 +12,14 @@ import { FileIcon, LockIcon } from "@/components/ui/icons";
 
 import { DEFAULT_CHAIN } from "@/config/chains";
 
-import type { Phase } from "../model/phase";
+import { phaseLabel, type Phase } from "../model/phase";
 import type { Gate } from "../model/shared";
 import { PHASE_TONE, shortHex } from "../model/view";
 
-export function PhasePill({ phase }: { phase: Phase }) {
+export function PhasePill({ phase, event }: { phase: Phase; event?: { capacity: number; stakerCount: number } }) {
   return (
     <span className="og-phase" data-tone={PHASE_TONE[phase]} data-testid="phase">
-      {phase}
+      {event ? phaseLabel(phase, event) : phase}
     </span>
   );
 }
@@ -240,6 +241,29 @@ export function TxLink({ tx, testId }: { tx: string; testId?: string }) {
   ) : (
     <span className="og-mono" title={tx} data-testid={testId}>
       {shortHex(tx)}
+    </span>
+  );
+}
+
+/** A wallet, short: an explorer link when the chain has one, else the short address (the full one on hover). */
+export function Addr({ address, testId }: { address: string; testId?: string }) {
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  // a sender read from a transaction can come in lower case: show it checksummed, like every other address
+  const shown = isAddress(address, { strict: false }) ? getAddress(address) : address;
+  return explorer ? (
+    <a
+      className="kb-link og-mono"
+      href={`${explorer}/address/${address}`}
+      target="_blank"
+      rel="noreferrer"
+      title={address}
+      data-testid={testId}
+    >
+      {shortHex(shown)} ↗
+    </a>
+  ) : (
+    <span className="og-mono" title={address} data-testid={testId}>
+      {shortHex(shown)}
     </span>
   );
 }

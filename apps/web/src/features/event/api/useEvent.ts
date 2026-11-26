@@ -75,11 +75,14 @@ export interface EventDeposits {
   guests: number;
   /** Lower-case wallet → its deposits. */
   byWallet: Map<string, WalletDeposits>;
+  /** HeldShareSplit amounts added together: what a lost Kleros case's held share added to every attendee's share. */
+  heldSplit: bigint;
 }
 
 const DEPOSITED = getAbiItem({ abi: presenceEventAbi, name: "Deposited" });
 const REJECTED = getAbiItem({ abi: presenceEventAbi, name: "Rejected" });
 const PAID = getAbiItem({ abi: presenceEventAbi, name: "Paid" });
+const HELD_SPLIT = getAbiItem({ abi: presenceEventAbi, name: "HeldShareSplit" });
 
 export const depositsKey = (contract: string) => ["event-deposits", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
@@ -98,7 +101,7 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
           getLogs: ({ fromBlock: a, toBlock: b }) =>
             client!.getLogs({
               address: contract!,
-              events: [DEPOSITED, REJECTED, PAID],
+              events: [DEPOSITED, REJECTED, PAID, HELD_SPLIT],
               fromBlock: a,
               toBlock: b,
             }),
@@ -106,12 +109,17 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
         },
         fromBlock!,
       );
-      const byWallet = foldGuestLogs(logs);
+      const byWallet = foldGuestLogs(logs.filter((log) => log.eventName !== "HeldShareSplit"));
+      const heldSplit = logs.reduce(
+        (sum, log) => (log.eventName === "HeldShareSplit" ? sum + (log.args.each ?? 0n) : sum),
+        0n,
+      );
       return {
         guests: new Set(
           logs.filter((log) => log.eventName === "Deposited").map((log) => log.args.staker?.toLowerCase()),
         ).size,
         byWallet,
+        heldSplit,
       };
     },
   });

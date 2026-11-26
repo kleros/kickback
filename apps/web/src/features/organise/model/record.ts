@@ -52,8 +52,11 @@ export interface ChallengeRecord {
   answer?: ChallengeAnswer;
   /** The settlement of a Kleros case: its ruling (0 refused, 1 came, 2 did not come). */
   resolved?: { tx: Hash; block: bigint; attended: boolean; ruling: number };
-  /** A lost case after the payout: its held share was split among the attendees. */
-  heldSplit?: { tx: Hash; block: bigint; each: bigint };
+  /**
+   * A lost case after the payout: its held share was split among the attendees and the cases still open then
+   * (`attendees + openCases` ways, `each` to every one of them).
+   */
+  heldSplit?: { tx: Hash; block: bigint; each: bigint; attendees: bigint; openCases: bigint };
 }
 
 export interface WalletRecord {
@@ -72,7 +75,8 @@ export interface EventRecord {
   wallets: Map<string, WalletRecord>;
   created?: { tx: Hash; block: bigint };
   listClosed?: { tx: Hash; block: bigint };
-  released?: { tx: Hash; block: bigint; share: bigint };
+  /** `by`: the wallet that released (anyone can), when its transaction could be read. */
+  released?: { tx: Hash; block: bigint; share: bigint; by?: Address };
   cancelled?: { tx: Hash; block: bigint };
 }
 
@@ -91,6 +95,8 @@ export type RecordLog = {
     attended?: boolean;
     ruling?: bigint;
     each?: bigint;
+    attendees?: bigint;
+    openCases?: bigint;
   };
   transactionHash: Hash | null;
   blockNumber: bigint | null;
@@ -210,14 +216,20 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
       }
       case "HeldShareSplit": {
         const c = args.staker ? walletOf(args.staker).challenge : undefined;
-        if (c) c.heldSplit = { ...at, each: args.each ?? 0n };
+        if (c)
+          c.heldSplit = {
+            ...at,
+            each: args.each ?? 0n,
+            attendees: args.attendees ?? 0n,
+            openCases: args.openCases ?? 0n,
+          };
         break;
       }
       case "ListClosed":
         record.listClosed = at;
         break;
       case "PayoutsReleased":
-        record.released = { ...at, share: args.share ?? 0n };
+        record.released = { ...at, share: args.share ?? 0n, by: info?.from };
         break;
       case "Cancelled":
         record.cancelled = at;
@@ -242,6 +254,8 @@ export const RECORD_COLUMNS = [
   ["answerTx", "Answer transaction"],
   ["ruling", "Ruling"],
   ["settledTx", "Settled transaction"],
+  ["klerosFee", "Kleros fee paid"],
+  ["klerosTxs", "Sent to Kleros transactions"],
   ["challengeBack", "Challenge money back"],
   ["challengeTxs", "Challenge money transactions"],
   ["notes", "Notes"],

@@ -36,7 +36,7 @@ const FUNCTIONS = new Map(
     .map((item) => [toFunctionSelector(item as AbiFunction), item.name!] as const),
 );
 /** The logs whose transaction is read: who sent it, and what it called. */
-const READ_TX = new Set(["Paid", "PaymentFailed", "ChallengeResolved"]);
+const READ_TX = new Set(["Paid", "PaymentFailed", "ChallengeResolved", "PayoutsReleased"]);
 /** A mined transaction never changes: each is read once per page. */
 const TX_CACHE = new Map<string, TxInfo>();
 const EVENTS = (presenceEventAbi as readonly { type: string; name?: string }[]).filter(

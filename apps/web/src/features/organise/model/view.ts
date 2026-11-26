@@ -82,7 +82,7 @@ export function statusTone(status: string): "ok" | "warn" | "err" | "end" {
 }
 
 export const TYPED_WORDS = {
-  post: "POST",
+  close: "CLOSE",
   noShow: "NOSHOW",
   pay: "PAY",
   sweep: "SWEEP",

@@ -65,7 +65,7 @@ export function useGuestMoney(
             ? data?.challenge.state === 2
               ? resolveRefund(data.challenge)
               : (data?.challenge.deposit ?? 0n)
-            : action === "release"
+            : action === "release" || action === "execute"
               ? depositAmount
               : data && claimAmount(data.claimable, data.claimableEth, token);
     if (!address || !client || amount === undefined) return;
@@ -100,5 +100,6 @@ export function useGuestMoney(
     approve: () => run("approve"),
     resolve: () => run("resolve"),
     release: () => run("release"),
+    execute: () => run("execute"),
   };
 }

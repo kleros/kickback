@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { batches, BATCH_SIZE } from "@kickback/core";
-import { formatUnits } from "viem";
+import { formatUnits, getAddress } from "viem";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
@@ -36,17 +36,24 @@ export function guestStatus(
   row: GuestRow,
   phase: number,
   refundable: boolean,
+  /** After the release: the contract's sharePaid for this wallet, the share, and whether a pushed payment was refused. */
+  pay?: { sharePaid?: bigint; payoutShare: bigint; refused?: boolean },
 ): { text: string; tone: "ok" | "warn" | "end" } {
   if (row.status !== 1) return { text: STATUS[row.status] ?? "Unknown", tone: TONE[row.status] ?? "end" };
   if (refundable) return { text: "Can withdraw deposit", tone: "warn" };
   if (phase === 0) return { text: row.attended ? "On the list" : "Deposited", tone: "ok" };
+  if (row.attended && phase === 2 && pay) {
+    const paid = pay.sharePaid ?? 0n;
+    if (pay.refused) return { text: "Came · payment refused, claimable", tone: "warn" };
+    if (paid >= pay.payoutShare) return { text: "Came · paid", tone: "ok" };
+    if (paid > 0n) return { text: "Came · partly paid", tone: "warn" };
+    return { text: "Came · not paid yet", tone: "warn" };
+  }
   if (row.attended) return { text: "Came", tone: "ok" };
   if (row.challenge?.state === 1) return { text: "Challenged", tone: "warn" };
   if (row.challenge?.state === 2) return { text: "With Kleros", tone: "warn" };
   return { text: "Not on the list", tone: "end" };
 }
-
-const statusText = (row: GuestRow, phase: number, refundable: boolean) => guestStatus(row, phase, refundable).text;
 
 /** Numbers the payments of one kind only when there are several: "Payout", or "Payout 1", "Payout 2". */
 const numbered = (label: string, list: readonly { tx: string }[]) =>
@@ -126,6 +133,17 @@ export function GuestsScreen() {
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   const txUrl = (hash: string) => (explorer ? `${explorer}/tx/${hash}` : hash);
   const recOf = (wallet: string) => record.data?.wallets.get(wallet.toLowerCase());
+  // after the release, each attendee's payment as the contract has it (not the logs, which load later)
+  const refusedSet = new Set(data.refused.map((w) => w.toLowerCase()));
+  const payOf = (wallet: string) =>
+    info.phase === 2
+      ? {
+          sharePaid: data.sharePaid.get(wallet.toLowerCase()),
+          payoutShare: info.payoutShare,
+          refused: refusedSet.has(wallet.toLowerCase()),
+        }
+      : undefined;
+  const statusOfRow = (g: GuestRow) => guestStatus(g, info.phase, closed !== undefined, payOf(g.wallet));
   const download = () => {
     const r = record.data;
     // the record is exact: every amount in full, never the rounded text of the screen
@@ -170,20 +188,14 @@ export function GuestsScreen() {
     const rows: RecordCsvRow[] = [...guests].map((g) => {
       const rec = recOf(g.wallet);
       const c = rec?.challenge;
-      const payout = sum(rec?.payments.filter((p) => p.kind === "payout") ?? []);
-      const base = statusText(g, info.phase, closed !== undefined);
+      const base = statusOfRow(g).text;
+      // the record can also tell a turned-away guest's refund that went through from one still claimable
       const status =
-        g.status === 1 && info.phase === 2 && g.attended
-          ? payout >= info.payoutShare
-            ? "Came · paid"
-            : payout > 0n
-              ? "Came · partly paid"
-              : "Came · not paid yet"
-          : g.status === 2
-            ? rec?.payments.some((p) => p.kind === "refund")
-              ? "Turned away · refunded"
-              : "Turned away · refund claimable"
-            : base;
+        g.status === 2
+          ? rec?.payments.some((p) => p.kind === "refund")
+            ? "Turned away · refunded"
+            : "Turned away · refund claimable"
+          : base;
       const answer = c?.answer;
       return {
         name: luma.nameOf(g.wallet),
@@ -216,6 +228,8 @@ export function GuestsScreen() {
             ? "Not ruled yet"
             : undefined,
         settledTx: c?.resolved ? txUrl(c.resolved.tx) : undefined,
+        // the case's own match transaction, under the same header as on the matcher's row
+        klerosTxs: answer?.kind === "kleros" ? txUrl(answer.tx) : undefined,
         notes: [
           ...failedNotes(rec),
           ...(c?.heldSplit
@@ -243,8 +257,8 @@ export function GuestsScreen() {
               ? "Organiser"
               : "Other wallet",
           ...money(rec, key),
-          challengeFee: n ? `${formatUnits(sum(rec.klerosFees), 18)} ETH` : undefined,
-          challengeTx: rec.klerosFees.map((f) => txUrl(f.tx)).join(" "),
+          klerosFee: n ? `${formatUnits(sum(rec.klerosFees), 18)} ETH` : undefined,
+          klerosTxs: rec.klerosFees.map((f) => txUrl(f.tx)).join(" "),
           notes: [
             ...rec.klerosFees.map(
               (f) =>
@@ -254,12 +268,26 @@ export function GuestsScreen() {
           ].join(" | "),
         };
       });
+    // anyone can release: name the wallet in full (closing the list and cancelling are the organiser's alone)
+    const releasedBy = (w?: string) =>
+      !w
+        ? undefined
+        : sameWallet(w, info.owner)
+          ? "the organiser"
+          : isGuest.has(w.toLowerCase())
+            ? `the guest ${getAddress(w)}`
+            : getAddress(w);
     const steps = [
       r?.created && { label: "Event created", tx: txUrl(r.created.tx) },
-      r?.listClosed && { label: "Attendance list closed", tx: txUrl(r.listClosed.tx) },
+      r?.listClosed && { label: "Attendance list closed", detail: "By the organiser", tx: txUrl(r.listClosed.tx) },
       r?.released && {
         label: "Payouts released",
-        detail: `Each attendee's share: ${exact(r.released.share)}`,
+        detail: [
+          `Each attendee's share: ${exact(r.released.share)}`,
+          r.released.by && `Released by ${releasedBy(r.released.by)}`,
+        ]
+          .filter(Boolean)
+          .join("; "),
         tx: txUrl(r.released.tx),
       },
       ...[...(r?.wallets.entries() ?? [])]
@@ -269,7 +297,7 @@ export function GuestsScreen() {
           detail: `${key}: ${exact(rec.challenge!.heldSplit!.each)} each`,
           tx: txUrl(rec.challenge!.heldSplit!.tx),
         })),
-      r?.cancelled && { label: "Event cancelled", tx: txUrl(r.cancelled.tx) },
+      r?.cancelled && { label: "Event cancelled", detail: "By the organiser", tx: txUrl(r.cancelled.tx) },
     ].filter((step): step is { label: string; detail?: string; tx: string } => !!step);
     const blob = new Blob([recordCsv([...rows, ...others], steps)], { type: "text/csv" });
     const a = document.createElement("a");
@@ -280,11 +308,16 @@ export function GuestsScreen() {
   };
   const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
   const q = search.trim().toLowerCase();
+  const hex = q.startsWith("0x") ? q.slice(2) : q;
+  // a wallet match needs 0x and at least one more hex character, or 4 hex characters on their own: a name such
+  // as "CC" must not match every wallet with "cc" in it
+  const walletQuery = /^[0-9a-f]+$/.test(hex) && (q.startsWith("0x") ? hex.length >= 1 : hex.length >= 4);
   const rows = [...guests].reverse().filter((g) => {
     if (!q) return true;
     const person = luma.names[g.wallet.toLowerCase()];
+    const w = g.wallet.toLowerCase();
     return (
-      g.wallet.toLowerCase().includes(q) ||
+      (walletQuery && (q.startsWith("0x") ? w.startsWith(q) : w.slice(2).includes(hex))) ||
       !!person?.name.toLowerCase().includes(q) ||
       !!person?.email.toLowerCase().includes(q)
     );
@@ -324,7 +357,7 @@ export function GuestsScreen() {
           ended={ended}
           statusOf={(w) => {
             const g = guests.find((x) => x.wallet.toLowerCase() === w.toLowerCase());
-            return g ? statusText(g, info.phase, closed !== undefined) : undefined;
+            return g ? statusOfRow(g).text : undefined;
           }}
         />
       </GlassCard>
@@ -343,29 +376,33 @@ export function GuestsScreen() {
               : live
                 ? "Newest first. Guests can only be turned away before the event starts, so let in every walk-in who has deposited."
                 : info.phase === 3
-                  ? "Newest first. The event was cancelled, so every guest can withdraw their full deposit on the guest page."
+                  ? info.stakerCount > 0
+                    ? "Newest first. The event was cancelled, so every guest who still has a deposit can withdraw it in full on the guest page."
+                    : "Newest first. The event was cancelled and every deposit has been returned."
                   : closed === "missed"
-                    ? "Newest first. Attendance was not confirmed in time, so every guest can withdraw their full deposit on the guest page."
+                    ? info.stakerCount > 0
+                      ? "Newest first. Attendance was not confirmed in time, so every guest who still has a deposit can withdraw it in full on the guest page."
+                      : "Newest first. Attendance was not confirmed in time, and every deposit has been returned."
                     : "Newest first. Guests could only be turned away before the event started."}
           </p>
         </div>
         {guests.length > 0 && event.isOwner && !guests.some((g) => luma.nameOf(g.wallet)) && (
           <p className="og-note">Names appear once you load the Luma export above. They stay in this browser only.</p>
         )}
-        {guests.length > 0 && (
-          <div className="og-actions">
-            <GradientButton className="is-quiet" isDisabled={!record.data} onPress={download}>
-              Download the record (CSV)
-            </GradientButton>
-            <span className="og-note">
-              {record.isError
-                ? "The transactions could not be read. Reload to try again."
-                : record.data
+        <div className="og-actions">
+          <GradientButton className="is-quiet" isDisabled={!record.data} onPress={download}>
+            Download the record (CSV)
+          </GradientButton>
+          <span className="og-note">
+            {record.isError
+              ? "The transactions could not be read. Reload to try again."
+              : record.data
+                ? guests.length > 0
                   ? "Every guest with their deposit and payout transactions."
-                  : "Reading the transactions…"}
-            </span>
-          </div>
-        )}
+                  : "The event's transactions so far. Each guest's deposit and payout transactions are added as they happen."
+                : "Reading the transactions…"}
+          </span>
+        </div>
         {guests.length > 0 && (
           <input
             className="og-input"
@@ -438,7 +475,7 @@ export function GuestsScreen() {
                       )}
                     </span>
                     {(() => {
-                      const st = guestStatus(row, info.phase, closed !== undefined);
+                      const st = statusOfRow(row);
                       return (
                         <span className="og-cell-status">
                           <span className="og-dot" data-tone={st.tone} aria-hidden />

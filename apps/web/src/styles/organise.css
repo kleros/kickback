@@ -222,10 +222,15 @@
 .og-fig:last-child {
   border-bottom: 0;
 }
+/* a short label ("Each gets") never shrinks into two lines; a long one wraps once it reaches 60% of the row */
 .og-fig dt {
+  flex: 0 0 auto;
+  max-width: 60%;
   color: var(--kb-text-2);
 }
 .og-fig dd {
+  flex: 1 1 0;
+  min-width: 0;
   margin: 0;
   text-align: right;
   font-variant-numeric: tabular-nums;
@@ -233,6 +238,7 @@
 }
 .og-fig dd .og-note {
   display: block;
+  margin-top: 2px;
   font-weight: 400;
   letter-spacing: normal;
 }
@@ -911,14 +917,48 @@
 .og-cell-noname {
   color: var(--kb-text-3, var(--kb-text-2));
 }
-/* no name yet: phones skip the empty line */
+/* the short address never breaks ("0x15d3…" / "6A65") */
+.og-cell-wallet .og-mono {
+  white-space: nowrap;
+}
+/*
+ * phones: the name, then the wallet with the turn-away tick beside it, then the transactions on their own
+ * full-width line (they can be long), then the status; no name yet: the empty line is skipped
+ */
 @media (max-width: 767px) {
+  .og-table.is-guests .og-cell-wallet {
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+  .og-table.is-guests .og-ticks {
+    grid-column: 2 / -1;
+    grid-row: 2;
+    justify-self: end;
+  }
+  .og-table.is-guests .og-cell-txs {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    min-width: 0;
+  }
+  .og-table.is-guests .og-cell-status {
+    grid-row: 4;
+  }
   .og-table.is-guests .og-cell-person:has(.og-cell-noname) {
     display: none;
   }
-  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-cell-status {
+  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-cell-wallet,
+  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-ticks {
+    grid-row: 1;
+  }
+  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-cell-txs {
     grid-row: 2;
   }
+  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-cell-status {
+    grid-row: 3;
+  }
+}
+.og-tick {
+  white-space: nowrap;
 }
 .og-row[data-new] {
   background: color-mix(in srgb, var(--kb-blue) 5%, transparent);

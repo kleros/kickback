@@ -9,6 +9,8 @@
   font-weight: 600;
   letter-spacing: -0.03em;
   text-wrap: balance;
+  /* a long name without spaces wraps inside the gutters instead of widening the page */
+  overflow-wrap: anywhere;
 }
 .ev-when {
   margin-top: 6px;

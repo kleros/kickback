@@ -244,7 +244,22 @@ export function GuestCheck({
       return;
     }
     setBusy(false);
-    const wallet = normAddress(value);
+    // a guest page link (or the event's own contract) is not a wallet: say so, instead of "did not deposit"
+    const pagePath = value.match(/\/event(?:\/|\?(?:[^#]*&)?contract=)(0x[0-9a-fA-F]{40})/);
+    const first = normAddress(value);
+    if (pagePath)
+      return setResult({
+        tone: "warn",
+        title: "Event link, not a deposit link",
+        text: "This is an event link, not a deposit link. Ask the guest for the link from “Copy deposit link”, or paste the Ethereum address Luma verified.",
+      });
+    if (first && isAddressEqual(first as Address, contract))
+      return setResult({
+        tone: "warn",
+        title: "Event contract, not a wallet",
+        text: "This is the event's contract, not a guest's wallet. Ask the guest for the link from “Copy deposit link”, or paste the Ethereum address Luma verified.",
+      });
+    const wallet = first;
     if (wallet) {
       setBusy(true);
       try {

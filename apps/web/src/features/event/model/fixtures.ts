@@ -42,6 +42,8 @@ export const GALLERY_STATES = [
   "resolve",
   "release",
   "ruled",
+  "organiser",
+  "execute",
 ] as const;
 
 export type GalleryState = (typeof GALLERY_STATES)[number];
@@ -137,6 +139,25 @@ export function galleryInput(state: GalleryState): DepositInput {
             localDisputeID: 31n,
             isRuled: true,
             ruling: 1,
+          },
+        }),
+      };
+    case "organiser":
+      return { ...b, organiser: true, organiserHref: "/organise/0x6c2d4D1bC2B0aCe3F2A9f0f1b7f4f4a1d9e3B2a1" };
+    case "execute":
+      return {
+        ...listed,
+        canExecute: true,
+        caseUrl: (id) => `https://court.kleros.io/cases/${id}`,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+            isRuled: false,
+            appeal: { ruling: 1, start: 0, end: 0, loserEnd: 0, costAttended: 0n, costAbsent: 0n, final: true },
           },
         }),
       };

@@ -171,7 +171,7 @@ test("organiser creates, guests book, Luma check-ins pick who came, a challenge,
     .first()
     .click();
   const confirm = page.getByRole("dialog");
-  await confirm.getByLabel(/Type POST/).fill("POST");
+  await confirm.getByLabel(/Type CLOSE/).fill("CLOSE");
   await confirm.getByRole("button", { name: /confirm and close/i }).click();
   await expect(page.getByText(/challenge window is open/i)).toBeVisible({ timeout: 60_000 });
   await shot(page, "06-list-posted");

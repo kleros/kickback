@@ -170,12 +170,19 @@ function SplitPanel({ example }: { example: ShareExample }) {
     : example.deposits <= 10
       ? example.noShows
       : Math.min(shown - 1, Math.max(1, Math.round((shown * example.noShows) / example.deposits)));
-  // a guest still with Kleros after the payout: neither ticked nor pooled, a share is held for them
-  const shownHeld = example.deposits <= 10 ? example.held : 0;
-  const ways = example.attend + example.held;
+  // a guest with Kleros, or with a challenge still waiting for an answer: neither ticked nor pooled, each takes a share
+  const shownHeld = example.deposits <= 10 ? example.held + example.pending : 0;
+  const ways = example.attend + example.pending + example.held;
   const heldNote = example.held
-    ? ` One share is held for ${example.held === 1 ? "the open Kleros case" : `each of the ${example.held} open Kleros cases`} until it is decided.`
+    ? ` One share is held for ${example.held === 1 ? "the open Kleros case" : `each of the ${example.held} open Kleros cases`} until ${example.held === 1 ? "it is" : "they are"} decided.`
     : "";
+  // before the release: what still takes a share besides the guests on the list
+  const counted = [
+    example.pending > 0 &&
+      `${example.pending} ${example.pending === 1 ? "challenge" : "challenges"} still waiting for the organiser's answer`,
+    example.held > 0 && `${example.held} ${example.held === 1 ? "case" : "cases"} with Kleros`,
+  ].filter((x): x is string => !!x);
+  const countedNote = `${example.pending > 0 ? " Each waiting challenge counts as a share: the guest either joins the list or goes to Kleros, where a share is held." : ""}${example.held > 0 ? ` A share is held for ${example.held === 1 ? "the case" : "each case"} with Kleros until ${example.held === 1 ? "it is" : "they are"} decided.` : ""}`;
   // the event is over once the list exists: what happened is told in the past tense
   const past = example.basis === "paid" || example.basis === "list";
   const paid = example.basis === "paid";
@@ -211,10 +218,14 @@ function SplitPanel({ example }: { example: ShareExample }) {
     example.basis === "paid" ? (
       `This event's result: ${depositsText} and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.${heldNote}`
     ) : example.basis === "list" ? (
-      `Based on this event's ${depositsText} and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
+      counted.length ? (
+        `Based on this event's ${depositsText}, the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far and ${counted.join(" and ")}.${countedNote}`
+      ) : (
+        `Based on this event's ${depositsText} and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
+      )
     ) : example.basis === "estimate" ? (
       <>
-        An example with this event&apos;s {example.deposits} deposits and{" "}
+        An example with this event&apos;s {depositsText} and{" "}
         <span className="nowrap">
           {example.noShows} {example.noShows === 1 ? "no-show" : "no-shows"}.
         </span>
@@ -228,13 +239,14 @@ function SplitPanel({ example }: { example: ShareExample }) {
     ? ways === 1
       ? "went to the one attendee"
       : `was split ${ways} ways`
-    : example.attend === 1
+    : ways === 1
       ? "goes to the one attendee"
-      : `is split ${example.attend} ways`;
+      : `is split ${ways} ways`;
+  const countedAria = counted.length ? ` Still counted: ${counted.join(" and ")}.` : "";
   const ariaLabel = none
     ? `${depositsText}: everyone ${past ? "attended" : "attends"}, so each attendee gets their deposit back.`
     : past
-      ? `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.${heldNote}`
+      ? `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.${paid ? heldNote : countedAria}`
       : `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`;
 
   return (
@@ -320,7 +332,9 @@ function ListPanel({
   phase,
   now,
   challengeEndsAt,
-  held,
+  openCases,
+  challengeCount,
+  casesSent,
   clock,
 }: {
   court: string;
@@ -332,8 +346,12 @@ function ListPanel({
   now?: number;
   /** 0 until the list is closed. */
   challengeEndsAt: number;
-  /** Kleros cases still open after the payout. */
-  held: number;
+  /** Kleros cases still open, before or after the payout. */
+  openCases: number;
+  /** Challenges ever made; undefined when unknown. */
+  challengeCount?: number;
+  /** Challenges sent to Kleros; undefined when unknown. */
+  casesSent?: number;
   clock: EventClock | null;
 }) {
   const axis = useAxisId();
@@ -341,6 +359,16 @@ function ListPanel({
   const cancelled = phase === 3;
   // the challenge window is over: what happened is told in the past tense
   const over = !cancelled && challengeEndsAt > 0 && now !== undefined && now > challengeEndsAt;
+  // what the jurors did, told only from what happened: no challenge, no case, a case still open, or all decided
+  const jurors: readonly [string, string] = !over
+    ? ["Jurors decide", "on the evidence"]
+    : challengeCount === 0
+      ? ["No challenges", "no one challenged the list"]
+      : casesSent === 0
+        ? ["No court cases", "no challenge went to Kleros"]
+        : openCases > 0
+          ? ["Jurors decide", "each case sent to them"]
+          : ["Jurors", "decided each case sent to them"];
   return (
     <Panel title="Left off the list?">
       <svg
@@ -368,8 +396,8 @@ function ListPanel({
           <b>{over ? "Challenges" : "Challenge it"}</b>in {court}
         </span>
         <span>
-          <b>{over ? "Jurors" : "Jurors decide"}</b>
-          {over ? "decided each case sent to them" : "on the evidence"}
+          <b>{jurors[0]}</b>
+          {jurors[1]}
         </span>
       </div>
       {cancelled ? (
@@ -379,8 +407,9 @@ function ListPanel({
       ) : over ? (
         <p className="how-note" data-testid="challenge-fee">
           Challenges closed on {deadlineText(challengeEndsAt, clock)}.
-          {held > 0
-            ? ` ${held === 1 ? "One case is" : `${held} cases are`} still with Kleros jurors; a share is held until ${held === 1 ? "it is" : "they are"} decided.`
+          {challengeCount === 0 ? " No one challenged the list." : ""}
+          {openCases > 0
+            ? ` ${openCases === 1 ? "One case is" : `${openCases} cases are`} still with Kleros jurors${phase === 2 ? `; a share is held until ${openCases === 1 ? "it is" : "they are"} decided` : ""}.`
             : ""}
         </p>
       ) : (
@@ -488,7 +517,7 @@ function TimelinePanel({
       {!challengeEndsAt && (
         <p className="how-note">
           {cancelled
-            ? "The organiser cancelled this event. Every guest can withdraw their full deposit."
+            ? "The organiser cancelled this event. Every guest gets their full deposit back."
             : missed
               ? "Attendance was not confirmed in time. You can withdraw your full deposit."
               : "Attendance not confirmed by the deadline? You can withdraw your full deposit."}
@@ -519,6 +548,12 @@ export interface HowItWorksProps {
   now?: number;
   /** The contract's phase: 0 open, 1 list posted, 2 paid out, 3 cancelled. */
   phase: number;
+  /** Kleros cases not settled yet. */
+  openCases: number;
+  /** Challenges ever made; undefined when unknown. */
+  challengeCount?: number;
+  /** Challenges sent to Kleros; undefined when unknown. */
+  casesSent?: number;
   /** The closing button: back up to the card. */
   onDeposit: () => void;
   depositOpen: boolean;
@@ -540,6 +575,9 @@ export function HowItWorks({
   matchPeriod,
   now,
   phase,
+  openCases,
+  challengeCount,
+  casesSent,
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
@@ -559,7 +597,9 @@ export function HowItWorks({
             phase={phase}
             now={now}
             challengeEndsAt={challengeEndsAt}
-            held={example.basis === "paid" ? example.held : 0}
+            openCases={openCases}
+            challengeCount={challengeCount}
+            casesSent={casesSent}
             clock={clock}
           />
           <TimelinePanel

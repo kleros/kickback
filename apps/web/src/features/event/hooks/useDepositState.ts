@@ -7,7 +7,7 @@ import { gasLimitFor, isEth, revertName } from "@kickback/core";
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getConnectorClient } from "@wagmi/core";
-import { encodeFunctionData, type Address } from "viem";
+import { encodeFunctionData, isAddressEqual, type Address } from "viem";
 import { addChain } from "viem/actions";
 import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
@@ -19,7 +19,8 @@ import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
-import { caseUrl, FROM_BLOCK, resolverCaseUrl } from "@/config/protocol";
+import { paths } from "@/config/paths";
+import { canRecordRuling, caseUrl, FROM_BLOCK, resolverCaseUrl } from "@/config/protocol";
 
 import { useDeposit } from "./useDeposit";
 import { moneyKey, useGuestMoney } from "./useGuestMoney";
@@ -104,6 +105,7 @@ export interface DepositController {
   approve: () => void;
   resolve: () => void;
   release: () => void;
+  execute: () => void;
   /** The latest block's time, unix seconds; undefined while loading. */
   now?: number;
   depositOpen: boolean;
@@ -258,6 +260,10 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     },
     wallNow,
     guests: event.stakerCount,
+    organiser: connected && isAddressEqual(address, event.owner),
+    organiserHref: paths.organiseEvent.getHref(event.contract),
+    heldSplit: deposits.data?.heldSplit,
+    canExecute: canRecordRuling(DEFAULT_CHAIN_ID, event.arbitrator),
     explorer: DEFAULT_CHAIN.blockExplorers?.default.url,
     dayText: (unix) => dayText(unix, event.clock),
     timeText: (unix) => deadlineText(unix, event.clock),
@@ -277,6 +283,7 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     approve: money.approve,
     resolve: money.resolve,
     release: money.release,
+    execute: money.execute,
     now,
     connect: () => {
       // a session being restored is already connecting: a second connect() would race it

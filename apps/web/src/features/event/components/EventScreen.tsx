@@ -29,12 +29,14 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const amount = unitsText(event.depositAmount, event.decimals);
   // once the list is posted, the example uses it; once paid, the real share
   const listed = event.phase === 1 || event.phase === 2 ? event.attendeeCount : undefined;
+  // open cases and challenges still waiting each take a share at the release, as the Payout tab counts them
   const example = shareExample(
     event.depositAmount,
     event.stakerCount,
     event.phase === 2 ? event.payoutShare : undefined,
     listed,
-    event.phase === 2 ? event.openCases : 0,
+    event.phase === 1 || event.phase === 2 ? event.openCases : 0,
+    event.phase === 1 ? event.waitingChallenges : 0,
   );
 
   // the fragment is set before the page has height; land on it once the section exists
@@ -86,6 +88,9 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         matchPeriod={event.matchPeriod}
         now={controller.now}
         phase={event.phase}
+        openCases={event.openCases}
+        challengeCount={event.challengeCount}
+        casesSent={event.casesSent}
         onDeposit={backToCard}
         depositOpen={
           controller.depositOpen && ["rest", "nowallet", "connect", "approve", "ready"].includes(controller.view.key)

@@ -6,11 +6,16 @@ export interface ShareExample {
   deposits: number;
   attend: number;
   noShows: number;
-  /** Guests still in a Kleros case after the payout: the contract holds one share for each. */
+  /** Guests with an open Kleros case: the contract holds one share for each (at the release, and after it). */
   held: number;
+  /**
+   * Challenges still waiting for the organiser's answer (before the release): each ends as one more share, the
+   * guest joining the list or the case going to Kleros, where a share is held.
+   */
+  pending: number;
   /** The no-shows' deposits, in wei. */
   pool: bigint;
-  /** What each attendee gets back, deposit included: the contract's previewShare(attend). */
+  /** What each attendee gets back, deposit included: the contract's share. */
   back: bigint;
   /** What each attendee gets on top of their deposit. */
   bonus: bigint;
@@ -22,8 +27,10 @@ export interface ShareExample {
 
 /**
  * One in five registered guests stays home; under two registered, ten deposits with eight attending.
- * Once the list is posted (`listed` attendees, at least 1), its real numbers; once paid, `back` is the real share,
- * and `openCases` guests still with Kleros are neither attendees nor no-shows: a share is held for each.
+ * Once the list is posted (`listed` attendees, at least 1), its real numbers; once paid, `back` is the real share.
+ * `openCases` guests with Kleros and `waiting` unanswered challenges are neither attendees nor no-shows: each takes
+ * a share, as the contract's release counts them (attendees + open cases, after every waiting challenge has been
+ * answered or accepted).
  */
 export function shareExample(
   amount: bigint,
@@ -31,21 +38,25 @@ export function shareExample(
   back?: bigint,
   listed?: number,
   openCases = 0,
+  waiting = 0,
 ): ShareExample {
   const fromList = listed !== undefined && listed >= 1 && listed <= stakerCount;
-  const held = fromList && back !== undefined ? Math.max(0, Math.min(openCases, stakerCount - listed)) : 0;
+  const held = fromList ? Math.max(0, Math.min(openCases, stakerCount - listed)) : 0;
+  // after the release no challenge waits (the release needs none waiting)
+  const pending = fromList && back === undefined ? Math.max(0, Math.min(waiting, stakerCount - listed - held)) : 0;
   const real = fromList || stakerCount >= 2;
   const deposits = real ? stakerCount : 10;
-  const noShows = fromList ? deposits - listed - held : Math.max(1, Math.round(deposits / 5));
-  const attend = Math.max(1, deposits - noShows - held);
-  // previewShare: depositAmount * stakerCount / attendees, rounded down
-  const share = back ?? (amount * BigInt(deposits)) / BigInt(attend);
+  const noShows = fromList ? deposits - listed - pending - held : Math.max(1, Math.round(deposits / 5));
+  const attend = Math.max(1, deposits - noShows - pending - held);
+  // the release: depositAmount * stakerCount / (attendees + open cases), rounded down
+  const share = back ?? (amount * BigInt(deposits)) / BigInt(attend + pending + held);
   const basis: ShareBasis = fromList ? (back !== undefined ? "paid" : "list") : real ? "estimate" : "illustration";
   return {
     deposits,
     attend,
     noShows,
     held,
+    pending,
     pool: amount * BigInt(noShows),
     back: share,
     bonus: share - amount,

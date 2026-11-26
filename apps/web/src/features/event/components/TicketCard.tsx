@@ -26,6 +26,7 @@ export interface TicketActions {
   approve: () => void;
   resolve: () => void;
   release: () => void;
+  execute: () => void;
   recheck: () => void;
 }
 
@@ -75,9 +76,16 @@ function Line({ line, onRecheck }: { line: StatusLine; onRecheck: () => void }) 
       {line.link && (
         <>
           {line.text ? " · " : ""}
-          <Link className="kb-link" href={line.link.href} target="_blank" rel="noopener noreferrer">
-            {line.link.label}
-          </Link>
+          {line.link.href.startsWith("/") ? (
+            // a page of this site opens in the same tab
+            <Link className="kb-link" href={line.link.href}>
+              {line.link.label}
+            </Link>
+          ) : (
+            <Link className="kb-link" href={line.link.href} target="_blank" rel="noopener noreferrer">
+              {line.link.label}
+            </Link>
+          )}
         </>
       )}
       {line.action && (
@@ -131,6 +139,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     approve: actions.approve,
     resolve: actions.resolve,
     release: actions.release,
+    execute: actions.execute,
     copy: () => {},
     none: () => {},
   }[view.action];

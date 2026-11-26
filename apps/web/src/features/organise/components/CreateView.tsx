@@ -1,12 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import { eventConfig, LUMA_URL, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address } from "viem";
+import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address, type Hash } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -14,14 +15,14 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 
 import { isShowableTime, zonedDateText } from "@/utils/time";
 
-import { useSend } from "@/lib/web3/send";
+import { sentTxStore, useSend, useSentTx } from "@/lib/web3/send";
 import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 import { PROTOCOL } from "@/config/protocol";
 
-import { ErrorLine, Primary } from "./parts";
+import { ErrorLine, Primary, TxLink } from "./parts";
 import { gate } from "../model/shared";
 import { browserZone, zonedUnix, zoneLabel, zoneList } from "../model/zone";
 import { tx } from "../operations/tx";
@@ -126,7 +127,41 @@ export function CreateScreen() {
   const tokenAddress = form.token.trim();
   const token = useToken(form.asset === "token" ? tokenAddress : "");
   const fee = useChallengeFee().data;
-  const send = useSend();
+  // recorded, so a reload while the create confirms still knows about it (and does not offer a second create)
+  const send = useSend({ record: true });
+  const factory = PROTOCOL?.factory;
+  const sent = useSentTx(factory);
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  // set once this visit's create is confirmed: the button stays locked until the page has navigated
+  const [created, setCreated] = useState(false);
+  const mineHash = send.data?.transactionHash;
+  // a create sent before a reload (or in another tab), not this visit's own
+  const earlier =
+    sent.data && !send.isPending && !created && sent.data.record.hash !== mineHash && address ? sent.data : undefined;
+  // an old leftover never shows: only a create from the last hour
+  const recent = !!earlier && Math.abs(Date.now() - earlier.record.at) < 3_600_000;
+  const earlierPending = recent && earlier?.outcome === "pending";
+  const earlierMined = recent && earlier?.outcome === "mined" ? earlier.record.hash : undefined;
+  const earlierFailed = recent && earlier && earlier.outcome !== "pending" && earlier.outcome !== "mined";
+  const earlierEvent = useQuery({
+    queryKey: ["create-receipt", DEFAULT_CHAIN_ID, earlierMined],
+    enabled: !!client && !!earlierMined,
+    staleTime: Infinity,
+    queryFn: async () => {
+      const receipt = await client!.getTransactionReceipt({ hash: earlierMined as Hash });
+      const [log] = parseEventLogs({ abi: presenceFactoryAbi, eventName: "EventCreated", logs: receipt.logs });
+      return log?.args.eventContract ?? null;
+    },
+  });
+  const earlierContract = earlierEvent.data;
+  useEffect(() => {
+    if (earlierContract) void queryClient.invalidateQueries({ queryKey: ["organise", "mine"] });
+  }, [earlierContract, queryClient]);
+  // the notice shows once: leaving the page forgets the mined record
+  useEffect(() => {
+    if (!earlierMined || !factory || !address) return;
+    return () => sentTxStore.forget(DEFAULT_CHAIN_ID, factory, address, earlierMined as Hash);
+  }, [earlierMined, factory, address]);
   const set = (key: keyof Form) => (e: { currentTarget: { value: string } }) =>
     setForm({ ...form, [key]: e.currentTarget.value });
 
@@ -177,7 +212,9 @@ export function CreateScreen() {
         : "Connect the wallet that will organise the event."
       : chainId !== DEFAULT_CHAIN_ID
         ? `Switch your wallet to ${DEFAULT_CHAIN.name}.`
-        : check;
+        : earlierPending
+          ? "Wait for the event you already created to confirm."
+          : check;
   const feeHint =
     fee === undefined
       ? undefined
@@ -194,18 +231,22 @@ export function CreateScreen() {
   const startPassed = Number.isFinite(startUnix) && startUnix > 0 && startUnix < Date.now() / 1000;
 
   const create = () => {
+    if (created || send.isPending || earlierPending) return;
     setError(null);
     send.mutate(
       { expectedAccount: address, prepare: async () => tx.create(PROTOCOL!.factory, build()) },
       {
         onSuccess: (receipt) => {
+          // locked from here: a second press would create a second event
+          setCreated(true);
+          if (factory && address) sentTxStore.forget(DEFAULT_CHAIN_ID, factory, address, receipt.transactionHash);
           // the lists of this wallet's events (home and Manage your events) must show the new one
           void queryClient.invalidateQueries({ queryKey: ["organise", "mine"] });
           const [log] = parseEventLogs({ abi: presenceFactoryAbi, eventName: "EventCreated", logs: receipt.logs });
           const created = log?.args.eventContract;
           if (!created)
             return setError({
-              text: "The event was created, but its address could not be read. Open “Manage your events”: it is listed there.",
+              text: "The event was created, but its address could not be read. Open “Manage your events” (link below): it is listed there.",
               at: Date.now(),
             });
           router.push(paths.organiseEvent.getHref(created));
@@ -273,7 +314,7 @@ export function CreateScreen() {
           <Field
             label="Time zone of the event"
             full
-            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Use the event's own time zone, as set on Luma. Your device is set to ${deviceZone.replace(/_/g, " ")}.`}
+            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Use the event's own time zone, as set on Luma. Your device is set to ${deviceZone.startsWith("Etc/") ? zoneLabel(deviceZone, Date.now() / 1000) : `${deviceZone.replace(/_/g, " ")} (${zoneLabel(deviceZone, Date.now() / 1000)})`}.`}
           >
             <select className="og-input" value={form.zone} onChange={set("zone")}>
               {zoneList(form.zone).map((z) => (
@@ -332,8 +373,45 @@ export function CreateScreen() {
         </div>
       </GlassCard>
       <ErrorLine error={error} />
-      <Primary gate={gate(reason)} pending={send.isPending} busy={send.isPending} onPress={create}>
-        Create the event
+      {earlierPending && earlier && (
+        <p className="og-note" data-testid="create-earlier" role="status">
+          An event you created from this wallet is still confirming (<TxLink tx={earlier.record.hash} />
+          ). It will appear under{" "}
+          <Link href={paths.organise.getHref()} className="kb-link">
+            Manage your events
+          </Link>
+          .
+        </p>
+      )}
+      {earlierMined && earlierContract && (
+        <p className="og-success" data-testid="create-earlier" role="status">
+          Your event was created.{" "}
+          <Link href={paths.organiseEvent.getHref(earlierContract)} className="kb-link">
+            Open the event
+          </Link>
+        </p>
+      )}
+      {earlierFailed && (
+        <p className="og-note" data-testid="create-earlier" role="status">
+          Your earlier create did not go through, so you can create the event now.
+        </p>
+      )}
+      {created && !error && (
+        <p className="og-note" role="status">
+          Your event is created. Opening it… If it does not open,{" "}
+          <Link href={paths.organise.getHref()} className="kb-link">
+            find it under Manage your events
+          </Link>
+          .
+        </p>
+      )}
+      <Primary
+        gate={gate(created ? null : reason)}
+        pending={send.isPending || created}
+        busy={send.isPending || created}
+        onPress={create}
+      >
+        {created ? "Opening your event…" : "Create the event"}
       </Primary>
       <p className="og-note">
         Runs on {DEFAULT_CHAIN.name}. Creating an event is free apart from the network fee: it takes one transaction

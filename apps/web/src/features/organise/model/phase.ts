@@ -35,6 +35,14 @@ export function phaseOf(
   return event.attendeeCount > 0 ? "List not closed" : "Attendance due";
 }
 
+/** Every spot has a deposit (capacity 0 is no limit). */
+export const isFull = (e: Pick<EventInfo, "capacity" | "stakerCount">) => e.capacity > 0 && e.stakerCount >= e.capacity;
+
+/** The phase as the pill says it: an open event that is full says so. */
+export function phaseLabel(phase: Phase, event: Pick<EventInfo, "capacity" | "stakerCount">): string {
+  return (phase === "Deposits open" || phase === "Live now") && isFull(event) ? `${phase} · full` : phase;
+}
+
 export interface NextStep {
   title: string;
   detail: string;
@@ -56,7 +64,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Live now": {
     title: "Check a guest",
     detail:
-      "Walk-ins register on Luma, then deposit on the guest page. Once the event has started, you can no longer turn anyone away, so tell a walk-in to deposit only once you know there is room. Then check their deposit on the Guests tab and approve them on Luma. Scan every guest's Luma QR code at the door: only checked-in guests count as attendees.",
+      "Walk-ins register on Luma, then deposit on the guest page. Once the event has started, you can no longer turn anyone away, so tell a walk-in to deposit only once you know there is room. Then check their deposit on the Guests tab and approve them on Luma. Check every guest in on Luma at the door: only checked-in guests count as attendees.",
     tab: "guests",
     action: "Open Guests",
   },
@@ -96,13 +104,15 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   },
   "Payouts released": {
     title: "Send the payouts",
-    detail: "Attendees claim their share on the guest page. You can also send it to every wallet yourself.",
+    detail:
+      "Each attendee can claim their share on the guest page, or you can send every attendee their share yourself.",
     tab: "payout",
     action: "Open Payout",
   },
   Cancelled: {
     title: "Event cancelled",
-    detail: "Every guest can withdraw their full deposit on the guest page.",
+    detail:
+      "Every guest can withdraw their full deposit on the guest page, or you can send the refunds on the Payout tab.",
     tab: null,
     action: null,
     done: true,
@@ -110,7 +120,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Past the deadline": {
     title: "Attendance was not confirmed",
     detail:
-      "The deadline to confirm who came has passed. Every guest can withdraw their full deposit on the guest page.",
+      "The deadline to confirm who came has passed. Every guest can withdraw their full deposit on the guest page, or you can send the refunds on the Payout tab.",
     tab: null,
     action: null,
     done: true,

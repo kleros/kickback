@@ -63,13 +63,32 @@ export function ShellView({
           reason={refused}
           address={address}
           footer={
-            <p>
-              If this is your wallet address, your events are listed under{" "}
-              <Link href={paths.organise.getHref()} className="kb-link">
-                Manage your events
-              </Link>
-              .
-            </p>
+            // the wallet hint only for an address with no contract (a wallet); a cut link is told to check it
+            refused === "no-contract" ? (
+              <p>
+                If this is your wallet address, your events are listed under{" "}
+                <Link href={paths.organise.getHref()} className="kb-link">
+                  Manage your events
+                </Link>
+                .
+              </p>
+            ) : refused === "not-address" ? (
+              <p>
+                Check that you copied the whole link, or open{" "}
+                <Link href={paths.organise.getHref()} className="kb-link">
+                  Manage your events
+                </Link>
+                .
+              </p>
+            ) : (
+              <p>
+                Your events are listed under{" "}
+                <Link href={paths.organise.getHref()} className="kb-link">
+                  Manage your events
+                </Link>
+                .
+              </p>
+            )
           }
         />
       </div>
@@ -135,7 +154,7 @@ export function ShellView({
             <h1 className="og-title" data-testid="event-name">
               {data?.event.eventName}
             </h1>
-            {event.phase && <PhasePill phase={event.phase} />}
+            {event.phase && <PhasePill phase={event.phase} event={event.overview.data?.event} />}
           </div>
           <div className="og-head-row">
             <span className="og-addr" title="The event's own contract: it holds the deposits. Not a wallet.">

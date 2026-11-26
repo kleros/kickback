@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { errorText, revertName } from "@kickback/core";
@@ -54,14 +55,23 @@ export function useOrganiserEventSource(address: Address) {
     : null;
 
   const [running, setRunning] = useState<string | null>(null);
-  const [error, setError] = useState<{ text: string; at: number } | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  // a message belongs to the wallet that sent it: drop it on Disconnect or an account switch
-  const accountKey = account?.toLowerCase();
+  // a send's result belongs to the tab it was sent from (origin) and to the wallet that sent it (account): it is
+  // shown only there, so it never reads as the result of another tab's control, and a wallet that switches away
+  // and back still gets told how its send ended
+  const [error, setError] = useState<{ text: string; at: number; origin: string; account?: Address } | null>(null);
+  const [done, setDone] = useState<{ text: string; origin: string; account?: Address } | null>(null);
+  const pathname = usePathname() ?? "";
+  // leaving a tab drops its finished send's message, so it does not come back later; a send still confirming
+  // keeps its tag and shows its result if the organiser goes back to that tab
   useEffect(() => {
-    setError(null);
-    setDone(null);
-  }, [accountKey]);
+    if (running === null) {
+      setError(null);
+      setDone(null);
+    }
+    // only a change of tab clears
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+  const mine = (sender?: Address) => !!sender && !!account && isAddressEqual(sender, account);
   const busy = useSendBusy();
   const send = useSend({
     // awaited, so a tab never offers the same names again before the new list is read
@@ -85,17 +95,19 @@ export function useOrganiserEventSource(address: Address) {
     setRunning(label);
     setError(null);
     setDone(null);
+    const sender = account;
+    const origin = pathname;
     send.mutate(
-      { expectedAccount: account, prepare: async () => await request() },
+      { expectedAccount: sender, prepare: async () => await request() },
       {
         onSuccess: () => {
-          setDone(success);
+          setDone({ text: success, origin, account: sender });
           onSent?.();
         },
         onError: (e) => {
           const name = revertName(e) ?? revertName((e as { cause?: unknown }).cause);
           const known = name ? refusals?.[name] : undefined;
-          setError({ text: known ?? (e.message || errorText(e)), at: Date.now() });
+          setError({ text: known ?? (e.message || errorText(e)), at: Date.now(), origin, account: sender });
           // a refusal means the page is behind the chain: read it again so the controls follow
           if (name) void queries.invalidateQueries({ queryKey: organiserKey(address) });
         },
@@ -120,8 +132,10 @@ export function useOrganiserEventSource(address: Address) {
     run,
     running,
     busy: busy || running !== null,
-    error,
-    done,
+    /** The last send's failure, on the tab that sent it and for the wallet that sent it. */
+    error: error && error.origin === pathname && mine(error.account) ? { text: error.text, at: error.at } : null,
+    /** The last send's confirmation, on the tab that sent it and for the wallet that sent it. */
+    done: done && done.origin === pathname && mine(done.account) ? done.text : null,
     clearMessages: () => (setError(null), setDone(null)),
   };
 }

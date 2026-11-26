@@ -81,7 +81,12 @@ function EventRow({
               )}
               {data && (
                 <span className="kb-num">
-                  {data.stakerCount} {data.stakerCount === 1 ? "deposit" : "deposits"}
+                  {/* cancelled or past the deadline: the count is what guests have not taken back yet */}
+                  {data.phase === 3 || (data.phase === 0 && now !== undefined && now > data.claimDeadline)
+                    ? data.stakerCount === 0
+                      ? "No deposits held"
+                      : `${data.stakerCount} ${data.stakerCount === 1 ? "deposit" : "deposits"} not yet withdrawn`
+                    : `${data.stakerCount} ${data.stakerCount === 1 ? "deposit" : "deposits"}`}
                 </span>
               )}
             </span>

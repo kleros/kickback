@@ -2,6 +2,8 @@ import { presenceEventAbi } from "@kickback/contracts";
 import { challengeOf, readGuest } from "@kickback/core";
 import { encodeFunctionData, erc20Abi, parseAbi, zeroAddress, type Address, type PublicClient } from "viem";
 
+import { executeRulingRequest, readSolved } from "@/lib/kleros/ruling";
+
 import type { AppealInfo, GuestState, MoneyAction } from "../model/depositState";
 
 /** The wallet's place in the event, plus what it lets the event take (token events). */
@@ -49,15 +51,19 @@ export async function readGuestMoney(
   // with Kleros and not final yet: the jurors' current ruling and the appeal window (a funded appeal starts a
   // new round, so this is read on every poll)
   const appeal =
-    guest.challenge.state === 2 && isRuled !== true ? await readAppeal(client, contract, wallet) : undefined;
+    guest.challenge.state === 2 && isRuled !== true
+      ? await readAppeal(client, contract, wallet, guest.challenge.arbitratorDisputeID)
+      : undefined;
   return { ...guest, challenge: { ...guest.challenge, ruling, isRuled, appeal }, allowance, tokenBalance };
 }
 
 /** appealStatus(staker), or undefined when it cannot be read (the page keeps the plain wording). */
 export async function readAppeal(
-  client: PublicClient,
+  client: Pick<PublicClient, "readContract">,
   contract: Address,
   staker: Address,
+  arbitratorDisputeID?: bigint,
+  arbitrator?: Address,
 ): Promise<AppealInfo | undefined> {
   try {
     const [ruling, start, end, loserEnd, costAttended, costAbsent] = await client.readContract({
@@ -66,6 +72,12 @@ export async function readAppeal(
       functionName: "appealStatus",
       args: [staker],
     });
+    // outside an appeal window: the jurors may be deciding (status Waiting), or the ruling may be final but not
+    // recorded yet (status Solved, before executeRuling)
+    const final =
+      Number(end) === 0 && arbitratorDisputeID !== undefined
+        ? await readSolved(client, contract, arbitratorDisputeID, arbitrator)
+        : false;
     return {
       ruling: Number(ruling),
       start: Number(start),
@@ -73,6 +85,7 @@ export async function readAppeal(
       loserEnd: Number(loserEnd),
       costAttended,
       costAbsent,
+      final,
     };
   } catch {
     return undefined;
@@ -144,6 +157,7 @@ export async function prepareGuestMoney(
       data: encodeFunctionData({ abi: presenceEventAbi, functionName: "releasePayouts", args: [expired] }),
     };
   }
+  if (action === "execute") return executeRulingRequest(client, contract, wallet);
   if (action === "resolve")
     return {
       to: contract,
