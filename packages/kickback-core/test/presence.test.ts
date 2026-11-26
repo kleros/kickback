@@ -103,6 +103,13 @@ describe("attendance from a check-in CSV", () => {
     ]);
   });
 
+  test("with a wallet column, an address typed in another answer does not count", () => {
+    const csv = ["name,checked_in_at,eth_address,notes", `Ana,2026-11-04T18:02:00Z,,${b}`].join("\n");
+    const plan = core.attendanceFromCsv(csv, [a, b, c]);
+    expect(plan.attending).toEqual([]);
+    expect(plan.skipped.map((s) => s.reason)).toEqual(["no-wallet"]);
+  });
+
   test("a plain list of wallets counts every staker in it", () => {
     expect(core.attendanceFromCsv(`wallet\n${b}\n${c}`, [a, b, c]).attending).toEqual([b, c]);
     expect(core.batches([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
@@ -117,8 +124,9 @@ describe("errorText", () => {
       cause: new ContractFunctionRevertedError({ abi: presenceEventAbi, functionName: "deposit", data }),
     });
     expect(core.errorText(err)).toBe("The event is full (40 spots).");
+    expect(core.revertName(err)).toBe("EventFull");
     expect(core.errorText({ code: 4001, message: "User rejected the request." })).toBe(
-      "You cancelled in the wallet. Nothing was sent.",
+      "Cancelled in your wallet. Nothing was sent.",
     );
   });
 });

@@ -31,10 +31,10 @@ export const KLEROS_ERRORS: readonly (readonly [RegExp, string])[] = [
   [/(commit|vote) period time has not passed/i, "Jurors are still voting."],
   [
     /already in the last period/i,
-    'The case already has its final ruling. Press "Deliver final ruling" (it skips this step), then Settle.',
+    'The case already has its final ruling. Press "Settle the ruling".',
   ],
-  [/Ruling already executed|has been ruled already/i, "The final ruling was already delivered. Press Settle."],
-  [/Value is less than required/i, "The Kleros fee changed a moment ago. Press Refresh and try again."],
+  [/Ruling already executed|has been ruled already/i, 'The final ruling was already delivered. Press "Settle the ruling".'],
+  [/Value is less than required/i, "The Kleros fee changed a moment ago. Reload the page and try again."],
 ];
 
 const eth = (x: unknown) => `${fmt(BigInt(x as bigint))} ETH`;
@@ -51,16 +51,16 @@ export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => s
   BadConfig: ([f]) => `This event setting is not valid: ${String(f)}.`,
   TooLate: () => "Too late: this window has closed.",
   TooEarly: () => "Too early: this is not possible yet. Check the times on the page.",
-  Reentrancy: () => "The contract refused a nested call.",
+  Reentrancy: () => "The contract refused this call. Nothing was sent.",
   AlreadyStaker: ([x]) => `${x} already has a deposit for this event.`,
   WasRejected: ([x]) => `The organiser turned ${x} away, so this wallet cannot deposit again.`,
-  EventFull: ([x]) => `The event is full (${String(x)} spots).`,
-  NotAStaker: ([x]) => `${x} has no deposit in this event.`,
+  EventFull: ([x]) => `The event is full (${String(x)} ${Number(x) === 1 ? "spot" : "spots"}).`,
+  NotAStaker: ([x]) => `${x} has no deposit for this event.`,
   DuplicateAttendee: ([x]) => `${x} appears twice in the list.`,
   NoAttendees: () => "The attendance list is empty: add at least one guest who came, or cancel the event.",
   NothingToWithdraw: () => "There is nothing to withdraw for this wallet.",
   TransferFailed: ([x]) =>
-    `The transfer to ${x} did not go through (check the token balance and approval, or whether the receiving wallet refuses payments). Nothing was sent.`,
+    `The payment to ${x} did not go through. The receiving wallet may refuse payments. Nothing was sent.`,
   WrongAmount: ([x, y]) => `The amount must be exactly ${eth(x)} (sent ${eth(y)}).`,
   TokenEvent: () => "This event takes its deposit in a token, not ETH: use the Deposit button on the event page.",
   AlreadyAttending: ([x]) => `${x} is already on the attendance list.`,
@@ -71,7 +71,7 @@ export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => s
     `The Kleros fee went up since the challenge was opened (now ${eth(x)}, the two deposits cover ${eth(y)}), so no case can be created. Nothing was sent.`,
   NotRuled: ([x]) => `Kleros has not yet given its final ruling on the challenge from ${x}.`,
   ChallengesPending: ([x]) =>
-    `${String(x)} challenge(s) are still waiting for an answer. Payouts can be released once their answer window is over.`,
+    `${String(x)} ${Number(x) === 1 ? "challenge is" : "challenges are"} still waiting for an answer. Payouts can be released once the answer window is over.`,
   OnlyNumberedRulings: () => "Kleros returned a ruling this contract does not know. Nothing was changed.",
   InDispute: ([x]) => `${x} is in a Kleros case, so the jurors decide; this cannot be changed by hand.`,
   NotAppealable: ([x]) => `The challenge from ${x} is not in a Kleros case that can be appealed.`,
@@ -130,6 +130,12 @@ function decodeRevert(e: unknown, abi: Abi): Decoded | null {
   return null;
 }
 
+/** The name of the PresenceEvent / PresenceFactory custom error behind `error`, when there is one. */
+export function revertName(error: unknown, abi: Abi = PRESENCE_ERRORS_ABI): string | undefined {
+  const decoded = decodeRevert(error, abi);
+  return decoded && decoded.errorName !== "Error" && decoded.errorName !== "Panic" ? decoded.errorName : undefined;
+}
+
 /**
  * Plain-language text for an error from a read, a dry run or a send: a PresenceEvent custom error
  * (decoded with `abi`), a Kleros reason string, a wallet rejection, a rate limit, insufficient funds
@@ -153,12 +159,12 @@ export function errorText(error: unknown, abi: Abi = PRESENCE_ERRORS_ABI): strin
     codes.includes("ACTION_REJECTED") ||
     /user (rejected|denied)/i.test(brief)
   )
-    return "You cancelled in the wallet. Nothing was sent.";
+    return "Cancelled in your wallet. Nothing was sent.";
 
   const decoded = decodeRevert(error, abi);
   if (decoded && decoded.errorName !== "Error" && decoded.errorName !== "Panic") {
     const text = KICKBACK_ERROR_TEXT[decoded.errorName];
-    return text ? text(decoded.args) : `The contract refused: ${decoded.errorName}`;
+    return text ? text(decoded.args) : `The contract refused this transaction (${decoded.errorName}). Nothing was sent.`;
   }
   const reason = decoded?.errorName === "Error" ? String(decoded.args[0] ?? "") : "";
   for (const [re, text] of KLEROS_ERRORS) if (re.test(reason) || re.test(raw)) return text;

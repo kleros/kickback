@@ -44,11 +44,11 @@ export function ShellView({
       <div className="og-page">
         <div className="og-head">
           <Link href={paths.organise.getHref()} className="kb-link text-sm">
-            ← Events
+            ← Your events
           </Link>
           <div className="og-head-row">
             <h1 className="og-title" data-testid="event-name">
-              {data?.event.eventName ?? (event.overview.isError ? "Event not readable" : "Reading the event…")}
+              {data?.event.eventName ?? (event.overview.isError ? "Event could not be loaded" : "Loading the event…")}
             </h1>
             {event.phase && <PhasePill phase={event.phase} />}
           </div>
@@ -66,25 +66,31 @@ export function ShellView({
         <div className="og-nav-scroll">
           <SegmentedNav items={tabs} current={current} label="Organiser" />
         </div>
-        {event.connected ? (
-          data &&
-          !event.isOwner && (
-            <p className="og-note" data-testid="not-owner">
-              The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
-              everything. Only the organiser can act on it, except for matching a challenge, which anyone can do.
-            </p>
-          )
-        ) : (
+        {!event.connected ? (
           <div className="og-actions">
-            <ConnectWallet text="Connect the organiser's wallet" />
+            <p className="og-note">Connect the organiser&apos;s wallet to act on this event.</p>
+            <ConnectWallet text="Connect wallet" className="is-quiet" />
           </div>
+        ) : (
+          !event.onChain && (
+            <div className="og-actions">
+              <p className="og-note">Your wallet is on another network.</p>
+              <ConnectWallet className="is-quiet" />
+            </div>
+          )
+        )}
+        {event.connected && data && !event.isOwner && (
+          <p className="og-note" data-testid="not-owner">
+            The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
+            everything. Only the organiser can turn guests away, confirm the list, add guests or cancel. Anyone can send
+            a case to Kleros, release payouts, settle a ruling or send payouts.
+          </p>
         )}
         {event.overview.isError ? (
           <p className="og-err" role="alert" data-testid="read-error">
             {event.overview.error instanceof EventRefused
               ? "This address is not an event on this site. If it is your wallet address, open Organise and connect that wallet: your events are listed there."
-              : "The network did not answer."}{" "}
-            Check the address, or reload to try again.
+              : "The network did not answer. Reload to try again."}
           </p>
         ) : (
           children

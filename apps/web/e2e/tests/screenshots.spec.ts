@@ -23,7 +23,8 @@ test.describe("screenshots", () => {
         await page.setViewportSize({ width, height: width === 375 ? 812 : 800 });
         const shot = async (name: string, fullPage = false) => {
           await page.screenshot({ path: path.join(DIR!, `${name}-${width}-${theme}.png`), fullPage });
-          if (width === 1280 && theme === "light") await writeFile(path.join(DIR!, `${name}.txt`), await pageWords(page));
+          if (width === 1280 && theme === "light")
+            await writeFile(path.join(DIR!, `${name}.txt`), await pageWords(page));
         };
 
         for (const state of GALLERY_STATES) {

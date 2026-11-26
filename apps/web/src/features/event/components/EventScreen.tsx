@@ -26,7 +26,14 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const share = useReceiptShare(event, from);
   const controller = useDepositState(event);
   const amount = unitsText(event.depositAmount, event.decimals);
-  const example = shareExample(event.depositAmount, event.stakerCount);
+  // once the list is posted, the example uses it; once paid, the real share
+  const listed = event.phase === 1 || event.phase === 2 ? event.attendeeCount : undefined;
+  const example = shareExample(
+    event.depositAmount,
+    event.stakerCount,
+    event.phase === 2 ? event.payoutShare : undefined,
+    listed,
+  );
 
   // the fragment is set before the page has height; land on it once the section exists
   useEffect(() => {
@@ -61,7 +68,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         />
         <ReceiptExtras view={controller.view} {...share} />
       </div>
-      <EventDetails key={event.contract} event={event} />
+      <EventDetails key={event.contract} event={event} ended={controller.ended} />
       <HowItWorks
         amount={amount}
         unit={event.symbol}

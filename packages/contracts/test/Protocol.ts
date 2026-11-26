@@ -76,7 +76,7 @@ describe("protocol helpers", function () {
     assert.throws(() => eventConfig({ ...ok, url: "http://x" }, t), /https/);
     assert.throws(() => eventConfig({ ...ok, depositAmount: 0n }, t), /more than 0/);
     assert.throws(() => eventConfig({ ...ok, eventEnd: t + 5 }, t), /end after/);
-    assert.throws(() => eventConfig({ ...ok, eventStart: t - 30, eventEnd: t - 20 }, t), /past/);
+    assert.throws(() => eventConfig({ ...ok, eventStart: t - 30, eventEnd: t - 20 }, t), /already passed/);
     assert.throws(() => eventConfig({ ...ok, claimDeadline: t + 30 }, t), /7 days/);
   });
 });

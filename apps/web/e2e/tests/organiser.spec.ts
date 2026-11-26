@@ -70,9 +70,9 @@ test("organiser creates, guests book, Luma check-ins pick who came, a challenge,
   await shot(page, "00d-create-empty");
   await page.getByLabel("Event name").fill("Proof of Presence test");
   await page.getByLabel("Event page").fill("https://luma.com/eprlj5e3");
-  await page.getByLabel(/^Deposit, ETH/).fill("0.01");
-  await page.getByLabel("Starts").fill(local(start));
-  await page.getByLabel("Ends").fill(local(end));
+  await page.getByLabel(/^Deposit \(ETH\)/).fill("0.01");
+  await page.getByRole("textbox", { name: /^Starts/ }).fill(local(start));
+  await page.getByRole("textbox", { name: /^Ends/ }).fill(local(end));
   await shot(page, "01-create");
   await page.getByRole("button", { name: "Create the event" }).click();
   await page.waitForURL(/\/organise\/0x[0-9a-fA-F]{40}$/, { timeout: 60_000 });
@@ -187,7 +187,7 @@ test("organiser creates, guests book, Luma check-ins pick who came, a challenge,
   await page.goto(`/event/${contract}`);
   await wallet.connect(DAVE);
   await page.getByTestId("ticket").getByRole("button", { name: "Challenge the list" }).click();
-  await expect(page.getByTestId("ticket-status")).toContainText(/challenge sent/i, { timeout: 60_000 });
+  await expect(page.getByTestId("ticket-status")).toContainText(/Kleros fee/i, { timeout: 60_000 });
   await shot(page, "07-challenge-sent");
   await page.goto(`/organise/${contract}/payout`);
   await wallet.connect("alice");
@@ -203,7 +203,7 @@ test("organiser creates, guests book, Luma check-ins pick who came, a challenge,
   const pay = page.getByRole("dialog");
   await pay.getByLabel(/Type PAY/).fill("PAY");
   await pay.getByRole("button", { name: "Release payouts" }).click();
-  await expect(page.getByText(/payouts released/i)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/payouts released/i).first()).toBeVisible({ timeout: 60_000 });
   await shot(page, "08-payouts-released");
 
   // 7. bob, carol and dave share the 0.04 ETH pool (frank no-show); each claims on the guest page

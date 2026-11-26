@@ -5,6 +5,7 @@ import type { CSSProperties } from "react";
 
 import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { ExternalIcon } from "@/components/ui/icons";
 
 import {
   venueMap,
@@ -21,6 +22,8 @@ export interface EventDetailsProps {
   links: EventLink[];
   preview?: RegistrationPreview;
   tint?: string;
+  /** The event is over: the Luma card points to the event page, not to registration. */
+  ended?: boolean;
 }
 
 function Venue({ where }: { where: string }) {
@@ -42,7 +45,7 @@ function Venue({ where }: { where: string }) {
   );
 }
 
-export function EventDetailsView({ details, description, coverUrl, links, preview, tint }: EventDetailsProps) {
+export function EventDetailsView({ details, description, coverUrl, links, preview, tint, ended }: EventDetailsProps) {
   const registration = visibleLink(details.link);
   const title = details.title ?? details.name;
   if (
@@ -96,11 +99,19 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
         )}
         {registration && (
           <GlassCard className="ed-registration" interactive>
-            <a href={registration.href} target="_blank" rel="noopener noreferrer" className="ed-preview">
+            <a
+              href={registration.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ed-preview"
+              aria-label={`${preview?.title || "Luma event page"} (opens Luma in a new tab)`}
+            >
               {preview?.image && <Image src={preview.image} alt="" width={960} height={540} unoptimized />}
               <span className="ed-preview-text">
-                <span className="ed-label">{preview?.siteName || "Registration"}</span>
-                <strong>{preview?.title || "Register on Luma"}</strong>
+                <span className="ed-label">{preview?.siteName || (ended ? "Event page" : "Registration")}</span>
+                <strong>
+                  {preview?.title || "Luma event page"} <ExternalIcon size={14} aria-hidden="true" />
+                </strong>
                 <span className="ed-domain">{registration.domain}</span>
               </span>
             </a>

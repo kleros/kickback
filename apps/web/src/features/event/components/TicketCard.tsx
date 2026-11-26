@@ -13,8 +13,6 @@ import { CheckIcon, ExternalIcon, ShieldCheckIcon } from "@/components/ui/icons"
 import { NumberPop } from "@/components/ui/NumberPop";
 import { TextSwap } from "@/components/ui/TextSwap";
 
-import { paths } from "@/config/paths";
-
 import type { DepositView, StatusLine } from "../model/depositState";
 
 export interface TicketActions {
@@ -26,6 +24,7 @@ export interface TicketActions {
   claim: () => void;
   challenge: () => void;
   approve: () => void;
+  resolve: () => void;
   recheck: () => void;
 }
 
@@ -112,6 +111,10 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
   const shownAmount = view.amount ?? amount;
   const done = view.key === "done" || view.key === "already";
   const shaking = useShake(view.shake ? `${view.key}:${view.lines[0]?.text}` : undefined);
+  // the browser refused to copy (common in wallet in-app browsers): show the link to copy by hand
+  const [copyFailed, setCopyFailed] = useState(false);
+  const copyValue = view.receipt?.txLink ?? view.copy;
+  useEffect(() => setCopyFailed(false), [copyValue]);
 
   const press = {
     connect: actions.connect,
@@ -122,6 +125,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     claim: actions.claim,
     challenge: actions.challenge,
     approve: actions.approve,
+    resolve: actions.resolve,
     copy: () => {},
     none: () => {},
   }[view.action];
@@ -163,10 +167,16 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
           <>
             <div className="tk-rcpt">
               <span className="k">Transaction</span>
-              <span className="v kb-mono" title={view.receipt.tx} data-testid="receipt-tx">
-                {short(view.receipt.tx)}
-                {view.receipt.when ? ` · ${view.receipt.when}` : ""}
-              </span>
+              {copyFailed ? (
+                <span className="v kb-mono tk-select" data-testid="receipt-tx">
+                  {view.receipt.txLink}
+                </span>
+              ) : (
+                <span className="v kb-mono" title={view.receipt.tx} data-testid="receipt-tx">
+                  {short(view.receipt.tx)}
+                  {view.receipt.when ? ` · ${view.receipt.when}` : ""}
+                </span>
+              )}
               <span className="acts">
                 {view.receipt.txUrl && (
                   <Link
@@ -197,8 +207,14 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         ))}
       </div>
       <div className="tk-btn">
-        {view.action === "copy" && view.receipt ? (
-          <CopyPrimaryButton value={view.receipt.txLink}>{view.button}</CopyPrimaryButton>
+        {view.action === "copy" && copyValue ? (
+          <CopyPrimaryButton value={copyValue} onFailed={() => setCopyFailed(true)}>
+            {view.button}
+          </CopyPrimaryButton>
+        ) : view.status ? (
+          <div className="tk-status" data-testid="ticket-state">
+            {view.button}
+          </div>
         ) : (
           <GradientButton
             wide
@@ -212,10 +228,18 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         )}
       </div>
       <div className="tk-foot">
-        {view.foot && <span>{view.foot}</span>}
+        {copyFailed && view.receipt ? (
+          <span>Press and hold the link above to copy it.</span>
+        ) : (
+          view.foot && <span>{view.foot}</span>
+        )}
         {done && lumaUrl && (
           <>
-            {view.foot && <span aria-hidden>·</span>}
+            {(view.foot || (copyFailed && view.receipt)) && (
+              <span className="tk-sep" aria-hidden>
+                ·
+              </span>
+            )}
             <Link className="kb-link" href={lumaUrl} target="_blank" rel="noopener noreferrer">
               Back to Luma
               <ExternalIcon size={14} />
@@ -227,14 +251,14 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         <Disclosure title="Proof of Presence contract" icon={<ShieldCheckIcon className="ok" />}>
           <div className="tk-vrows">
             <p className="tk-vnote">
-              Created by this site&apos;s factory, with disputes settled in Kleros Court. This verifies the code, not
-              the organiser: anyone can create an event, so make sure you came here from the organiser&apos;s own event
-              page.
+              Created by this site&apos;s official event contract, with disputes settled in Kleros Court. This checks
+              the code, not the organiser: anyone can create an event, so only use the link on the organiser&apos;s Luma
+              event page.
             </p>
             <div className="tk-vrow">
               <span>Code</span>
-              <span className="kb-mono">
-                Proof of Presence factory {short(verified.factory)}
+              <span>
+                Proof of Presence factory&nbsp;<span className="kb-mono">{short(verified.factory)}</span>
                 <ExplorerLink explorer={verified.explorer} address={verified.factory} label="Open the factory" />
               </span>
             </div>
@@ -249,7 +273,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
                 <ExplorerLink
                   explorer={verified.explorer}
                   address={verified.disputeResolver}
-                  label="Open the resolver"
+                  label="Open the dispute resolver"
                 />
               </span>
             </div>
@@ -264,18 +288,12 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
               <span>Event contract</span>
               <span className="kb-mono">
                 {short(verified.contract)}
-                <ExplorerLink explorer={verified.explorer} address={verified.contract} label="Open the contract" />
+                <ExplorerLink
+                  explorer={verified.explorer}
+                  address={verified.contract}
+                  label="Open the event contract"
+                />
               </span>
-            </div>
-            <div className="tk-vrow">
-              <span>List and challenges</span>
-              <Link
-                className="kb-link"
-                href={paths.organiseEvent.getHref(verified.contract, undefined, "payout")}
-                data-testid="public-challenges"
-              >
-                Open
-              </Link>
             </div>
           </div>
         </Disclosure>

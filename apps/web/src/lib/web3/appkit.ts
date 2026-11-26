@@ -5,6 +5,9 @@ import { siteConfig } from "@/config/site";
 
 import { customRpcUrls, defaultNetwork, networks, wagmiAdapter } from "./wagmi";
 
+const siteUrl = () =>
+  env.SITE_URL ?? (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+
 let instance: ReturnType<typeof createAppKit> | undefined;
 
 export const getAppKit = () =>
@@ -17,8 +20,9 @@ export const getAppKit = () =>
     metadata: {
       name: siteConfig.name,
       description: siteConfig.description,
-      url: env.SITE_URL ?? "http://localhost:3000",
-      icons: [],
+      url: siteUrl(),
+      // wallets show this on the connect and sign prompts; many cannot draw SVG
+      icons: [new URL("/img/kleros-symbol-512.png", siteUrl()).href],
     },
     enableCoinbase: false,
     // the app shows a wallet on another network itself, with a switch button; AppKit's modal would cover it

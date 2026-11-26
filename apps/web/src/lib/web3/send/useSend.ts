@@ -55,11 +55,12 @@ export interface UseSendOptions {
   gasLimitFor?: SendDeps["gasLimitFor"];
   /** Record the transaction in the browser until it settles, for `useSentTx` after a reload. */
   record?: boolean;
-  onSuccess?: () => void;
+  onSuccess?: () => void | Promise<unknown>;
+  onError?: (error: Error) => void;
 }
 
 /** The one way a write reaches the wallet. `args.prepare` re-reads and builds the request. */
-export function useSend({ errorText, gasLimitFor, record = false, onSuccess }: UseSendOptions = {}) {
+export function useSend({ errorText, gasLimitFor, record = false, onSuccess, onError }: UseSendOptions = {}) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -88,6 +89,7 @@ export function useSend({ errorText, gasLimitFor, record = false, onSuccess }: U
         args,
       ),
     onSuccess,
+    onError,
   });
 }
 

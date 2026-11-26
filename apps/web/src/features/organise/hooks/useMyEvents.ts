@@ -9,19 +9,7 @@ import { useAccount, usePublicClient } from "wagmi";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
 
-import { readDeployments } from "../model/browserEvents";
-
-/** Events this browser created on the app's chain. */
-export function useBrowserEvents() {
-  const query = useQuery({
-    queryKey: ["organise", "deployments"],
-    queryFn: () => readDeployments(),
-    staleTime: Infinity,
-  });
-  return (query.data ?? []).filter((row) => row.chainId === DEFAULT_CHAIN_ID);
-}
-
-/** The events the connected wallet organises, from the factory, oldest first, with their names. */
+/** The events the connected wallet organises, from the factory, newest first, with their names. */
 export function useMyEvents() {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const { address } = useAccount();

@@ -111,8 +111,7 @@ describe("useSend", () => {
     const { result } = renderHook(() => useSend(), { wrapper });
     await expect(act(() => result.current.mutateAsync(deposit))).rejects.toMatchObject({
       kind: "refused",
-      message:
-        "This would fail, so nothing was sent: Too early: this is not possible yet. Check the times on the page.",
+      message: "Too early: this is not possible yet. Check the times on the page. Nothing was sent.",
     });
     expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ method: "eth_call" }), undefined);
     expect(wagmiCore.sendTransaction).not.toHaveBeenCalled();

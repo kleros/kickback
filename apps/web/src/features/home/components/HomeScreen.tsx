@@ -18,11 +18,11 @@ const EXAMPLE = payoutExample(parseEther("0.01"), 10, 8);
 const STEPS = [
   {
     title: "Register and deposit",
-    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away gets their deposit back in full.",
+    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away before the event starts gets their deposit back in full.",
   },
   {
     title: "Show up",
-    body: "Get your Luma QR scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
+    body: "Get your Luma QR code scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
@@ -50,16 +50,18 @@ function Example() {
           <dd className="kb-num">{ethText(EXAMPLE.pool)} ETH</dd>
         </div>
         <div>
-          <dt>Each of the {EXAMPLE.came} who showed up gets</dt>
+          <dt>Each of the {EXAMPLE.came} who showed up got</dt>
           <dd className="kb-num is-ok">{ethText(EXAMPLE.share)} ETH</dd>
         </div>
         <div>
-          <dt>Each of the {noShows} no-shows gets</dt>
+          <dt>
+            Each of the {noShows} {noShows === 1 ? "no-show got" : "no-shows got"}
+          </dt>
           <dd className="kb-num is-err">0 ETH</dd>
         </div>
       </dl>
       <p className="home-note">
-        That is their own {ethText(EXAMPLE.deposit)} ETH back, plus {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from
+        That was their own {ethText(EXAMPLE.deposit)} ETH back, plus {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from
         the no-shows&apos; deposits.
       </p>
     </GlassCard>
@@ -125,8 +127,8 @@ export function HomeScreen({ events }: { events: ReactNode }) {
           A fair list, settled by Kleros
         </h2>
         <p>
-          Every event&apos;s contract has a challenge built in. A guest left off the list can say they were there, and
-          independent jurors decide under a public attendance policy.
+          Every event&apos;s contract has a built-in challenge process. A guest left off the list can say they were
+          there, and independent jurors decide under a public attendance policy.
         </p>
         <p className="home-note">
           {isSepolia ? "Cases here go to the Test court (Sepolia). " : ""}The contracts have no owner and cannot be

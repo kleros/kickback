@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 
-import { CopyButton } from "@/components/ui/CopyButton";
-import { GlassCard } from "@/components/ui/GlassCard";
+import { CopyTextButton } from "@/components/ui/CopyButton";
 
-import { FilePick } from "./parts";
+import { CSV_ERROR, ErrorLine, FilePick } from "./parts";
 import { matchLuma, type LumaMatchRow } from "../model/lumaMatch";
 import { shortHex } from "../model/view";
 
@@ -22,25 +21,28 @@ export function LumaMatch({
   onRows?: (rows: readonly LumaMatchRow[]) => void;
 }) {
   const [csv, setCsv] = useState<{ name: string; text: string } | null>(null);
+  const [err, setErr] = useState<{ text: string; at: number } | null>(null);
   const rows = useMemo(() => (csv ? matchLuma(csv.text, booked) : null), [csv, booked]);
   const found = rows?.filter((r) => r.match === "deposit" && !r.dupOf) ?? [];
   const toApprove = found.filter((r) => r.luma === "pending");
-  const toDecline = rows?.filter((r) => r.match === "none" && r.luma === "pending") ?? [];
-  // approved on Luma, but no booked deposit (never paid, or turned away and refunded): their Luma QR still works
-  const wronglyIn = rows?.filter((r) => r.match === "none" && r.luma === "approved") ?? [];
+  const toDecline = rows?.filter((r) => r.match !== "deposit" && r.luma === "pending") ?? [];
+  // approved on Luma, but no booked deposit (no wallet, never paid, or turned away and refunded): their Luma QR
+  // code still works
+  const wronglyIn = rows?.filter((r) => r.match !== "deposit" && r.luma === "approved") ?? [];
   const dups = rows?.filter((r) => r.dupOf) ?? [];
-  const emails = (list: readonly LumaMatchRow[]) =>
-    list
-      .map((r) => r.email)
-      .filter(Boolean)
-      .join(", ");
+  const mails = (list: readonly LumaMatchRow[]) => list.map((r) => r.email).filter(Boolean);
+  const count = (k: number) => `${k} ${k === 1 ? "email" : "emails"}`;
+  const approveMails = mails(toApprove);
+  const declineMails = mails(toDecline);
+  const wrongMails = mails(wronglyIn);
+  const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
   return (
     <section className="flex flex-col gap-3" data-testid="luma-match">
       <div className="flex flex-col gap-1">
         <h2 className="og-h2">Match all Luma requests</h2>
         <p className="og-lede">
-          On Luma, open Guests and export the list (CSV), then drop it here. Each request is matched by the wallet Luma
-          verified, so you can approve everyone with a deposit in one go. Names stay on this device only.
+          On Luma, open Guests and export the list (CSV), then choose it here. Each request is matched by the wallet
+          Luma verified, so you see at once who has a deposit and can copy their emails. Names stay on this device only.
         </p>
       </div>
       <FilePick
@@ -48,38 +50,56 @@ export function LumaMatch({
         hint="The CSV from Luma's Guests tab"
         file={csv && rows ? { name: csv.name, rows: rows.length } : null}
         onFile={(name, text) => {
+          let parsed: readonly LumaMatchRow[];
+          try {
+            parsed = matchLuma(text, booked);
+          } catch {
+            setCsv(null);
+            setErr({ text: CSV_ERROR, at: Date.now() });
+            return;
+          }
+          setErr(null);
           setCsv({ name, text });
-          onRows?.(matchLuma(text, booked));
+          onRows?.(parsed);
         }}
         testId="luma-csv"
       />
+      <ErrorLine error={err} />
       {rows && (
-        <GlassCard className="og-card">
+        <div className="flex flex-col gap-3 border-t border-[var(--kb-hair)] pt-3">
           <p className="og-lede" data-testid="luma-summary">
-            {found.length} of {rows.length} requests have a deposit: approve them on Luma ({toApprove.length} left).{" "}
+            {`${found.length} of ${rows.length} ${plural(rows.length, "request has", "requests have")} a deposit`}
+            {toApprove.length > 0
+              ? `; ${toApprove.length} still ${plural(toApprove.length, "needs", "need")} approval on Luma.`
+              : "."}{" "}
             {toDecline.length > 0 &&
-              `${toDecline.length} pending requests have no deposit: decline them, or ask them to deposit first. `}
-            {dups.length > 0 && `${dups.length} share a wallet with another request: approve only one of each. `}
+              `${toDecline.length} pending ${plural(toDecline.length, "request has", "requests have")} no deposit: decline ${plural(toDecline.length, "it", "them")}, or ask the ${plural(toDecline.length, "guest", "guests")} to deposit first. `}
+            {dups.length > 0 &&
+              `${dups.length} ${plural(dups.length, "request shares", "requests share")} a wallet with another request: approve only one of each. `}
             {wronglyIn.length > 0 &&
-              `${wronglyIn.length} approved on Luma have no deposit (never paid, or turned away): decline them on Luma.`}
+              `${wronglyIn.length} approved ${plural(wronglyIn.length, "request has", "requests have")} no deposit (no wallet, never paid, or turned away): decline ${plural(wronglyIn.length, "it", "them")} on Luma.`}
           </p>
-          {toApprove.some((r) => r.email) && (
-            <p className="og-note flex items-center gap-2">
-              Emails to approve (on Luma, search each one under Guests)
-              <CopyButton value={emails(toApprove)} label="Copy emails to approve" />
-            </p>
-          )}
-          {toDecline.some((r) => r.email) && (
-            <p className="og-note flex items-center gap-2">
-              Pending with no deposit
-              <CopyButton value={emails(toDecline)} label="Copy emails with no deposit" />
-            </p>
-          )}
-          {wronglyIn.some((r) => r.email) && (
-            <p className="og-note flex items-center gap-2">
-              Approved with no deposit
-              <CopyButton value={emails(wronglyIn)} label="Copy emails to decline" />
-            </p>
+          {approveMails.length + declineMails.length + wrongMails.length > 0 && (
+            <>
+              <div className="og-actions">
+                {approveMails.length > 0 && (
+                  <CopyTextButton
+                    value={approveMails.join(", ")}
+                  >{`Copy ${count(approveMails.length)} to approve`}</CopyTextButton>
+                )}
+                {declineMails.length > 0 && (
+                  <CopyTextButton
+                    value={declineMails.join(", ")}
+                  >{`Copy ${count(declineMails.length)} with no deposit`}</CopyTextButton>
+                )}
+                {wrongMails.length > 0 && (
+                  <CopyTextButton
+                    value={wrongMails.join(", ")}
+                  >{`Copy ${count(wrongMails.length)} to decline`}</CopyTextButton>
+                )}
+              </div>
+              <p className="og-note">On Luma, search each email under Guests.</p>
+            </>
           )}
           <div className="og-table is-luma" role="table" aria-label="Luma registrations">
             <div className="og-thead" role="row">
@@ -95,7 +115,8 @@ export function LumaMatch({
                   <span className="og-mono og-cell-hide" title={r.wallet ?? undefined}>
                     {r.wallet ? shortHex(r.wallet) : "—"}
                   </span>
-                  <span className="og-cell-hide">
+                  <span className="og-cell-luma" data-luma={r.luma}>
+                    <span className="og-only-phone">Luma: </span>
                     {r.luma === "pending" ? "Pending" : r.luma === "approved" ? "Approved" : "Declined"}
                   </span>
                   <span className="og-cell-status">
@@ -106,7 +127,7 @@ export function LumaMatch({
               </div>
             ))}
           </div>
-        </GlassCard>
+        </div>
       )}
     </section>
   );

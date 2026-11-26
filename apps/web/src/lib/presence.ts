@@ -1,4 +1,4 @@
-import { KickbackError, readEvent, type EventInfo } from "@kickback/core";
+import { KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
@@ -29,8 +29,6 @@ export class EventRefused extends Error {
   }
 }
 
-const LUMA_RE = /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/[A-Za-z0-9._~\-/?=&]+$/;
-
 const refusalOf = (error: unknown): RefusalReason | undefined => {
   if (!(error instanceof KickbackError)) return undefined;
   if (error.code === "NO_KICKBACK_CONTRACT") return "no-contract";
@@ -60,6 +58,6 @@ export async function loadEvent(
     ...info,
     eventName: info.name,
     clock: null,
-    lumaUrl: LUMA_RE.test(info.url) ? info.url : undefined,
+    lumaUrl: LUMA_URL.test(info.url) ? info.url : undefined,
   };
 }

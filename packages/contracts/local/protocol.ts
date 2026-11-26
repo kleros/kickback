@@ -257,23 +257,27 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
   const u = String(form.url ?? "").trim();
   const bytes = (s: string) => new TextEncoder().encode(s).length;
   if (!n) throw new Error("Give the event a name.");
-  if (bytes(n) > MAX_NAME) throw new Error(`The name is too long (${MAX_NAME} bytes at most).`);
+  if (bytes(n) > MAX_NAME) throw new Error(`The name is too long (${MAX_NAME} characters at most; some symbols count as more than one).`);
   if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes or line breaks.');
   if (bytes(u) > MAX_URL) throw new Error("The event link is too long.");
-  if (u && !/^https:\/\/\S+$/.test(u)) throw new Error("The event link must start with https://");
+  if (u && !/^https:\/\/\S+$/.test(u)) throw new Error("The event link must start with https://.");
   if (!jsonSafe(u)) throw new Error("The event link cannot contain quotes or backslashes.");
   const amount = BigInt(form.depositAmount);
   if (amount <= 0n) throw new Error("The deposit must be more than 0.");
   const [s, e, d] = [form.eventStart, form.eventEnd, form.claimDeadline].map(Number) as [number, number, number];
-  if (!(s > 0) || !(e >= s)) throw new Error("The event must end after it starts.");
-  if (!(e > now)) throw new Error("The event's end time is already past.");
+  if (!Number.isFinite(s) || !(s > 0)) throw new Error("Enter a start date and time.");
+  if (!Number.isFinite(e) || !(e > 0)) throw new Error("Enter an end date and time.");
+  if (![s, e, d].every(Number.isInteger)) throw new Error("The dates must be whole seconds.");
+  if (!(e >= s)) throw new Error("The event must end after it starts.");
+  if (!(e > now)) throw new Error("The event's end time has already passed.");
   if (!(d >= e + MIN_SETTLEMENT_WINDOW))
-    throw new Error("The deadline to post the list must be at least 7 days after the event ends.");
+    throw new Error("The deadline to confirm who came must be at least 7 days after the event ends.");
   if (!(d <= e + MAX_SETTLEMENT_WINDOW))
-    throw new Error("The deadline to post the list must be at most 90 days after the event ends.");
+    throw new Error("The deadline to confirm who came must be at most 90 days after the event ends.");
   if (!(e <= now + MAX_LEAD_TIME)) throw new Error("The event must end within 2 years.");
   const cap = Number(form.capacity) || 0;
-  if (cap < 0 || cap > 2 ** 32 - 1) throw new Error("Capacity must be 0 (no limit) or a positive number.");
+  if (!Number.isInteger(cap) || cap < 0 || cap > 2 ** 32 - 1)
+    throw new Error("Capacity must be a whole number. Leave it empty for no limit.");
   return {
     name: n,
     url: u,

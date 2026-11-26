@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { OrganiseHome } from "@/features/organise";
 
 export const metadata: Metadata = {
-  title: "Organise | Kickback",
+  title: "Manage your events | Kickback",
 };
 
 export default function OrganisePage() {

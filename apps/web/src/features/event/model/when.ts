@@ -1,4 +1,4 @@
-import { isShowableTime } from "@/utils/time";
+import { isShowableTime, zonedDateText } from "@/utils/time";
 
 import type { EventClock } from "@/lib/presence";
 
@@ -13,27 +13,12 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** The wall clock at the event: a Date read with getUTC*. */
 const atEvent = (unix: number, clock: EventClock) => new Date((unix + clock.offset * 60) * 1000);
 
-const OUT_OF_RANGE = "date out of range";
+const OUT_OF_RANGE = "Date not available";
 
 /** "Wed 4 Nov 2026, 18:00 IST" on the event's own clock, or the visitor's when the event names none. */
 export function eventDateText(unix: number, clock: EventClock | null, timeZone?: string): string {
   if (!isShowableTime(unix)) return OUT_OF_RANGE;
-  if (!clock) {
-    return new Intl.DateTimeFormat("en-GB", {
-      weekday: "short",
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hourCycle: "h23",
-      timeZoneName: "short",
-      timeZone,
-    })
-      .format(new Date(unix * 1000))
-      .replace(/^(\w+),? /, "$1 ")
-      .replace(/ at /, ", ");
-  }
+  if (!clock) return zonedDateText(unix, timeZone);
   const d = atEvent(unix, clock);
   return `${WEEKDAYS[d.getUTCDay()]} ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}, ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} ${clock.zone}`;
 }

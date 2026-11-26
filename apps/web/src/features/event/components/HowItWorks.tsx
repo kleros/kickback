@@ -15,6 +15,8 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { ArrowUpIcon } from "@/components/ui/icons";
 
+import { spanText } from "@/utils/time";
+
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 
 import { unitsText } from "../model/depositState";
@@ -22,20 +24,12 @@ import type { ShareExample } from "../model/share";
 import type { EventClock } from "../model/when";
 import { deadlineText, sameClock, visitorText } from "../model/when";
 
-const DAY = 86_400;
-
 /** The deposit's asset, for every figure on the page. */
 const Asset = createContext({ unit: "ETH", decimals: 18 });
 const useAsset = () => {
   const { unit, decimals } = useContext(Asset);
   return { unit, text: (units: bigint) => unitsText(units, decimals) };
 };
-
-/** "1 day", "12 hours". */
-const spanText = (seconds: number) =>
-  seconds % DAY === 0
-    ? `${seconds / DAY} ${seconds === DAY ? "day" : "days"}`
-    : `${Math.round(seconds / 3600)} ${seconds === 3600 ? "hour" : "hours"}`;
 
 /** Sets data-inview once the element scrolls into view, so its figure plays once and then rests. */
 function useInViewOnce<T extends Element>() {
@@ -65,7 +59,7 @@ function Panel({ title, children, testId }: { title: string; children: ReactNode
   return (
     <GlassCard ref={ref} as="article" className="how-panel" data-inview={seen ? "" : undefined} data-testid={testId}>
       <h3>{title}</h3>
-      {children}
+      <div className="how-body">{children}</div>
     </GlassCard>
   );
 }
@@ -104,7 +98,17 @@ function Coin({
   return (
     <g className="pop" style={d(delay)}>
       <circle cx={x} cy={y} r={r} className="coin" stroke={stroke} />
-      <text x={x} y={y + 4.5} textAnchor="middle">
+      <text
+        x={x}
+        y={y + 4.5}
+        textAnchor="middle"
+        // a long amount ("0.0125", "1,000") shrinks to stay inside the coin
+        style={
+          label.length > 4
+            ? { fontSize: `${Math.min(16, Math.floor((2 * r - 8) / (label.length * 0.6)))}px` }
+            : undefined
+        }
+      >
         {label}
       </text>
     </g>
@@ -147,7 +151,7 @@ function BackPanel({ amount }: { amount: string }) {
           <b>Attend</b>checked in
         </span>
         <span>
-          <b>Back, plus a share</b>of the no-shows
+          <b>Back, plus a share</b>of <span className="nowrap">no-shows&apos;</span> deposits
         </span>
       </div>
     </Panel>
@@ -165,10 +169,26 @@ function SplitPanel({ example }: { example: ShareExample }) {
   const xs = Array.from({ length: shown }, (_, i) => 10 + gap / 2 + i * gap);
   const attendX = xs.slice(0, shown - shownNo);
   const noX = xs.slice(shown - shownNo);
-  const poolX = Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, 50), 358);
-  const pool = text(example.pool);
-  const bonus = text(example.bonus);
+  // a rounded amount carries "≈" once, where it is correct maths: on the sum, not on each figure
+  const cut = (s: string) => s.replace(/^[~≈]/, "");
+  const pool = cut(text(example.pool));
+  const bonusRaw = text(example.bonus);
+  const backRaw = text(example.back);
+  const bonus = cut(bonusRaw);
+  const approx = /^[~≈]/.test(bonusRaw) || /^[~≈]/.test(backRaw);
   const amount = text(example.back - example.bonus);
+  const pillW = Math.max(88, (pool.length + unit.length + 1) * 10 + 24);
+  const poolX = noX.length
+    ? Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, pillW / 2 + 6), 402 - pillW / 2)
+    : 204;
+  const note =
+    example.basis === "paid"
+      ? `What each attendee received: this event's ${example.deposits} deposits and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.`
+      : example.basis === "list"
+        ? `Based on this event's ${example.deposits} deposits and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
+        : example.basis === "estimate"
+          ? `An example with this event's ${example.deposits} deposits and ${example.noShows} ${example.noShows === 1 ? "no-show" : "no-shows"}.`
+          : "An example with 10 deposits and 2 no-shows.";
 
   return (
     <Panel title="What happens to no-shows' deposits?" testId="how-split">
@@ -176,7 +196,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         className="how-fig"
         viewBox="0 0 408 112"
         role="img"
-        aria-label={`${example.deposits} deposits; ${example.attend} guests attend and ${example.noShows} do not. The no-shows' ${pool} ${unit} is split ${example.attend} ways.`}
+        aria-label={`${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${example.noShows === 1 ? "no-show's" : "no-shows'"} ${pool} ${unit} ${example.attend === 1 ? "goes to the one attendee" : `is split ${example.attend} ways`}.`}
       >
         <Axis id={axis} />
         {attendX.map((x, i) => (
@@ -192,13 +212,13 @@ function SplitPanel({ example }: { example: ShareExample }) {
           </g>
         ))}
         <g className="pop" style={d(900)}>
-          <rect x={poolX - 44} y={62} width={88} height={30} rx={12} className="card" />
+          <rect x={poolX - pillW / 2} y={62} width={pillW} height={30} rx={12} className="card" />
           <text x={poolX} y={81.5} textAnchor="middle">
             {pool} {unit}
           </text>
         </g>
         <path
-          d={`M${poolX - 48} 77H${attendX[0] ?? 20}V38`}
+          d={`M${poolX - pillW / 2 - 4} 77H${attendX[0] ?? 20}V38`}
           className="flow"
           stroke={stroke}
           pathLength={1}
@@ -207,7 +227,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         {attendX.slice(1).map((x, i) => (
           <path key={i} d={`M${x} 77V38`} className="flow" stroke={stroke} pathLength={1} style={d(1300 + i * 40)} />
         ))}
-        <text x={poolX - 54} y={106} textAnchor="end" className="dim">
+        <text x={poolX - pillW / 2 - 10} y={106} textAnchor="end" className="dim">
           ÷ {example.attend}
         </text>
       </svg>
@@ -228,12 +248,10 @@ function SplitPanel({ example }: { example: ShareExample }) {
       <div className="how-sum" data-testid="how-sum" data-back={example.back.toString()} data-attend={example.attend}>
         <span>Each attendee gets back</span>
         <b>
-          {amount} + {bonus} = {text(example.back)} {unit}
+          {amount} + {bonus} {approx ? "≈" : "="} {cut(backRaw)} {unit}
         </b>
       </div>
-      <p className="how-note">
-        {example.real ? `Based on the ${example.deposits} deposits so far.` : "An example with ten deposits."}
-      </p>
+      <p className="how-note">{note}</p>
     </Panel>
   );
 }
@@ -272,9 +290,10 @@ function ListPanel({ court, challengeFee }: { court: string; challengeFee?: bigi
         </span>
       </div>
       <p className="how-note" data-testid="challenge-fee">
-        Each side pays the Kleros fee up front
-        {challengeFee ? `, currently ${unitsText(challengeFee, 18)} ETH (set by Kleros)` : ""}. The side the jurors
-        agree with gets it back.
+        To challenge, you pay the Kleros fee
+        {challengeFee ? ` (currently ${unitsText(challengeFee, 18)} ETH, set by Kleros)` : ""}. If the organiser does
+        not answer within 1 day, you are added and get it back. If they send the case to Kleros, they pay the same fee
+        and jurors decide: the side they agree with gets back what is left.
       </p>
     </Panel>
   );
@@ -295,11 +314,17 @@ function TimelinePanel({
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
-  const rows = [
-    ["Deposits close", eventEnd],
-    ["Attendance confirmed by", claimDeadline],
-    ...(challengeEndsAt ? ([["Challenges close", challengeEndsAt]] as const) : []),
-  ] as const;
+  // once the list is posted, the rows follow what happened: posted, then the challenge window
+  const rows: readonly (readonly [string, number])[] = challengeEndsAt
+    ? [
+        ["Deposits closed", eventEnd],
+        ["Attendance confirmed", challengeEndsAt - challengePeriod],
+        ["Challenges close", challengeEndsAt],
+      ]
+    : [
+        ["Deposits close", eventEnd],
+        ["Attendance confirmed by", claimDeadline],
+      ];
   return (
     <Panel title="When does it all happen?" testId="how-deadlines">
       <svg
@@ -309,14 +334,14 @@ function TimelinePanel({
         aria-label={`Deposits close when the event ends; who came is confirmed by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`}
       >
         <Axis id={axis} />
-        <path d="M16 34h376" className="ln" />
-        <path d="M16 34h376" className="flow" stroke={stroke} pathLength={1} style={d(100)} />
-        <circle cx="16" cy="34" r="6" fill="var(--kb-violet)" className="pop" style={d(0)} />
-        <circle cx="176" cy="34" r="6" className="card pop" style={d(450)} />
-        <circle cx="296" cy="34" r="6" className="card pop" style={d(700)} />
-        <circle cx="392" cy="34" r="6" fill="var(--kb-ok)" className="pop" style={d(950)} />
-        <path d="M176 14h120M176 10v8M296 10v8" className="ink" />
-        <text x="236" y="9" textAnchor="middle" className="dim">
+        <path d="M51 34h306" className="ln" />
+        <path d="M51 34h306" className="flow" stroke={stroke} pathLength={1} style={d(100)} />
+        <circle cx="51" cy="34" r="6" fill="var(--kb-violet)" className="pop" style={d(0)} />
+        <circle cx="153" cy="34" r="6" className="card pop" style={d(450)} />
+        <circle cx="255" cy="34" r="6" className="card pop" style={d(700)} />
+        <circle cx="357" cy="34" r="6" fill="var(--kb-ok)" className="pop" style={d(950)} />
+        <path d="M153 14h102M153 10v8M255 10v8" className="ink" />
+        <text x="204" y="9" textAnchor="middle" className="dim">
           {spanText(challengePeriod)}
         </text>
       </svg>
@@ -337,16 +362,18 @@ function TimelinePanel({
       </div>
       <div className="how-caps" style={{ marginTop: 16 }}>
         {rows.map(([label, unix]) => (
-          <div key={label} className="how-sum" style={{ marginTop: 0 }}>
+          <div key={label} className="how-sum is-stack" style={{ marginTop: 0 }}>
             <span>{label}</span>
-            <span style={{ textAlign: "right" }}>
+            <span className="how-sum-date">
               <b className="kb-num">{deadlineText(unix, clock)}</b>
               {!sameClock(unix, clock) && <span className="how-when">{visitorText(unix)} your time</span>}
             </span>
           </div>
         ))}
       </div>
-      <p className="how-note">Not confirmed by the deadline? Withdraw your full deposit.</p>
+      {!challengeEndsAt && (
+        <p className="how-note">Attendance not confirmed by the deadline? You can withdraw your full deposit.</p>
+      )}
     </Panel>
   );
 }

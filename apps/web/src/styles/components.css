@@ -220,6 +220,9 @@ body {
   border-radius: 50%;
   background: var(--kb-ok);
 }
+.kb-wallet-chip[data-wrong-net] .dot {
+  background: var(--kb-warn);
+}
 
 /* ---------- icon button (theme toggle, copy) ---------- */
 .kb-icon-btn {

@@ -1,5 +1,16 @@
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
-import { getAddress, isAddressEqual, zeroAddress, type Address, type PublicClient } from "viem";
+import {
+  AbiDecodingDataSizeTooSmallError,
+  AbiDecodingZeroDataError,
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
+  getAddress,
+  isAddressEqual,
+  zeroAddress,
+  type Address,
+  type PublicClient,
+} from "viem";
 
 import { KickbackError, shortMessage } from "./kickbackError";
 import { isContractCode } from "./logs";
@@ -107,6 +118,17 @@ export async function readEvent(
       FIELDS.map((functionName) => client.readContract({ address: contract, abi: presenceEventAbi, functionName })),
     );
   } catch (e) {
+    // only an answer from the contract itself is a verdict on it; network trouble is passed on as it is
+    const verdict =
+      e instanceof BaseError &&
+      !!e.walk(
+        (x) =>
+          x instanceof ContractFunctionZeroDataError ||
+          x instanceof ContractFunctionRevertedError ||
+          x instanceof AbiDecodingZeroDataError ||
+          x instanceof AbiDecodingDataSizeTooSmallError,
+      );
+    if (!verdict) throw e;
     throw new KickbackError(
       `The contract at ${contract} is not a Proof of Presence event (${shortMessage(e)}).`,
       "NOT_KICKBACK",

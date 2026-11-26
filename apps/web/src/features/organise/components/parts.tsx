@@ -85,6 +85,10 @@ export function Primary({
   );
 }
 
+/** Shown for any CSV the parser cannot read: never the parser's own message, which can quote raw cells. */
+export const CSV_ERROR =
+  "This file could not be read as a CSV. Export the guest list from Luma again and choose that file.";
+
 export function ErrorLine({ error }: { error: { text: string; at: number } | string | null }) {
   if (!error) return null;
   const text = typeof error === "string" ? error : error.text;
@@ -116,7 +120,9 @@ export function FilePick({
       <FileIcon />
       <div className="og-file-text">
         <span className="og-file-name">{file ? file.name : label}</span>
-        <span className="og-note">{file ? `${file.rows} rows` : (hint ?? "A CSV file")}</span>
+        <span className="og-note">
+          {file ? `${file.rows} ${file.rows === 1 ? "row" : "rows"}` : (hint ?? "A CSV file")}
+        </span>
       </div>
       <input
         ref={input}

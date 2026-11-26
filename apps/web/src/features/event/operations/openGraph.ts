@@ -2,6 +2,8 @@ import { amountText, isAddressStrict, readEvent } from "@kickback/core";
 
 import { PROTOCOL } from "@/config/protocol";
 
+import { eventDateText } from "../model/when";
+
 export const GENERIC_EVENT_CARD = {
   title: "Kickback",
   date: "Show up. Get your deposit back.",
@@ -15,7 +17,8 @@ export async function readEventCard(client: Parameters<typeof readEvent>[0], con
     const event = await readEvent(client, contract, protocol);
     return {
       title: event.name,
-      date: new Date(event.eventStart * 1000).toISOString().slice(0, 10),
+      // "Sun 29 Nov 2026": the contract names no time zone, so UTC keeps every server alike
+      date: eventDateText(event.eventStart, null, "UTC").split(",")[0]!,
       deposit: `Refundable deposit ${amountText(event.depositAmount, event)}`,
     };
   } catch {
@@ -24,8 +27,8 @@ export async function readEventCard(client: Parameters<typeof readEvent>[0], con
 }
 
 export function eventCardMetadata(card: typeof GENERIC_EVENT_CARD, contract: string) {
-  const title = `${card.title} | Kickback`;
-  const description = `${card.title}. ${card.date}. ${card.deposit}.`;
+  const title = card === GENERIC_EVENT_CARD ? "Kickback" : `${card.title} | Kickback`;
+  const description = [card.title, card.date, card.deposit].map((s) => s.replace(/[.!?]+$/, "")).join(". ") + ".";
   return {
     title,
     description,

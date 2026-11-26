@@ -36,6 +36,10 @@ export const GALLERY_STATES = [
   "not-attended",
   "withdrawn",
   "checking",
+  "restoring",
+  "full-visitor",
+  "addchain-failed",
+  "resolve",
 ] as const;
 
 export type GalleryState = (typeof GALLERY_STATES)[number];
@@ -52,6 +56,7 @@ export function baseInput(): DepositInput {
   return {
     amount: parseEther("0.01"),
     asset: { symbol: "ETH", decimals: 18 },
+    eventStart: NOW_MS / 1000 + 4 * 86_400,
     eventEnd: NOW_MS / 1000 + 5 * 86_400,
     phase: 0,
     challengeDeposit: parseEther("0.03"),
@@ -89,7 +94,7 @@ export function galleryInput(state: GalleryState): DepositInput {
     claimable: 0n,
     claimableEth: 0n,
     sharePaid: 0n,
-    challenge: { state: 0, matchEndsAt: 0, arbitratorDisputeID: 0n },
+    challenge: { state: 0, matchEndsAt: 0, arbitratorDisputeID: 0n, deposit: 0n, localDisputeID: 0n },
     ...over,
   });
   const listed = { ...b, phase: 1, challengeEndsAt: b.chainNow! + 86_400 };
@@ -118,13 +123,43 @@ export function galleryInput(state: GalleryState): DepositInput {
     case "challenged":
       return {
         ...listed,
-        guest: guest({ challenge: { state: 1, matchEndsAt: b.chainNow! + 86_400, arbitratorDisputeID: 0n } }),
+        guest: guest({
+          challenge: {
+            state: 1,
+            matchEndsAt: b.chainNow! + 86_400,
+            arbitratorDisputeID: 0n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 0n,
+          },
+        }),
+      };
+    case "resolve":
+      return {
+        ...listed,
+        guest: guest({
+          challenge: {
+            state: 1,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 0n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 0n,
+          },
+        }),
       };
     case "disputed":
       return {
         ...listed,
         caseUrl: (id) => `https://court.kleros.io/cases/${id}`,
-        guest: guest({ challenge: { state: 2, matchEndsAt: b.chainNow! - 60, arbitratorDisputeID: 1712n } }),
+        evidenceUrl: (id) => `https://resolve.kleros.io/cases/${id}`,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+          },
+        }),
       };
     case "withdrawn":
       return { ...b, guest: guest({ status: 3 }) };
@@ -166,6 +201,12 @@ export function galleryInput(state: GalleryState): DepositInput {
       return { ...b, wallet: { ...b.wallet, ...disconnected }, chainNow: b.eventEnd + 60, history: undefined };
     case "full":
       return { ...b, capacity: 40, stakerCount: 40 };
+    case "full-visitor":
+      return { ...b, wallet: { ...b.wallet, ...disconnected }, capacity: 40, stakerCount: 40, history: undefined };
+    case "restoring":
+      return { ...b, wallet: { ...b.wallet, ...disconnected, restoring: true }, history: undefined };
+    case "addchain-failed":
+      return { ...b, wallet: { ...b.wallet, chainId: 42161, needsChain: true, chainFailed: true } };
     case "already":
       return { ...b, guest: guest(), history: { txHash: TX, at: NOW_MS / 1000 - 2 * 86_400 } };
     case "earlier":

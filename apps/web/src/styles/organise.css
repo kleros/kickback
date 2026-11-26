@@ -92,6 +92,23 @@
     overflow: visible;
   }
 }
+/* on a phone the four tabs share the column, so "Payout" is never cut off */
+@media (max-width: 767px) {
+  .og-nav-scroll .kb-seg {
+    display: flex;
+    width: 100%;
+  }
+  .og-nav-scroll .kb-seg-item {
+    flex: 1 1 auto;
+    justify-content: center;
+    padding: 0 10px;
+  }
+}
+@media (max-width: 359px) {
+  .og-nav-scroll .kb-seg-item {
+    padding: 0 4px;
+  }
+}
 
 /* ---------- headings and copy ---------- */
 .og-h2 {
@@ -109,6 +126,41 @@
   color: var(--kb-text-3);
   font-size: 13px;
   line-height: 18px;
+}
+/* rows of a loaded CSV that were not used */
+.og-skipped {
+  padding: 14px 16px;
+  border-radius: var(--kb-r-row);
+  background: var(--kb-sunken);
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--kb-text-3);
+}
+.og-skipped summary {
+  cursor: pointer;
+  list-style: none;
+  color: var(--kb-text-2);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+}
+.og-skipped summary::-webkit-details-marker {
+  display: none;
+}
+.og-skipped summary::after {
+  content: " ▾";
+  color: var(--kb-text-3);
+}
+.og-skipped:not([open]) summary::after {
+  content: " ▸";
+}
+.og-skipped ul {
+  margin-top: 8px;
+}
+.og-skipped li {
+  padding: 6px 0;
+  border-top: 1px solid var(--kb-hair);
+  overflow-wrap: anywhere;
 }
 .og-err {
   color: var(--kb-err);
@@ -140,12 +192,6 @@
   .og-card {
     padding: 24px;
   }
-}
-.og-hero-phase {
-  font-size: 34px;
-  line-height: 40px;
-  font-weight: 500;
-  letter-spacing: -0.03em;
 }
 .og-kicker {
   color: var(--kb-text-3);
@@ -181,6 +227,8 @@
 }
 .og-fig dd .og-note {
   display: block;
+  font-weight: 400;
+  letter-spacing: normal;
 }
 .og-fig-big dd {
   font-size: 22px;
@@ -194,6 +242,11 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 12px;
+}
+@media (max-width: 520px) {
+  .og-actions > .kb-btn {
+    flex: 1 1 100%;
+  }
 }
 .og-locked {
   display: inline-flex;
@@ -419,6 +472,16 @@
 .og-cell-hide {
   display: none;
 }
+.og-cell-luma {
+  font-size: 13px;
+  color: var(--kb-text-2);
+  white-space: nowrap;
+  justify-self: end;
+}
+.og-cell-luma[data-luma="pending"] {
+  color: var(--kb-text);
+  font-weight: 500;
+}
 .og-dot {
   flex: none;
   width: 6px;
@@ -453,14 +516,24 @@
   font-size: 13px;
   color: var(--kb-text-2);
   cursor: pointer;
+  /* a 44px tap area that reaches into the row's padding, so the row keeps its height */
+  position: relative;
+  min-height: 44px;
+  margin: -12px -8px -12px 0;
+  padding-left: 8px;
+  padding-right: 8px;
 }
 .og-tick input {
   width: 20px;
   height: 20px;
   accent-color: var(--kb-blue);
 }
+.og-tick:has(input:disabled) {
+  opacity: 0.45;
+  cursor: default;
+}
 .og-tick input:disabled {
-  opacity: 0.35;
+  cursor: default;
 }
 .og-row .kb-disc-trigger {
   min-height: 28px;
@@ -503,6 +576,15 @@
     display: block;
     font-size: 14px;
     font-variant-numeric: tabular-nums;
+  }
+  .og-cell-luma {
+    font-size: 14px;
+    justify-self: start;
+    color: inherit;
+    font-weight: inherit;
+  }
+  .og-only-phone {
+    display: none;
   }
   .og-cell-status {
     grid-column: auto;
@@ -830,15 +912,31 @@
 
 /* ---------- danger zone ---------- */
 .og-danger {
-  padding: 18px 20px;
-  border-radius: var(--kb-r-row);
+  padding: 20px;
+  border-radius: var(--kb-r-card);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kb-err) 45%, transparent);
+}
+@media (min-width: 768px) {
+  .og-danger {
+    padding: 24px;
+  }
+}
+.og-danger .kb-btn.is-quiet:not([data-disabled]) {
+  color: var(--kb-err);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kb-err) 45%, transparent);
 }
 @media (max-width: 520px) {
+  .og-selbar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
   .og-selbar .og-actions {
     flex-wrap: wrap;
+    gap: 8px;
   }
   .og-selbar .og-actions > * {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
+    min-width: auto;
+    height: 44px;
   }
 }

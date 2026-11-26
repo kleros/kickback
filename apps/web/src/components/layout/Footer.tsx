@@ -31,7 +31,7 @@ export function Footer() {
               <Link href={paths.organiseNew.getHref()}>Create an event</Link>
             </li>
             <li>
-              <Link href={paths.organise.getHref()}>Organise</Link>
+              <Link href={paths.organise.getHref()}>Manage your events</Link>
             </li>
             <li>
               <a href={siteConfig.repo} {...out}>

@@ -85,7 +85,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  height: 52px;
+  min-height: 52px;
   color: var(--kb-text-2);
   font-size: 14px;
   line-height: 20px;
@@ -94,10 +94,10 @@
   height: auto;
   min-height: 52px;
 }
+/* lines wrap only between words, and only on phones too narrow for them (under about 360px) */
 .tk-slot p {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
   font-variant-numeric: tabular-nums;
 }
 .tk-slot .pri {
@@ -130,12 +130,33 @@
   text-overflow: ellipsis;
   font-size: 13.5px;
 }
+.tk-rcpt .v.tk-select {
+  overflow-x: auto;
+  text-overflow: clip;
+  user-select: all;
+  -webkit-user-select: all;
+}
 .tk-rcpt .acts {
   display: flex;
   gap: 2px;
 }
 .tk-btn {
   margin-top: 18px;
+}
+/* a state with nothing to press: the same 52px as the button, read as a status */
+.tk-status {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  padding: 0 16px;
+  overflow: hidden;
+  border-radius: var(--kb-r-btn);
+  box-shadow: inset 0 0 0 1px var(--kb-hair);
+  color: var(--kb-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .tk-foot {
   display: flex;
@@ -149,6 +170,21 @@
   line-height: 20px;
   text-align: center;
   white-space: nowrap;
+}
+@media (max-width: 359px) {
+  .tk-foot {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 20px;
+    row-gap: 2px;
+    white-space: normal;
+  }
+  .tk-foot .tk-sep {
+    display: none;
+  }
+  .tk-foot .kb-link {
+    white-space: nowrap;
+  }
 }
 .tk-verified {
   margin-top: 14px;
@@ -217,8 +253,8 @@
 /* ---------- how it works: its own band below the card ---------- */
 .kb-how {
   position: relative;
-  margin-top: 88px;
-  padding-top: 64px;
+  margin-top: 64px;
+  padding-top: 48px;
 }
 .kb-how::before {
   content: "";
@@ -271,8 +307,14 @@
     gap: 20px;
   }
 }
+/* a panel stretched to its row's height keeps its body together, centred under the title */
 .how-panel {
+  display: flex;
+  flex-direction: column;
   padding: 24px 24px 22px;
+}
+.how-body {
+  margin-block: auto;
 }
 .how-panel h3 {
   font-size: 17px;
@@ -306,6 +348,14 @@
 }
 .how-caps.four {
   grid-template-columns: repeat(4, 1fr);
+  column-gap: 0;
+  text-align: center;
+}
+.how-caps.four > span {
+  padding: 0 2px;
+}
+.how-caps .nowrap {
+  white-space: nowrap;
 }
 .how-caps b {
   display: block;
@@ -328,6 +378,19 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.how-sum-date {
+  text-align: right;
+}
+@media (max-width: 480px) {
+  .how-sum.is-stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .how-sum.is-stack .how-sum-date {
+    text-align: left;
+  }
 }
 .how-note {
   margin-top: 12px;
@@ -407,6 +470,12 @@
   fill: var(--kb-text-2);
   font-weight: 400;
 }
+/* on a phone the figure draws at about 0.72 scale: larger type keeps the labels readable */
+@media (max-width: 479px) {
+  .how-fig text {
+    font-size: 16px;
+  }
+}
 .how-fig .pop {
   transform-box: fill-box;
   transform-origin: center;
@@ -476,9 +545,8 @@
 }
 
 .ed-section {
-  margin-top: 48px;
-  padding: 40px 0;
-  border-top: 1px solid var(--kb-hair);
+  margin-top: 24px;
+  padding: 0;
 }
 .ed-content {
   display: flex;
@@ -544,6 +612,10 @@
   overflow: hidden;
   border-radius: inherit;
 }
+.ed-preview:hover strong,
+.ed-preview:focus-visible strong {
+  text-decoration: underline;
+}
 .ed-preview img {
   width: 100%;
   height: auto;
@@ -593,18 +665,27 @@
   display: grid;
   gap: 16px;
 }
+/* the 4px padding keeps the focus ring; the negative margin lines the buttons up with the card edge */
 .receipt-share {
   display: flex;
   flex-wrap: nowrap;
-  gap: 12px;
-  max-width: 100%;
+  gap: 8px;
+  max-width: calc(100% + 8px);
   overflow-x: auto;
+  margin: 0 -4px;
   padding: 4px;
 }
 .receipt-share .kb-icon-btn {
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
+  background: var(--kb-chip);
+  box-shadow: inset 0 0 0 1px var(--kb-glass-ring);
+  color: var(--kb-text);
+}
+.receipt-share .kb-icon-btn[data-hovered],
+.receipt-share .kb-icon-btn:hover {
+  box-shadow: inset 0 0 0 1px var(--kb-accent, currentColor);
 }
 .receipt-stub {
   padding: 20px;
@@ -653,7 +734,7 @@
 }
 
 .receipt-share-label {
-  padding: 0 4px 6px;
+  padding: 0 0 6px;
   color: var(--kb-text-2);
   font-size: 13px;
   font-weight: 500;

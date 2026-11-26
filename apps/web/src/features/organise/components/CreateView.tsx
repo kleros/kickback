@@ -4,13 +4,15 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
-import { eventConfig, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
+import { eventConfig, LUMA_URL, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
 import { useQuery } from "@tanstack/react-query";
 import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
+
+import { isShowableTime, zonedDateText } from "@/utils/time";
 
 import { useSend } from "@/lib/web3/send";
 
@@ -19,7 +21,6 @@ import { paths } from "@/config/paths";
 import { PROTOCOL } from "@/config/protocol";
 
 import { ErrorLine, Primary } from "./parts";
-import { saveDeployment } from "../model/browserEvents";
 import { gate } from "../model/shared";
 import { browserZone, zonedUnix, zoneLabel, zoneList } from "../model/zone";
 import { tx } from "../operations/tx";
@@ -105,7 +106,7 @@ function Field({
 
 export function CreateScreen() {
   const router = useRouter();
-  const { address } = useAccount();
+  const { address, chainId } = useAccount();
   const [form, setForm] = useState<Form>(() => initialForm());
   // the server renders in its own zone: take the device's once in the browser
   const [deviceZone, setDeviceZone] = useState("UTC");
@@ -122,20 +123,27 @@ export function CreateScreen() {
     setForm({ ...form, [key]: e.currentTarget.value });
 
   const asset = form.asset === "ETH" ? { symbol: "ETH", decimals: 18 } : token.data ? token.data : null;
+  // many phone keyboards type a decimal comma: "0,01"
+  const deposit = form.deposit.trim().replace(",", ".");
+  const [minDays, maxDays] = [MIN_SETTLEMENT_WINDOW / 86_400, MAX_SETTLEMENT_WINDOW / 86_400];
 
   const build = () => {
     if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
-    if (!/^\d+(\.\d+)?$/.test(form.deposit.trim()))
-      throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
+    if (!/^\d+(\.\d+)?$/.test(deposit)) throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
+    const days = Number(form.deadlineDays);
+    if (!Number.isInteger(days) || days < minDays || days > maxDays)
+      throw new Error(`Enter a whole number of days from ${minDays} to ${maxDays}.`);
+    if (!LUMA_URL.test(form.url.trim()))
+      throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
     const end = zonedUnix(form.end, form.zone);
     return eventConfig({
       name: form.name,
       url: form.url,
       token: form.asset === "ETH" ? undefined : (form.token as Address),
-      depositAmount: parseUnits(form.deposit.trim(), asset.decimals),
+      depositAmount: parseUnits(deposit, asset.decimals),
       eventStart: zonedUnix(form.start, form.zone),
       eventEnd: end,
-      claimDeadline: end + Math.max(7, Number(form.deadlineDays) || 7) * 86_400,
+      claimDeadline: end + days * 86_400,
       capacity: Number(form.capacity) || 0,
     });
   };
@@ -146,10 +154,26 @@ export function CreateScreen() {
     check = (e as Error).message;
   }
   const reason = !PROTOCOL
-    ? "This network has no factory yet."
+    ? "Events cannot be created on this network yet."
     : !address
       ? "Connect the wallet that will organise the event."
-      : check;
+      : chainId !== DEFAULT_CHAIN_ID
+        ? `Switch your wallet to ${DEFAULT_CHAIN.name}.`
+        : check;
+  const feeHint =
+    fee === undefined
+      ? undefined
+      : form.asset === "ETH" && /^\d+(\.\d+)?$/.test(deposit) && parseUnits(deposit, 18) < fee
+        ? `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH. To send their case to Kleros, you pay the same fee, and you lose it if the jurors side with the guest, so mark everyone who came.`
+        : `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH.`;
+  const zoneName = form.zone.replace(/_/g, " ");
+  /** The picked time as the event page will show it: "Thu 3 Dec 2026, 18:00 GMT". */
+  const shown = (value: string) => {
+    const unix = zonedUnix(value, form.zone);
+    return Number.isFinite(unix) && isShowableTime(unix) ? zonedDateText(unix, form.zone) : "";
+  };
+  const startUnix = zonedUnix(form.start, form.zone);
+  const startPassed = Number.isFinite(startUnix) && startUnix > 0 && startUnix < Date.now() / 1000;
 
   const create = () => {
     setError(null);
@@ -160,13 +184,10 @@ export function CreateScreen() {
           const [log] = parseEventLogs({ abi: presenceFactoryAbi, eventName: "EventCreated", logs: receipt.logs });
           const created = log?.args.eventContract;
           if (!created)
-            return setError({ text: "Created, but the new address was not found. Check your wallet.", at: Date.now() });
-          saveDeployment({
-            address: created,
-            chainId: DEFAULT_CHAIN_ID,
-            block: Number(receipt.blockNumber),
-            name: form.name.trim(),
-          });
+            return setError({
+              text: "The event was created, but its address could not be read. Open Organise: it is listed under Your events.",
+              at: Date.now(),
+            });
           router.push(paths.organiseEvent.getHref(created));
         },
         onError: (e) => setError({ text: e.message, at: Date.now() }),
@@ -184,7 +205,8 @@ export function CreateScreen() {
           and independent jurors on Kleros Court decide who is right.
         </p>
       </div>
-      {!address && (
+      {/* connect, or switch a wallet that is on another network; nothing once it is ready */}
+      {(!address || chainId !== DEFAULT_CHAIN_ID) && (
         <div className="og-actions">
           <ConnectWallet text="Connect your wallet" />
         </div>
@@ -194,7 +216,7 @@ export function CreateScreen() {
           <Field label="Event name" full hint="Shown to guests, and to Kleros jurors if there is a dispute.">
             <input className="og-input" value={form.name} maxLength={120} onChange={set("name")} />
           </Field>
-          <Field label="Luma event page" full hint="Guests register there; Kickback only holds the deposits.">
+          <Field label="Luma event page" full hint="Required. Guests register there; Kickback only holds the deposits.">
             <input
               className="og-input"
               type="url"
@@ -209,20 +231,10 @@ export function CreateScreen() {
               <option value="token">A token (USDC, DAI…)</option>
             </select>
           </Field>
-          <Field
-            label={`Deposit${asset ? `, ${asset.symbol}` : ""}`}
-            hint={
-              fee === undefined
-                ? undefined
-                : form.asset === "ETH" &&
-                    /^\d+(\.\d+)?$/.test(form.deposit.trim()) &&
-                    parseUnits(form.deposit.trim(), 18) < fee
-                  ? `A guest you leave off can challenge by paying the court fee, currently ${formatEther(fee)} ETH. A guest you wrongly leave off can win it back from you, so mark everyone who came.`
-                  : `A guest you leave off can challenge by paying the court fee, currently ${formatEther(fee)} ETH.`
-            }
-          >
+          <Field label={`Deposit${asset ? ` (${asset.symbol})` : ""}`}>
             <input className="og-input" inputMode="decimal" value={form.deposit} onChange={set("deposit")} />
           </Field>
+          {feeHint && <p className="og-note is-full -mt-2.5">{feeHint}</p>}
           {form.asset === "token" && (
             <Field
               label="Token contract address"
@@ -241,7 +253,7 @@ export function CreateScreen() {
           <Field
             label="Time zone of the event"
             full
-            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Where the event takes place, as set on Luma. Your device is set to ${deviceZone.replace(/_/g, " ")}.`}
+            hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Use the event's own time zone, as set on Luma. Your device is set to ${deviceZone.replace(/_/g, " ")}.`}
           >
             <select className="og-input" value={form.zone} onChange={set("zone")}>
               {zoneList(form.zone).map((z) => (
@@ -251,27 +263,51 @@ export function CreateScreen() {
               ))}
             </select>
           </Field>
-          <Field label="Starts" hint={`In ${form.zone.replace(/_/g, " ")} time`}>
+          <Field
+            label="Starts"
+            hint={
+              startPassed
+                ? "This start time has already passed. Guests can still deposit until the event ends, but you will not be able to turn anyone away."
+                : shown(form.start)
+                  ? `${shown(form.start)}, in the event's time zone (${zoneName})`
+                  : `In the event's time zone (${zoneName})`
+            }
+          >
             <input className="og-input" type="datetime-local" value={form.start} onChange={set("start")} />
           </Field>
-          <Field label="Ends" hint="Deposits stay open until then, for walk-ins.">
+          <Field
+            label="Ends"
+            hint={
+              shown(form.end)
+                ? `${shown(form.end)}. Deposits stay open until then, for walk-ins.`
+                : "Deposits stay open until then, for walk-ins."
+            }
+          >
             <input className="og-input" type="datetime-local" value={form.end} onChange={set("end")} />
           </Field>
           <Field
             label="Days to confirm who came"
-            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the event is over, then 1 day for challenges. Miss the deadline and every guest gets their deposit back.`}
+            hint={`${MIN_SETTLEMENT_WINDOW / 86_400} to ${MAX_SETTLEMENT_WINDOW / 86_400} days after the event ends, then 1 day for challenges. Miss the deadline and every guest can withdraw their full deposit.`}
           >
             <input
               className="og-input"
               type="number"
               min={MIN_SETTLEMENT_WINDOW / 86_400}
               max={MAX_SETTLEMENT_WINDOW / 86_400}
+              step={1}
               value={form.deadlineDays}
               onChange={set("deadlineDays")}
             />
           </Field>
           <Field label="Capacity" hint="Leave empty for no limit.">
-            <input className="og-input" type="number" min={0} value={form.capacity} onChange={set("capacity")} />
+            <input
+              className="og-input"
+              type="number"
+              min={0}
+              step={1}
+              value={form.capacity}
+              onChange={set("capacity")}
+            />
           </Field>
         </div>
       </GlassCard>

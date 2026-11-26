@@ -34,9 +34,11 @@ export function attendanceFromCsv(text: string, stakers: readonly Address[], ove
   const skipped: SkippedRow[] = [];
   rows.forEach((r, i) => {
     const name = (columns.name && r[columns.name]) || (columns.email && r[columns.email]) || `Row ${i + 2}`;
-    // the wallet column, or any cell holding an address (a custom Luma question)
-    const wallet =
-      (columns.wallet && normAddress(r[columns.wallet])) || Object.values(r).map(normAddress).find(Boolean) || null;
+    // only the wallet column when there is one (an address typed in a free-text answer proves nothing);
+    // otherwise any cell holding an address
+    const wallet = columns.wallet
+      ? normAddress(r[columns.wallet])
+      : Object.values(r).map(normAddress).find(Boolean) || null;
     if (!wallet) return skipped.push({ row: i + 2, name, reason: "no-wallet" });
     if (columns.checkedIn && !String(r[columns.checkedIn] ?? "").trim())
       return skipped.push({ row: i + 2, name, reason: "not-checked-in", wallet });

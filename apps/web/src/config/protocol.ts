@@ -65,16 +65,8 @@ export const caseUrl = (chainId: number, arbitratorDisputeID: bigint): string | 
   return court ? `${court}${arbitratorDisputeID}` : undefined;
 };
 
-/**
- * Organisers whose events the home page lists. Anyone can create an event from the factory, so the home page
- * does not advertise strangers' events (a guest can still open any event by its link). Comma-separated
- * addresses in NEXT_PUBLIC_FEATURED_ORGANISERS; on a local chain every event is listed.
- */
-export const FEATURED_ORGANISERS: readonly string[] | null =
-  CHAIN_MODE === "hardhat" && !process.env.NEXT_PUBLIC_FEATURED_ORGANISERS
-    ? null
-    : (process.env.NEXT_PUBLIC_FEATURED_ORGANISERS ?? "")
-        .split(",")
-        .map((a) => a.trim())
-        .filter((a) => isAddress(a))
-        .map((a) => a.toLowerCase());
+/** The Dispute Resolver's page for a case (its local dispute ID), where evidence is sent. */
+export const resolverCaseUrl = (chainId: number, localDisputeID: bigint): string | undefined => {
+  const resolver = KLEROS[chainId]?.resolver;
+  return resolver ? `${resolver}${localDisputeID}` : undefined;
+};

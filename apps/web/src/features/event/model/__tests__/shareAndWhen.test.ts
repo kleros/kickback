@@ -30,6 +30,17 @@ describe("shareExample", () => {
   it("falls back to ten deposits under two registered", () => {
     expect(shareExample(parseEther("0.01"), 0)).toMatchObject({ deposits: 10, attend: 8, real: false });
   });
+
+  it("uses the posted list once there is one, and never divides by zero", () => {
+    expect(shareExample(parseEther("0.01"), 4, undefined, 2)).toMatchObject({
+      deposits: 4,
+      attend: 2,
+      noShows: 2,
+      basis: "list",
+    });
+    expect(shareExample(parseEther("0.01"), 4, 1n, 3).basis).toBe("paid");
+    expect(shareExample(parseEther("0.01"), 4, undefined, 0).basis).toBe("estimate");
+  });
 });
 
 describe("dates on the event's clock", () => {
@@ -56,7 +67,7 @@ describe("dates on the event's clock", () => {
   it("says a time cannot be shown instead of crashing", () => {
     for (const bad of [1e15, Number.NaN])
       for (const text of [eventDateText(bad, IST), dayText(bad, null), visitorText(bad, "UTC")])
-        expect(text).toBe("date out of range");
+        expect(text).toBe("Date not available");
     expect(sameClock(1e15, IST, "UTC")).toBe(true);
   });
 });

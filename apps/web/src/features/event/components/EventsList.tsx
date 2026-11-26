@@ -46,7 +46,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
                   {eventDateText(data.eventStart, data.clock)}
                 </time>
               ) : event.isError ? (
-                "Not available on this network"
+                "Could not load this event"
               ) : (
                 <i className="home-skel w-56" />
               )}
@@ -61,7 +61,6 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
               )}
             </span>
             <span className="home-event-meta">
-              {row.mine && <span className="kb-chip">Yours</span>}
               {status && (
                 <span className="home-status" data-status={status}>
                   {STATUS_TEXT[status]}
@@ -80,13 +79,12 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   );
 }
 
-/** The factory's newest events and the ones created from this browser. */
+/** The connected wallet's own events, on the home page. */
 export function EventsList({ rows }: { rows: readonly ListedEvent[] }) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;
 
-  if (!rows.length)
-    return <p className="home-empty">No featured events yet. Guests open an event from its own link.</p>;
+  if (!rows.length) return <p className="home-empty">No featured events yet. Guests find each event on Luma.</p>;
   return (
     <ul className="home-events" data-testid="home-events">
       {rows.map((row) => (

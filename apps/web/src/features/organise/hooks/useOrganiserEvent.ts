@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 import { errorText } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -31,7 +31,8 @@ export function useOrganiserEventSource(address: Address) {
     retry: 1,
     queryFn: () => readOrganiser(client!, address),
   });
-  const { address: account } = useAccount();
+  const { address: account, chainId } = useAccount();
+  const onChain = !!account && chainId === DEFAULT_CHAIN_ID;
   const data = overview.data;
   const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
   const phase = data ? phaseOf(data.event, data.now) : null;
@@ -39,23 +40,35 @@ export function useOrganiserEventSource(address: Address) {
   const [running, setRunning] = useState<string | null>(null);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  // a message belongs to the wallet that sent it: drop it on Disconnect or an account switch
+  const accountKey = account?.toLowerCase();
+  useEffect(() => {
+    setError(null);
+    setDone(null);
+  }, [accountKey]);
   const busy = useSendBusy();
   const send = useSend({
-    onSuccess: () => {
-      void queries.invalidateQueries({ queryKey: organiserKey(address) });
-      void queries.invalidateQueries({ queryKey: ["event", DEFAULT_CHAIN_ID, address.toLowerCase()] });
+    // awaited, so a tab never offers the same names again before the new list is read
+    onSuccess: async () => {
+      await Promise.all([
+        queries.invalidateQueries({ queryKey: organiserKey(address) }),
+        queries.invalidateQueries({ queryKey: ["event", DEFAULT_CHAIN_ID, address.toLowerCase()] }),
+      ]);
     },
   });
 
   /** Sends one request under a label ("Turn away 2"); `success` is said when it is confirmed. */
-  const run = (label: string, request: () => Request | Promise<Request>, success: string) => {
+  const run = (label: string, request: () => Request | Promise<Request>, success: string, onSent?: () => void) => {
     setRunning(label);
     setError(null);
     setDone(null);
     send.mutate(
       { expectedAccount: account, prepare: async () => await request() },
       {
-        onSuccess: () => setDone(success),
+        onSuccess: () => {
+          setDone(success);
+          onSent?.();
+        },
         onError: (e) => setError({ text: e.message || errorText(e), at: Date.now() }),
         onSettled: () => setRunning(null),
       },
@@ -68,6 +81,8 @@ export function useOrganiserEventSource(address: Address) {
     phase,
     isOwner,
     connected: !!account,
+    /** Connected, and on the network the event lives on. */
+    onChain,
     account,
     run,
     running,

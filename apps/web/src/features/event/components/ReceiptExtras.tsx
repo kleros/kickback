@@ -14,9 +14,9 @@ export function ReceiptExtras({
   luma: string;
   guestLink: string;
 }) {
-  if ((view.key !== "done" && view.key !== "already") || !view.receipt) return null;
+  if ((view.key !== "done" && view.key !== "already") || !view.receipt || view.ended) return null;
   return (
-    <section className="receipt-extras" aria-label="Share and save your ticket" data-testid="receipt-extras">
+    <section className="receipt-extras" aria-label="Share the event" data-testid="receipt-extras">
       <ShareRow text={text} luma={luma} guestLink={guestLink} />
     </section>
   );

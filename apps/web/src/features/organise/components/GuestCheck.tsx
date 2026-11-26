@@ -2,12 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { presenceEventAbi } from "@kickback/contracts";
 import { extractTxHash, normAddress } from "@kickback/core";
-import type { Address, Hash } from "viem";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  isAddressEqual,
+  parseEventLogs,
+  TransactionNotFoundError,
+  TransactionReceiptNotFoundError,
+  type Address,
+  type Hash,
+} from "viem";
 import { usePublicClient } from "wagmi";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
+import { organiserKey } from "../hooks/useOrganiserEvent";
 import type { GuestRow } from "../operations/read";
 
 type Verdict = {
@@ -50,6 +60,7 @@ export function GuestCheck({
   check: (wallet: string) => number | undefined;
 }) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  const queries = useQueryClient();
   const [text, setText] = useState("");
   const [result, setResult] = useState<Verdict>(null);
   const [busy, setBusy] = useState(false);
@@ -64,21 +75,23 @@ export function GuestCheck({
     }
   }, []);
 
-  const walletVerdict = (wallet: string, viaTx: boolean): Verdict => {
-    const row = guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase());
+  /** `live` is the wallet's status read from the contract just now; the cached list is the fallback. */
+  const walletVerdict = (wallet: string, viaTx: boolean, live?: number): Verdict => {
+    const status = live ?? guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase())?.status ?? 0;
     const name = nameOf(wallet);
     const who = name ? `${name} on Luma. ` : "";
-    if (!row || row.status === 0)
+    if (status === 0)
       return { tone: "err", title: "No deposit: do not approve", text: "This wallet has not deposited.", wallet };
-    if (row.status === 2)
+    if (status === 2)
       return { tone: "err", title: "Turned away: do not approve", text: "Their deposit was refunded.", wallet };
-    if (row.status === 3) return { tone: "err", title: "Refunded: do not approve", wallet };
+    if (status === 3)
+      return { tone: "err", title: "Refunded: do not approve", text: "This wallet withdrew its deposit.", wallet };
     const before = approvedAt(wallet);
     if (before !== undefined)
       return {
         tone: "warn",
         title: "Already approved: approve only one",
-        text: `${who}A request with this deposit was approved here at ${clock(before)}. One deposit is one ticket.`,
+        text: `${who}A request with this deposit was approved here at ${clock(before)}. One deposit covers one guest.`,
         wallet,
       };
     return {
@@ -86,10 +99,23 @@ export function GuestCheck({
       title: "Deposit found: approve",
       text: viaTx
         ? `${who}Approve if this is the Ethereum address on their Luma request.`
-        : `${who}Deposit found for this wallet.`,
+        : `${who}Approve their request on Luma.`,
       wallet,
     };
   };
+
+  // the deposit is read live: the cached list can be seconds behind a walk-in who just deposited
+  const liveStatus = async (wallet: Address) =>
+    client
+      ? Number(
+          await client.readContract({
+            address: contract,
+            abi: presenceEventAbi,
+            functionName: "status",
+            args: [wallet],
+          }),
+        )
+      : undefined;
 
   const check = async (value: string) => {
     latest.current = value;
@@ -114,16 +140,40 @@ export function GuestCheck({
             title: "Failed transaction: do not approve",
             text: "Nothing was deposited.",
           });
-        if (tx.to?.toLowerCase() !== contract.toLowerCase())
+        // the depositor is in the event's own Deposited log: smart wallets and Safes send through another contract
+        const stakers = [
+          ...new Set(
+            parseEventLogs({
+              abi: presenceEventAbi,
+              eventName: "Deposited",
+              logs: receipt.logs.filter((l) => isAddressEqual(l.address, contract)),
+            }).map((l) => l.args.staker),
+          ),
+        ];
+        if (stakers.length === 0)
           return setResult({
             tone: "err",
             title: "Not a deposit: do not approve",
-            text: "This transaction did not go to this event.",
+            text: "This transaction has no deposit to this event.",
           });
-        setResult(walletVerdict(tx.from, true));
-      } catch {
+        if (stakers.length > 1)
+          return setResult({
+            tone: "warn",
+            title: "Several deposits in one transaction",
+            text: "Paste the Ethereum address from their Luma request instead.",
+          });
+        const staker = stakers[0]!;
+        const status = await liveStatus(staker);
+        if (latest.current !== value) return;
+        setResult(walletVerdict(staker, true, status));
+        void queries.invalidateQueries({ queryKey: organiserKey(contract) });
+      } catch (e) {
         if (latest.current === value)
-          setResult({ tone: "err", title: "Not found: do not approve", text: "No such transaction on this network." });
+          setResult(
+            e instanceof TransactionNotFoundError || e instanceof TransactionReceiptNotFoundError
+              ? { tone: "err", title: "Not found: do not approve", text: "No such transaction on this network." }
+              : { tone: "warn", title: "Could not check: try again", text: "The network did not answer." },
+          );
       } finally {
         if (latest.current === value) setBusy(false);
       }
@@ -131,8 +181,20 @@ export function GuestCheck({
     }
     setBusy(false);
     const wallet = normAddress(value);
-    if (wallet) return setResult(walletVerdict(wallet, false));
-    if (value.trim()) setResult({ tone: "warn", title: "Paste a wallet address (0x…) or a transaction link" });
+    if (wallet) {
+      setBusy(true);
+      try {
+        const status = await liveStatus(wallet as Address);
+        if (latest.current === value) setResult(walletVerdict(wallet, false, status));
+      } catch {
+        // the network did not answer: the list read a few seconds ago still counts
+        if (latest.current === value) setResult(walletVerdict(wallet, false));
+      } finally {
+        if (latest.current === value) setBusy(false);
+      }
+      return;
+    }
+    if (value.trim()) setResult({ tone: "warn", title: "Paste a wallet address (0x…) or a deposit link" });
   };
 
   const take = (value: string) => {
@@ -161,11 +223,11 @@ export function GuestCheck({
         <input
           ref={input}
           className="og-input is-mono"
-          placeholder="0x… or https://etherscan.io/tx/0x…"
+          placeholder="0x… or deposit link"
           value={text}
           spellCheck={false}
           autoComplete="off"
-          aria-label="Wallet address or transaction link"
+          aria-label="Wallet address or deposit link"
           data-testid="guest-check-input"
           onFocus={(e) => e.currentTarget.select()}
           onChange={(e) => take(e.currentTarget.value)}
@@ -181,7 +243,9 @@ export function GuestCheck({
           data-testid="guest-check-result"
           data-tone={busy ? "warn" : result?.tone}
         >
-          <p className="og-verdict-title">{busy ? "Checking the transaction…" : result?.title}</p>
+          <p className="og-verdict-title">
+            {busy ? (extractTxHash(text) ? "Checking the transaction…" : "Checking the deposit…") : result?.title}
+          </p>
           {!busy && result?.wallet && <WalletText wallet={result.wallet} />}
           {!busy && result?.text && <p className="og-verdict-text">{result.text}</p>}
           {!busy && result?.tone === "ok" && result.wallet && result.title !== "Recorded as approved" && (
@@ -190,7 +254,12 @@ export function GuestCheck({
               className="og-paste self-start"
               onClick={() => {
                 remember(result.wallet!);
-                setResult({ ...result, tone: "ok", title: "Recorded as approved", text: "Now approve it on Luma." });
+                setResult({
+                  ...result,
+                  tone: "ok",
+                  title: "Recorded as approved",
+                  text: "Now approve their request on Luma.",
+                });
               }}
             >
               Record as approved

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { presenceEventAbi } from "@kickback/contracts";
-import { gasLimitFor, isEth } from "@kickback/core";
+import { gasLimitFor, isEth, revertName } from "@kickback/core";
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
 import { useQuery } from "@tanstack/react-query";
 import { getConnectorClient } from "@wagmi/core";
@@ -13,12 +13,12 @@ import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
-import { connectWallet } from "@/lib/web3/connect";
+import { connectWallet, hasInjectedWallet, installedWallets } from "@/lib/web3/connect";
 import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
-import { caseUrl } from "@/config/protocol";
+import { caseUrl, resolverCaseUrl } from "@/config/protocol";
 
 import { useDeposit } from "./useDeposit";
 import { useGuestMoney } from "./useGuestMoney";
@@ -26,8 +26,6 @@ import { useBlockTime, useCreatedBlock, useEventDeposits, type KickbackEvent } f
 import { chainName } from "../model/chainNames";
 import { depositState, depositsOpen, type DepositInput, type DepositView } from "../model/depositState";
 import { dayText, deadlineText } from "../model/when";
-
-const hasInjectedWallet = () => typeof window !== "undefined" && "ethereum" in window && !!window.ethereum;
 
 /** wallet_switchEthereumChain's "unknown chain" code, wherever viem nested it. */
 const isUnknownChain = (error: unknown): boolean => {
@@ -85,7 +83,10 @@ export interface DepositController {
   claim: () => void;
   challenge: () => void;
   approve: () => void;
+  resolve: () => void;
   depositOpen: boolean;
+  /** Chain time has passed the event's end. False while chain time is loading. */
+  ended: boolean;
   recheck: () => void;
   wallet?: Address;
 }
@@ -98,10 +99,22 @@ export function useDepositState(event: KickbackEvent): DepositController {
   const { switchChainAsync } = useSwitchChain();
   const [asked, setAsked] = useState(false);
   const [needsChain, setNeedsChain] = useState(false);
+  const [chainFailed, setChainFailed] = useState(false);
   const [hasProvider, setHasProvider] = useState(true);
   useEffect(() => setHasProvider(hasInjectedWallet()), []);
+  // a connected guest starts over: a later disconnect should not show "no wallet" straight away
+  useEffect(() => {
+    if (status === "connected") setAsked(false);
+  }, [status]);
+  // a new account, chain or connection: an old "not in your wallet" answer no longer holds
+  useEffect(() => {
+    setNeedsChain(false);
+    setChainFailed(false);
+  }, [address, chainId, status]);
 
   const connected = status === "connected" && address !== undefined;
+  // wagmi restoring the last session on page load, not a connect the guest started
+  const restoring = !connected && (status === "reconnecting" || (status === "connecting" && !asked));
   const onChain = connected && chainId === DEFAULT_CHAIN_ID;
 
   const { data: chainTime } = useChainTime();
@@ -143,6 +156,7 @@ export function useDepositState(event: KickbackEvent): DepositController {
   const view = depositState({
     amount: event.depositAmount,
     asset: { symbol: event.symbol, decimals: event.decimals, token },
+    eventStart: event.eventStart,
     eventEnd: event.eventEnd,
     phase,
     claimDeadline: event.claimDeadline,
@@ -159,12 +173,14 @@ export function useDepositState(event: KickbackEvent): DepositController {
     chainNow: chainTime?.now,
     chain: { id: DEFAULT_CHAIN_ID, name: DEFAULT_CHAIN.name },
     wallet: {
-      status: connected ? "connected" : status === "connecting" || (asked && modalOpen) ? "connecting" : "disconnected",
+      status: connected ? "connected" : asked && (status === "connecting" || modalOpen) ? "connecting" : "disconnected",
       address,
       chainId,
       hasProvider,
       asked,
       needsChain,
+      chainFailed,
+      restoring,
     },
     balance: balance.data?.value,
     fee: fee.data,
@@ -177,6 +193,7 @@ export function useDepositState(event: KickbackEvent): DepositController {
       hash: send.data?.transactionHash ?? sendError?.hash,
       errorKind: sendError?.kind,
       errorMessage: send.error?.message,
+      errorName: sendError?.kind === "refused" ? revertName(sendError.cause) : undefined,
     },
     wallNow,
     guests: event.stakerCount,
@@ -184,6 +201,7 @@ export function useDepositState(event: KickbackEvent): DepositController {
     dayText: (unix) => dayText(unix, event.clock),
     timeText: (unix) => deadlineText(unix, event.clock),
     caseUrl: (id) => caseUrl(DEFAULT_CHAIN_ID, id),
+    evidenceUrl: (id) => resolverCaseUrl(DEFAULT_CHAIN_ID, id),
     chainName,
   });
 
@@ -191,11 +209,16 @@ export function useDepositState(event: KickbackEvent): DepositController {
     view,
     wallet: address,
     depositOpen: depositsOpen(phase, event.eventEnd, chainTime?.now),
+    ended: chainTime?.now !== undefined && chainTime.now >= event.eventEnd,
     withdraw: money.withdraw,
     claim: money.claim,
     challenge: money.challenge,
     approve: money.approve,
+    resolve: money.resolve,
     connect: () => {
+      // a session being restored is already connecting: a second connect() would race it
+      if (restoring) return;
+      setHasProvider(installedWallets().length > 0 || hasInjectedWallet());
       setAsked(true);
       void connectWallet(() => open({ view: "Connect" }));
     },
@@ -206,11 +229,12 @@ export function useDepositState(event: KickbackEvent): DepositController {
       );
     },
     addChain: () => {
+      setChainFailed(false);
       void getConnectorClient(wagmiConfig)
         .then((client) => addChain(client, { chain: DEFAULT_CHAIN }))
         .then(() => switchChainAsync({ chainId: DEFAULT_CHAIN_ID }))
         .then(() => setNeedsChain(false))
-        .catch(() => {});
+        .catch(() => setChainFailed(true));
     },
     deposit: () => {
       send.reset();

@@ -31,7 +31,7 @@ function statusText(row: GuestRow, phase: number) {
 
 export function GuestsScreen() {
   const event = useOrganiserEvent();
-  const luma = useLumaBook(event.address);
+  const luma = useLumaBook(event.address, event.isOwner);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   const [search, setSearch] = useState("");
@@ -39,12 +39,14 @@ export function GuestsScreen() {
   const data = event.overview.data;
   const guests = useMemo(() => data?.guests ?? [], [data]);
   const booked = useMemo(() => guests.filter((g) => g.status === 1).map((g) => g.wallet), [guests]);
-  if (!data) return <p className="og-note">Reading the event…</p>;
+  if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   if (firstSeen.current === null) firstSeen.current = new Set(guests.map((g) => g.wallet.toLowerCase()));
   // the contract turns guests away only before the start (v2)
   const open = info.phase === 0 && data.now < info.eventStart;
-  const canAct = event.isOwner && open && !event.busy;
+  const canAct = event.isOwner && event.onChain && open && !event.busy;
+  // walk-ins can deposit until the end, but nobody can be turned away once the event has started
+  const live = info.phase === 0 && data.now >= info.eventStart && data.now < info.eventEnd;
   const chosen = guests.filter((g) => ticked.has(g.wallet.toLowerCase()) && g.status === 1);
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
@@ -59,6 +61,8 @@ export function GuestsScreen() {
     );
   });
   const fresh = guests.filter((g) => isNew(g.wallet)).length;
+  const turnedAway = guests.filter((g) => g.status === 2).length;
+  const refunded = guests.filter((g) => g.status === 3).length;
   const toggle = (wallet: string, on: boolean) => {
     const next = new Set(ticked);
     if (on) next.add(wallet.toLowerCase());
@@ -72,7 +76,9 @@ export function GuestsScreen() {
         <h2 className="kb-h1">Guests</h2>
         <p className="og-lede" data-testid="guest-count">
           <b>{info.stakerCount}</b> {info.stakerCount === 1 ? "deposit" : "deposits"}
-          {info.capacity ? ` of ${info.capacity} spots` : ""}
+          {info.capacity ? ` of ${info.capacity} ${info.capacity === 1 ? "spot" : "spots"}` : ""}
+          {turnedAway > 0 && ` · ${turnedAway} turned away`}
+          {refunded > 0 && ` · ${refunded} refunded`}
           {fresh > 0 && ` · ${fresh} new since you opened this page`}
         </p>
       </div>
@@ -86,24 +92,28 @@ export function GuestsScreen() {
           check={luma.check}
         />
       </GlassCard>
-      <GlassCard className="og-card">
-        <LumaMatch booked={booked} onRows={luma.add} />
-      </GlassCard>
+      {event.isOwner && (
+        <GlassCard className="og-card">
+          <LumaMatch booked={booked} onRows={luma.add} />
+        </GlassCard>
+      )}
 
       <section className="flex flex-col gap-3">
         <div className="flex flex-col gap-1">
           <h2 className="og-h2">All deposits</h2>
           <p className="og-lede">
             {open
-              ? `Newest first. Until the event starts you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
-              : "Newest first. Guests could only be turned away until the event started."}
+              ? `Newest first. Until the event starts, you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
+              : live
+                ? "Newest first. Guests can only be turned away before the event starts, so let in every walk-in who has deposited."
+                : "Newest first. Guests could only be turned away before the event started."}
           </p>
         </div>
         {guests.length > 0 && (
           <input
             className="og-input"
             type="search"
-            placeholder="Search name, email or wallet"
+            placeholder={event.isOwner ? "Search name, email or wallet" : "Search wallet"}
             aria-label="Search guests"
             value={search}
             onChange={(e) => setSearch(e.currentTarget.value)}
@@ -112,7 +122,7 @@ export function GuestsScreen() {
         {guests.length === 0 ? (
           <GlassCard className="og-card" data-testid="guests-empty">
             <h3 className="og-h2">No deposits yet</h3>
-            <p className="og-lede">Guests appear here as soon as they deposit on the event page.</p>
+            <p className="og-lede">Guests appear here as soon as they deposit on the guest page.</p>
           </GlassCard>
         ) : (
           <div className={`og-table is-guests${explorer ? "" : " no-explorer"}`} role="table" aria-label="Guests">
@@ -157,12 +167,12 @@ export function GuestsScreen() {
                       <span>{statusText(row, info.phase)}</span>
                     </span>
                     <span className="og-ticks">
-                      {open && (
+                      {open && row.status === 1 && (
                         <label className="og-tick">
                           <input
                             type="checkbox"
                             checked={ticked.has(row.wallet.toLowerCase())}
-                            disabled={!canAct || row.status !== 1}
+                            disabled={!canAct}
                             aria-label={`Turn away ${row.wallet}`}
                             onChange={(e) => toggle(row.wallet, e.currentTarget.checked)}
                           />
@@ -203,12 +213,12 @@ export function GuestsScreen() {
       {confirm && (
         <ConfirmDialog
           isOpen
-          title="Turn guests away"
+          title={chosen.length === 1 ? "Turn a guest away" : `Turn ${chosen.length} guests away`}
           intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.`}
           words={[]}
           figures={[
             { label: "Wallets", value: String(chosen.length) },
-            { label: "Refunded", value: assetText(info.depositAmount * BigInt(chosen.length), info) },
+            { label: "To refund", value: assetText(info.depositAmount * BigInt(chosen.length), info) },
           ]}
           extra={
             <ul className="og-mono" style={{ overflowWrap: "anywhere" }}>
@@ -231,7 +241,7 @@ export function GuestsScreen() {
             event.run(
               `Turn away ${wallets.length}`,
               () => tx.reject(info.contract, wallets),
-              `${wallets.length} turned away and refunded.`,
+              `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.`,
             );
           }}
         />

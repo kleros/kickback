@@ -166,7 +166,7 @@ describe("refusals before the wallet prompt", () => {
     expect(error).toBeInstanceOf(SendError);
     expect(error).toMatchObject({
       kind: "refused",
-      message: "This would fail, so nothing was sent: plain words for TooEarly()",
+      message: "plain words for TooEarly() Nothing was sent.",
     });
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
@@ -176,7 +176,7 @@ describe("refusals before the wallet prompt", () => {
     client.estimateGas.mockRejectedValueOnce(new Error("out of gas"));
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
       kind: "refused",
-      message: "This would fail, so nothing was sent: plain words for out of gas",
+      message: "plain words for out of gas Nothing was sent.",
     });
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });

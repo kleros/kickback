@@ -32,6 +32,10 @@ export class WalletFixture {
       account,
       features,
     ] as const);
+    // done only once the header shows this wallet: until then the page still offers to connect one
+    await this.page
+      .locator(`[data-testid="wallet-chip"][aria-label*="${address}" i]`)
+      .waitFor({ state: "attached", timeout: 30_000 });
   }
 }
 

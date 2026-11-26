@@ -10,8 +10,8 @@ import { connectWallet } from "@/lib/web3/connect";
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 /** Connect, or switch to the app's chain: whichever the wallet needs next. The header shows the address. */
-export function ConnectWallet({ text = "Connect" }: { text?: string }) {
-  const { address, isConnected, chainId } = useAccount();
+export function ConnectWallet({ text = "Connect", className }: { text?: string; className?: string }) {
+  const { address, isConnected, chainId, status } = useAccount();
   const { open } = useAppKit();
   const { open: isOpen } = useAppKitState();
   const { switchChain, isPending } = useSwitchChain();
@@ -20,6 +20,7 @@ export function ConnectWallet({ text = "Connect" }: { text?: string }) {
     if (chainId !== DEFAULT_CHAIN_ID)
       return (
         <GradientButton
+          className={className}
           isPending={isPending}
           glyph={isPending ? "ring" : undefined}
           onPress={() => switchChain({ chainId: DEFAULT_CHAIN_ID })}
@@ -30,8 +31,15 @@ export function ConnectWallet({ text = "Connect" }: { text?: string }) {
     return null;
   }
 
+  const connecting = status === "connecting";
   return (
-    <GradientButton isDisabled={isOpen} onPress={() => void connectWallet(() => open({ view: "Connect" }))}>
+    <GradientButton
+      className={className}
+      isDisabled={isOpen || connecting || status === "reconnecting"}
+      isPending={connecting}
+      glyph={connecting ? "ring" : undefined}
+      onPress={() => void connectWallet(() => open({ view: "Connect" }))}
+    >
       {text}
     </GradientButton>
   );

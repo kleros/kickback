@@ -1,6 +1,6 @@
 import { presenceEventAbi } from "@kickback/contracts";
 import { readGuest } from "@kickback/core";
-import { encodeFunctionData, erc20Abi, type Address, type PublicClient } from "viem";
+import { encodeFunctionData, erc20Abi, parseAbi, zeroAddress, type Address, type PublicClient } from "viem";
 
 import type { GuestState, MoneyAction } from "../model/depositState";
 
@@ -20,8 +20,35 @@ export async function readGuestMoney(
       ? client.readContract({ address: token, abi: erc20Abi, functionName: "balanceOf", args: [wallet] })
       : undefined,
   ]);
-  return { ...guest, allowance, tokenBalance };
+  // a settled Kleros case: read its ruling, so "did not rule" is not shown as "ruled you were not there"
+  let ruling: number | undefined;
+  if (guest.challenge.state === 3 && !guest.attended && guest.challenge.matcher !== zeroAddress) {
+    try {
+      const resolver = await client.readContract({
+        address: contract,
+        abi: presenceEventAbi,
+        functionName: "disputeResolver",
+      });
+      const d = await client.readContract({
+        address: resolver,
+        abi: RESOLVER_ABI,
+        functionName: "disputes",
+        args: [guest.challenge.localDisputeID],
+      });
+      ruling = Number(d[2]);
+    } catch {
+      // unknown: the card keeps the plain wording
+    }
+  }
+  return { ...guest, challenge: { ...guest.challenge, ruling }, allowance, tokenBalance };
 }
+
+/** The Dispute Resolver's case record: (extra data, isRuled, ruling, the arbitrator's dispute ID). */
+export const RESOLVER_ABI = parseAbi(["function disputes(uint256) view returns (bytes, bool, uint256, uint256)"]);
+
+/** What a claim or withdrawal pays: both amounts in an ETH event; the asset first, else the ETH, in a token event. */
+export const claimAmount = (amount: bigint, ethAmount: bigint, token: Address | undefined) =>
+  !token ? amount + ethAmount : amount > 0n ? amount : ethAmount;
 
 /** withdraw(to = the wallet itself): payouts, refunds and challenge money all come out this way. */
 export const withdrawRequest = (contract: Address, wallet: Address) => ({
@@ -45,20 +72,26 @@ export async function prepareGuestMoney(
       abi: presenceEventAbi,
       functionName: "challengeDeposit",
     });
-    if (cost !== shownAmount) throw new Error("Kleros's fee changed. Check the card and try again.");
+    if (cost !== shownAmount) throw new Error("The Kleros fee changed. Try again.");
     return {
       to: contract,
       value: cost,
       data: encodeFunctionData({ abi: presenceEventAbi, functionName: "challenge" }),
     };
   }
+  if (action === "resolve")
+    return {
+      to: contract,
+      value: 0n,
+      data: encodeFunctionData({ abi: presenceEventAbi, functionName: "resolveChallenge", args: [wallet] }),
+    };
   if (action === "approve") {
     const amount = await client.readContract({
       address: contract,
       abi: presenceEventAbi,
       functionName: "depositAmount",
     });
-    if (amount !== shownAmount || !token) throw new Error("The deposit amount changed. Reload the page.");
+    if (amount !== shownAmount || !token) throw new Error("The deposit changed. Reload the page.");
     // exactly the deposit, never an unlimited allowance
     return {
       to: token,
@@ -72,7 +105,6 @@ export async function prepareGuestMoney(
     functionName: "claimable",
     args: [wallet],
   });
-  if ((amount > 0n ? amount : ethAmount) !== shownAmount)
-    throw new Error("The amount changed. Check the card and try again.");
+  if (claimAmount(amount, ethAmount, token) !== shownAmount) throw new Error("The amount changed. Try again.");
   return withdrawRequest(contract, wallet);
 }

@@ -6,13 +6,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
-import { useSend } from "@/lib/web3/send";
+import { SendError, useSend } from "@/lib/web3/send";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import { depositsKey, eventKey } from "../api/useEvent";
 import type { MoneyAction } from "../model/depositState";
-import { prepareGuestMoney, readGuestMoney } from "../operations/guestMoney";
+import { claimAmount, prepareGuestMoney, readGuestMoney } from "../operations/guestMoney";
 
 export const moneyKey = (contract: Address) => ["guest-money", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
@@ -26,7 +26,7 @@ export function useGuestMoney(
   const { address } = useAccount();
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const queries = useQueryClient();
-  const [sending, setSending] = useState<{ account?: Address; action: MoneyAction; amount?: bigint }>({
+  const [sending, setSending] = useState<{ account?: Address; action: MoneyAction; amount?: bigint; unit?: string }>({
     action: "claim",
   });
   const query = useQuery({
@@ -51,9 +51,18 @@ export function useGuestMoney(
         ? challengeCost
         : action === "approve"
           ? depositAmount
-          : data && (data.claimable > 0n ? data.claimable : data.claimableEth);
+          : action === "resolve"
+            ? (data?.challenge.deposit ?? 0n)
+            : data && claimAmount(data.claimable, data.claimableEth, token);
     if (!address || !client || amount === undefined) return;
-    setSending({ account: address, action, amount });
+    // challenge money is ETH even in a token event
+    const unit =
+      action === "challenge" ||
+      action === "resolve" ||
+      (token && (action === "claim" || action === "withdraw") && data !== undefined && data.claimable === 0n)
+        ? "ETH"
+        : undefined;
+    setSending({ account: address, action, amount, unit });
     send.mutate({
       expectedAccount: address,
       prepare: () => prepareGuestMoney(client, contract, address, action, amount, token),
@@ -61,10 +70,16 @@ export function useGuestMoney(
   };
   return {
     query,
-    send: { ...sending, status: send.status, error: send.error?.message },
+    send: {
+      ...sending,
+      status: send.status,
+      error: send.error?.message,
+      errorKind: send.error instanceof SendError ? send.error.kind : undefined,
+    },
     withdraw: () => run("withdraw"),
     claim: () => run("claim"),
     challenge: () => run("challenge"),
     approve: () => run("approve"),
+    resolve: () => run("resolve"),
   };
 }

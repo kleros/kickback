@@ -59,12 +59,10 @@ export function parseCsv(text: unknown): Record<string, string>[] {
           wasQuoting = true;
           continue;
         }
-        throw new Error(`Invalid Closing Quote: got "${next}" at line ${line} instead of a comma or a line break`);
+        throw new Error(`A quote mark is out of place on line ${line}.`);
       }
       if (field.length)
-        throw new Error(
-          `Invalid Opening Quote: a quote is found inside a field at line ${line}, value is ${JSON.stringify(field)}`,
-        );
+        throw new Error(`A quote mark is out of place on line ${line}.`);
       quoting = true;
       continue;
     }
@@ -83,7 +81,7 @@ export function parseCsv(text: unknown): Record<string, string>[] {
     }
     field += ch;
   }
-  if (quoting) throw new Error(`Quote Not Closed: the text ends inside a quoted field (line ${line})`);
+  if (quoting) throw new Error(`A quoted cell is not closed (line ${line}).`);
   if (wasQuoting || record.length || field.length) {
     endField();
     endRecord();
@@ -192,15 +190,15 @@ export const fmt = (units: bigint, decimals = DECIMALS): string => {
 
 /**
  * An ETH amount for people to read: exact when it fits in `digits` decimals ("0.01 ETH"), otherwise
- * rounded down and marked with "~" ("~0.013333 ETH"). Dust is shown in full.
+ * rounded down and marked with "≈" ("≈0.013333 ETH"). Dust is shown in full.
  */
-/** An amount for reading: at most `digits` decimals, marked "~" when cut (an even split of a pool rarely ends). */
+/** An amount for reading: at most `digits` decimals, marked "≈" when cut (an even split of a pool rarely ends). */
 export function readableUnits(units: bigint, decimals: number, digits = 6): string {
   const exact = decimalText(units, decimals);
   const [whole = "0", dec = ""] = exact.split(".");
   if (dec.length <= digits) return exact;
   const short = dec.slice(0, digits).replace(/0+$/, "");
-  return short || whole !== "0" ? `~${whole}${short ? "." + short : ""}` : exact;
+  return short || whole !== "0" ? `≈${whole}${short ? "." + short : ""}` : exact;
 }
 
 export function fmtEth(units: bigint, digits = 6): string {
@@ -208,7 +206,7 @@ export function fmtEth(units: bigint, digits = 6): string {
   const [whole = "0", dec = ""] = exact.split(".");
   if (dec.length <= digits) return `${exact} ETH`;
   const short = dec.slice(0, digits).replace(/0+$/, "");
-  return short || whole !== "0" ? `~${whole}${short ? "." + short : ""} ETH` : `${exact} ETH`;
+  return short || whole !== "0" ? `≈${whole}${short ? "." + short : ""} ETH` : `${exact} ETH`;
 }
 
 /** An ETH amount in wei; throws on an empty, malformed or over-precise text (viem's parseEther reads "" as 0). */
@@ -231,3 +229,6 @@ export function lumaDecision(approval: unknown): LumaDecision {
   if (/^(approved|going|accepted)$/.test(a)) return "approved";
   return "pending";
 }
+
+/** A Luma event page link, as the guest page accepts it for "Back to Luma" and the share link. */
+export const LUMA_URL = /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/[A-Za-z0-9._~\-/?=&]+$/;

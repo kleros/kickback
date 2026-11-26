@@ -8,34 +8,19 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { NumberPop } from "@/components/ui/NumberPop";
 
-import { isShowableTime } from "@/utils/time";
-
 import { paths } from "@/config/paths";
 
 import { Messages } from "./Messages";
 import { ConfirmDialog, Figures } from "./parts";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import { NEXT_STEP } from "../model/phase";
-import { assetText, TYPED_WORDS } from "../model/view";
+import { NEXT_STEP, type NextStep } from "../model/phase";
+import { assetText, TYPED_WORDS, when } from "../model/view";
 import { tx } from "../operations/tx";
-
-const when = (unix: number) =>
-  isShowableTime(unix)
-    ? new Intl.DateTimeFormat("en-GB", {
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-        timeZoneName: "short",
-      }).format(new Date(unix * 1000))
-    : "date out of range";
 
 const LUMA_SETUP = [
   "Copy the guest link and put it in your Luma ticket's description.",
   'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet", and add a required question: "Paste your Kickback deposit link".',
-  "Guests deposit, then paste their transaction link in the Luma request.",
+  "Guests deposit, then paste their deposit link in the Luma request.",
   "Approve each request that has a deposit; you can check them on the Guests tab.",
 ];
 
@@ -44,23 +29,33 @@ export function OverviewScreen({ court }: { court: string }) {
   const { overview, phase, address } = event;
   const [cancel, setCancel] = useState(false);
   const data = overview.data;
-  if (!data || !phase) return <p className="og-note">Reading the event…</p>;
+  if (!data || !phase) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
   // nothing to answer yet: say when to come back instead
-  const step =
+  const step: NextStep =
     phase === "Challenge window" && open === 0
       ? {
-          title: "Come back to release payouts",
+          title: "Release payouts after the challenge window",
           detail: `No challenges so far. After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
-          tab: "payout" as const,
+          tab: null,
+          action: null,
         }
-      : NEXT_STEP[phase];
-  const booking = phase === "Booking open" || phase === "Live now";
+      : phase === "Payouts released" && info.openCases > 0
+        ? {
+            title: "Settle the Kleros cases",
+            detail: "A share is held for each open case. Settle each ruling on the Payout tab once the jurors decide.",
+            tab: "payout",
+            action: "Open Payout",
+          }
+        : phase === "Payouts released" && data.unpaid.length === 0
+          ? { title: "All done", detail: "Every attendee has received their payout.", tab: null, action: null }
+          : NEXT_STEP[phase];
+  const booking = phase === "Deposits open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
-    phase === "Booking open"
-      ? `Starts ${when(info.eventStart)} · deposits open until the end`
+    phase === "Deposits open"
+      ? `Starts ${when(info.eventStart)} · deposits stay open until it ends`
       : phase === "Live now"
         ? `The event is on · walk-ins can deposit until ${when(info.eventEnd)}`
         : phase === "Attendance due" || phase === "Adding names"
@@ -69,13 +64,11 @@ export function OverviewScreen({ court }: { court: string }) {
             ? `Challenges close ${when(info.challengeEndsAt)}`
             : null;
 
-  const canCancel = event.isOwner && info.phase === 0 && data.now <= info.claimDeadline;
+  const canCancel = event.isOwner && event.onChain && info.phase === 0 && data.now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
       <div className="flex flex-col gap-1">
-        <p className="og-hero-phase" data-testid="overview-phase">
-          {phase}
-        </p>
+        <h2 className="kb-h1">Overview</h2>
         {deadline && <p className="og-lede">{deadline}</p>}
       </div>
       <GlassCard as="section" className="og-card" data-testid="next-step">
@@ -93,7 +86,7 @@ export function OverviewScreen({ court }: { court: string }) {
             </div>
           </div>
         )}
-        {phase === "Booking open" && (
+        {phase === "Deposits open" && (
           <ol className="og-steps" aria-label="Set up Luma">
             {LUMA_SETUP.map((text, i) => (
               <li key={text} className="og-step">
@@ -107,7 +100,7 @@ export function OverviewScreen({ court }: { court: string }) {
             </li>
           </ol>
         )}
-        {step.tab && (
+        {step.tab && step.action && (
           <div className="og-actions">
             <Link
               href={`${paths.organiseEvent.getHref(address, undefined, step.tab)}${step.tab === "guests" ? "#check" : ""}`}
@@ -116,7 +109,7 @@ export function OverviewScreen({ court }: { court: string }) {
               prefetch
               onClick={() => window.scrollTo({ top: 0 })}
             >
-              {step.title}
+              {step.action}
             </Link>
           </div>
         )}
@@ -133,10 +126,15 @@ export function OverviewScreen({ court }: { court: string }) {
           { label: "Deposits", value: <NumberPop value={String(info.stakerCount)} still /> },
           {
             label: "Confirmed attendees",
-            value: info.phase === 0 || info.phase === 3 ? "—" : <NumberPop value={String(info.attendeeCount)} still />,
+            value:
+              info.phase === 3 || (info.phase === 0 && info.attendeeCount === 0) ? (
+                "—"
+              ) : (
+                <NumberPop value={String(info.attendeeCount)} still />
+              ),
           },
           { label: "Open challenges", value: <NumberPop value={String(open)} still /> },
-          { label: "Deposits held", value: assetText(info.depositAmount * BigInt(info.stakerCount), info) },
+          { label: "Deposits held", value: assetText(info.reservedPool, info) },
         ]}
       />
       <section className="flex flex-col gap-2">

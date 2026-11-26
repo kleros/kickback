@@ -1,6 +1,6 @@
 /**
  * Names from Luma exports, and the wallets already checked at the door, kept in this browser only
- * (localStorage, per event). Never sent anywhere: guest names and emails stay on the organiser's device.
+ * (localStorage, per event), shown only while the organiser's wallet is connected. Never sent anywhere: guest names and emails stay on the organiser's device.
  */
 export interface LumaPerson {
   name: string;

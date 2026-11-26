@@ -164,18 +164,28 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
   try {
     await client.call(tx);
   } catch (error) {
-    throw new SendError("refused", `This would fail, so nothing was sent: ${errorText(error)}`, undefined, {
-      cause: error,
-    });
+    throw new SendError(
+      "refused",
+      `${errorText(error).replace(/\s*Nothing was (sent|changed)\.?$/, "")} Nothing was sent.`,
+      undefined,
+      {
+        cause: error,
+      },
+    );
   }
 
   let estimate: bigint;
   try {
     estimate = await client.estimateGas(tx);
   } catch (error) {
-    throw new SendError("refused", `This would fail, so nothing was sent: ${errorText(error)}`, undefined, {
-      cause: error,
-    });
+    throw new SendError(
+      "refused",
+      `${errorText(error).replace(/\s*Nothing was (sent|changed)\.?$/, "")} Nothing was sent.`,
+      undefined,
+      {
+        cause: error,
+      },
+    );
   }
   const gas = gasLimitFor(estimate);
   if (estimate > TX_GAS_CAP || gas > TX_GAS_CAP) {
@@ -229,7 +239,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
   } catch (error) {
     throw new SendError(
       "unconfirmed",
-      "Sent but not confirmed yet. It may still go through: check it before trying again.",
+      "The transaction was sent but is not confirmed yet. It may still go through: check it before trying again.",
       hash,
       { cause: error },
     );
@@ -254,7 +264,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
 
   if (receipt.status !== "success") {
     sent?.forget(chainId, recordKey, minedHash);
-    throw new SendError("reverted", "It didn't go through on-chain. Only the network fee was spent.", minedHash);
+    throw new SendError("reverted", "The transaction failed. Only the network fee was spent.", minedHash);
   }
   if (!request.to && !receipt.contractAddress) {
     throw new SendError(
