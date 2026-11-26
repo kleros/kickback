@@ -112,7 +112,7 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
             >
               {preview?.image && <Image src={preview.image} alt="" width={960} height={540} unoptimized />}
               <span className="ed-preview-text">
-                <span className="ed-label">{preview?.siteName || (ended ? "Event page" : "Registration")}</span>
+                <span className="ed-label">{preview?.siteName || (ended ? "Event" : "Registration")}</span>
                 <strong>
                   {preview?.title || (isLuma ? "Luma event page" : "Event page")}{" "}
                   <ExternalIcon size={14} aria-hidden="true" />

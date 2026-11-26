@@ -84,6 +84,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         challengeFee={event.challengeDeposit}
         matchPeriod={event.matchPeriod}
         now={controller.now}
+        phase={event.phase}
         onDeposit={backToCard}
         depositOpen={
           controller.depositOpen && ["rest", "nowallet", "connect", "approve", "ready"].includes(controller.view.key)

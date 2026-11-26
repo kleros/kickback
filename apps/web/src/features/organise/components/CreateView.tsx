@@ -15,6 +15,7 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 import { isShowableTime, zonedDateText } from "@/utils/time";
 
 import { useSend } from "@/lib/web3/send";
+import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
@@ -107,9 +108,9 @@ function Field({
 export function CreateScreen() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { address, chainId, status } = useAccount();
+  const { address, chainId } = useAccount();
   // wagmi is restoring a saved session: no Connect prompt yet
-  const restoring = !address && status === "reconnecting";
+  const restoring = useRestoringWallet();
   const [form, setForm] = useState<Form>(() => initialForm());
   // the server renders in its own zone: take the device's once in the browser
   const [deviceZone, setDeviceZone] = useState("UTC");
@@ -204,7 +205,7 @@ export function CreateScreen() {
           const created = log?.args.eventContract;
           if (!created)
             return setError({
-              text: "The event was created, but its address could not be read. Open Manage your events: it is listed there.",
+              text: "The event was created, but its address could not be read. Open “Manage your events”: it is listed there.",
               at: Date.now(),
             });
           router.push(paths.organiseEvent.getHref(created));

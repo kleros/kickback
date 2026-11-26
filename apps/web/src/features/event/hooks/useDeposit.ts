@@ -51,7 +51,7 @@ export function useDeposit(contract: Address, token: Address, shownAmount: bigin
           functionName: "depositAmount",
         });
         // shown is signed: the amount on the card is the amount sent
-        if (amount !== shownAmount) throw new Error("The deposit changed. Reload the page.");
+        if (amount !== shownAmount) throw new Error("The deposit amount changed. Reload the page.");
         return {
           to: contract,
           data: encodeFunctionData({ abi: presenceEventAbi, functionName: "deposit" }),

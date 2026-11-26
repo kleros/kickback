@@ -47,4 +47,10 @@ describe("matchLuma", () => {
     expect(hasWalletColumn(csv)).toBe(false);
     expect(hasWalletColumn(`name,eth_address\nAl,${A}`)).toBe(true);
   });
+
+  it("counts only Luma's verified eth_address column, not a custom question about wallets", () => {
+    const csv = ["name,email,Your wallet address", `Al,al@x.io,${A}`].join("\n");
+    expect(matchLuma(csv, [A]).map((r) => r.match)).toEqual(["no-wallet"]);
+    expect(hasWalletColumn(csv)).toBe(false);
+  });
 });

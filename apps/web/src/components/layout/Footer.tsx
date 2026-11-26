@@ -93,8 +93,12 @@ export function Footer() {
       </div>
       <div className="kb-page kb-footer-base">
         <span>
-          {siteConfig.name} · Proof of Presence protocol ·{" "}
-          <span className="whitespace-nowrap">
+          <span className="whitespace-nowrap">{siteConfig.name} · Proof of Presence protocol</span>
+          {/* on a phone the line breaks here: no separator left hanging at its end */}
+          <span className="hidden sm:inline" aria-hidden="true">
+            {" · "}
+          </span>
+          <span className="block whitespace-nowrap sm:inline">
             Powered by{" "}
             <a href="https://kleros.io" {...out}>
               Kleros

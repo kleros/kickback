@@ -2,7 +2,12 @@ import { TX_GAS_CAP } from "@kickback/core";
 import {
   BaseError,
   ContractFunctionRevertedError,
+  HttpRequestError,
   isAddressEqual,
+  LimitExceededRpcError,
+  SocketClosedError,
+  TimeoutError,
+  WebSocketRequestError,
   zeroAddress,
   type Address,
   type Hash,
@@ -102,6 +107,21 @@ export class SendError extends Error {
   }
 }
 
+/** The RPC did not answer (timeout, HTTP failure, dropped socket, rate limit): not a refusal by the contract. */
+const isTransportError = (error: unknown) =>
+  error instanceof BaseError &&
+  !!error.walk(
+    (e) =>
+      e instanceof HttpRequestError ||
+      e instanceof TimeoutError ||
+      e instanceof WebSocketRequestError ||
+      e instanceof SocketClosedError ||
+      e instanceof LimitExceededRpcError,
+  );
+
+const networkError = (cause: unknown) =>
+  new SendError("network", "The network did not answer, so nothing was sent. Try again.", undefined, { cause });
+
 const DEFAULT_RECEIPT_TIMEOUT_MS = 5 * 60_000;
 const DEFAULT_NONCE_RETRY_MS = 4_000;
 
@@ -165,9 +185,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
         undefined,
         { cause: error },
       );
-    throw new SendError("network", "The network did not answer, so nothing was sent. Try again.", undefined, {
-      cause: error,
-    });
+    throw networkError(error);
   }
   const data = request.data ?? "0x";
   if (!request.to && data === "0x")
@@ -186,6 +204,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   try {
     await client.call(tx);
   } catch (error) {
+    if (isTransportError(error)) throw networkError(error);
     throw new SendError(
       "refused",
       `${errorText(error).replace(/\s*Nothing was (sent|changed)\.?$/, "")} Nothing was sent.`,
@@ -200,6 +219,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   try {
     estimate = await client.estimateGas(tx);
   } catch (error) {
+    if (isTransportError(error)) throw networkError(error);
     throw new SendError(
       "refused",
       `${errorText(error).replace(/\s*Nothing was (sent|changed)\.?$/, "")} Nothing was sent.`,

@@ -38,7 +38,7 @@ export const PHASE_TONE: Record<Phase, Tone> = {
   "Deposits open": "live",
   "Live now": "live",
   "Attendance due": "warn",
-  "Adding names": "warn",
+  "List not closed": "warn",
   "Challenge window": "live",
   "Challenges pending": "warn",
   "Payouts ready": "ok",

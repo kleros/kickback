@@ -21,7 +21,7 @@ import { tx } from "../operations/tx";
 
 const SKIP_TEXT = {
   "no-wallet": "No wallet in the row",
-  "not-a-guest": "Checked in, but this wallet has no deposit",
+  "not-a-guest": "No deposit from this wallet",
   "not-checked-in": "Not checked in on Luma",
   duplicate: "Listed twice",
 } as const;
@@ -195,7 +195,8 @@ export function AttendanceScreen() {
           <ul>
             {plan.skipped.map((s) => (
               <li key={s.row}>
-                Spreadsheet row {s.row} · {s.name} · {SKIP_TEXT[s.reason]}
+                Spreadsheet row {s.row}
+                {s.name ? ` · ${s.name}` : ""} · {SKIP_TEXT[s.reason]}
                 {s.wallet && (
                   <>
                     {" · "}
@@ -284,8 +285,9 @@ export function AttendanceScreen() {
       <Messages event={event} />
       {!listed && (
         <p className="og-note">
-          “Save for now” records these wallets on the blockchain: they cannot be removed later, but you can keep adding.
-          “Confirm and close” is final and starts the challenge window. Each is one transaction from your wallet.
+          {batched
+            ? `Your list has more than ${BATCH_SIZE} guests, so it is saved in batches of ${BATCH_SIZE}, one transaction each. Saved wallets cannot be removed later. When only the last batch is left, “Confirm and close” saves it, closes the list and starts the challenge window.`
+            : "“Save for now” records these wallets on the blockchain: they cannot be removed later, but you can keep adding. “Confirm and close” is final and starts the challenge window. Each is one transaction from your wallet."}
         </p>
       )}
       {!(listed && toAdd.length === 0) && (
@@ -332,7 +334,7 @@ export function AttendanceScreen() {
                 ? "Add to the list"
                 : batched
                   ? "Save the first batch"
-                  : "Save names"
+                  : "Save for now"
           }
           intro={
             final

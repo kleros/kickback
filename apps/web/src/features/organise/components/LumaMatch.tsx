@@ -71,8 +71,8 @@ export function LumaMatch({
       <ErrorLine error={err} />
       {rows && noWalletCol && (
         <p className="og-err" role="alert" data-testid="luma-no-wallet">
-          This export has no Ethereum wallet column. On the Luma ticket, turn on &quot;Require Ethereum wallet&quot;,
-          then export the guest list again.
+          This export has no Ethereum wallet column. On the Luma ticket, turn on “Require Ethereum wallet”, then export
+          the guest list again.
         </p>
       )}
       {rows && !noWalletCol && (

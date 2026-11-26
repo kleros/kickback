@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { batches, BATCH_SIZE } from "@kickback/core";
+
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 
@@ -63,6 +65,9 @@ export function GuestsScreen() {
         ? ("missed" as const)
         : undefined;
   const chosen = guests.filter((g) => ticked.has(g.wallet.toLowerCase()) && g.status === 1);
+  // one refund per wallet: a large selection is sent in batches, like the attendance list and the payouts
+  const first = chosen.slice(0, BATCH_SIZE);
+  const batched = batches(chosen, BATCH_SIZE).length > 1;
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
   const q = search.trim().toLowerCase();
@@ -125,7 +130,9 @@ export function GuestsScreen() {
                 ? "Newest first. Guests can only be turned away before the event starts, so let in every walk-in who has deposited."
                 : info.phase === 3
                   ? "Newest first. The event was cancelled, so every guest can withdraw their full deposit on the guest page."
-                  : "Newest first. Guests could only be turned away before the event started."}
+                  : closed === "missed"
+                    ? "Newest first. Attendance was not confirmed in time, so every guest can withdraw their full deposit on the guest page."
+                    : "Newest first. Guests could only be turned away before the event started."}
           </p>
         </div>
         {guests.length > 0 && (
@@ -206,7 +213,7 @@ export function GuestsScreen() {
             {rows.length === 0 && <p className="og-note py-3">No guest matches “{search}”.</p>}
           </div>
         )}
-        {chosen.length > 0 && (
+        {open && chosen.length > 0 && (
           <GlassCard className="og-selbar og-thumb">
             <span className="og-note" data-testid="selection">
               {chosen.length} selected
@@ -221,7 +228,9 @@ export function GuestsScreen() {
                 glyph={event.running?.startsWith("Turn away") ? "arc" : undefined}
                 onPress={() => setConfirm(true)}
               >
-                {`Turn away ${chosen.length} · refund now`}
+                {batched
+                  ? `Turn away ${first.length} of ${chosen.length} · refund now`
+                  : `Turn away ${chosen.length} · refund now`}
               </GradientButton>
             </div>
           </GlassCard>
@@ -229,19 +238,23 @@ export function GuestsScreen() {
         <Messages event={event} />
       </section>
 
-      {confirm && (
+      {confirm && open && (
         <ConfirmDialog
           isOpen
-          title={chosen.length === 1 ? "Turn a guest away" : `Turn ${chosen.length} guests away`}
-          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.`}
+          title={first.length === 1 ? "Turn a guest away" : `Turn ${first.length} guests away`}
+          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.${
+            batched
+              ? ` This sends the first ${first.length} of ${chosen.length}. Send the rest after it is confirmed.`
+              : ""
+          }`}
           words={[]}
           figures={[
-            { label: "Wallets", value: String(chosen.length) },
-            { label: "To refund", value: assetText(info.depositAmount * BigInt(chosen.length), info) },
+            { label: "Wallets", value: String(first.length) },
+            { label: "To refund", value: assetText(info.depositAmount * BigInt(first.length), info) },
           ]}
           extra={
             <ul className="og-mono" style={{ overflowWrap: "anywhere" }}>
-              {chosen.map((g) => (
+              {first.map((g) => (
                 <li key={g.wallet}>
                   {luma.nameOf(g.wallet) ? `${luma.nameOf(g.wallet)} · ` : ""}
                   {g.wallet}
@@ -249,19 +262,27 @@ export function GuestsScreen() {
               ))}
             </ul>
           }
-          action={`Turn away ${chosen.length}`}
+          action={`Turn away ${first.length}`}
           busy={event.busy}
           error={null}
           onClose={() => setConfirm(false)}
           onConfirm={() => {
-            const wallets = chosen.map((g) => g.wallet);
+            const wallets = first.map((g) => g.wallet);
+            const left = chosen.length - wallets.length;
             setConfirm(false);
             // the ticks stay until the refund is confirmed: a cancel in the wallet keeps the selection
             event.run(
               `Turn away ${wallets.length}`,
               () => tx.reject(info.contract, wallets),
-              `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.`,
-              () => setTicked(new Set()),
+              `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.${
+                left > 0 ? ` Send the next ${Math.min(BATCH_SIZE, left)}.` : ""
+              }`,
+              () =>
+                setTicked((prev) => {
+                  const next = new Set(prev);
+                  wallets.forEach((w) => next.delete(w.toLowerCase()));
+                  return next;
+                }),
             );
           }}
         />

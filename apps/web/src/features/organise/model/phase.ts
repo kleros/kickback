@@ -4,7 +4,7 @@ export type Phase =
   | "Deposits open"
   | "Live now"
   | "Attendance due"
-  | "Adding names"
+  | "List not closed"
   | "Challenge window"
   | "Challenges pending"
   | "Payouts ready"
@@ -32,7 +32,7 @@ export function phaseOf(
   if (now > event.claimDeadline) return "Past the deadline";
   if (now < event.eventStart) return "Deposits open";
   if (now < event.eventEnd) return "Live now";
-  return event.attendeeCount > 0 ? "Adding names" : "Attendance due";
+  return event.attendeeCount > 0 ? "List not closed" : "Attendance due";
 }
 
 export interface NextStep {
@@ -67,7 +67,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     tab: "attendance",
     action: "Open Attendance",
   },
-  "Adding names": {
+  "List not closed": {
     title: "Close the list",
     detail: "Add anyone missing, then close the list. Closing starts the 1-day challenge window.",
     tab: "attendance",

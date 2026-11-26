@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { BATCH_SIZE } from "@kickback/core";
 import { zeroAddress } from "viem";
@@ -35,6 +35,9 @@ export function PayoutScreen() {
   const luma = useLumaBook(event.address, event.isOwner);
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [confirm, setConfirm] = useState<"release" | null>(null);
+  // the dialog belongs to the wallet that opened it: close it on Disconnect, an account or a network switch
+  const accountKey = event.account?.toLowerCase();
+  useEffect(() => setConfirm(null), [accountKey, event.onChain]);
   const data = event.overview.data;
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
@@ -86,7 +89,7 @@ export function PayoutScreen() {
           <Figures
             big
             rows={[
-              { label: "Pool", value: assetText(pool, info) },
+              { label: "All deposits", value: assetText(pool, info) },
               { label: "Attendees", value: String(attendeesAfter) },
               { label: "Each gets", value: assetText(share, info) },
               {
@@ -243,8 +246,8 @@ export function PayoutScreen() {
             <GlassCard className="og-card">
               <h3 className="og-h2">Release payouts</h3>
               <p className="og-lede">
-                Splits the pool among the attendees. A share is held for each open Kleros case until it is decided.
-                Anyone can release payouts once the challenge window is over.
+                Splits all the deposits among the attendees. A share is held for each open Kleros case until it is
+                decided. Anyone can release payouts once the challenge window is over.
               </p>
               <div className="og-actions">
                 <GradientButton isDisabled={!!releaseReason || !canActAsAnyone} onPress={() => setConfirm("release")}>
@@ -292,14 +295,14 @@ export function PayoutScreen() {
           )}
         </>
       )}
-      {confirm === "release" && (
+      {confirm === "release" && info.phase === 1 && (
         <ConfirmDialog
           isOpen
           title="Release payouts"
-          intro="This splits the pool. It cannot be undone."
+          intro="This splits all the deposits among the attendees. It cannot be undone."
           words={[TYPED_WORDS.pay]}
           figures={[
-            { label: "Pool", value: assetText(pool, info) },
+            { label: "All deposits", value: assetText(pool, info) },
             { label: "Attendees", value: String(attendeesAfter) },
             { label: "Added from unanswered challenges", value: String(expired.length) },
             { label: "Each gets", value: assetText(share, info) },

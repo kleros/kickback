@@ -18,6 +18,7 @@ import { usePublicClient } from "wagmi";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import { organiserKey } from "../hooks/useOrganiserEvent";
+import { when } from "../model/view";
 import type { GuestRow } from "../operations/read";
 
 type Verdict = {
@@ -29,15 +30,6 @@ type Verdict = {
   /** Nothing left to record: the "I approved them on Luma" button is hidden. */
   done?: boolean;
 } | null;
-
-const clock = (ms: number) =>
-  new Date(ms).toLocaleString([], {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 
 /** The full address, with the first 6 and last 4 characters stressed: what people compare by eye. */
 function WalletText({ wallet }: { wallet: string }) {
@@ -95,9 +87,13 @@ export function GuestCheck({
     }
   }, []);
 
-  /** `live` is the wallet's status read from the contract just now; the cached list is the fallback. */
+  /**
+   * `live` is the wallet's status read from the contract at check time; `cached` is the refreshed list. A status
+   * only moves forward (none, deposited, then turned away or refunded), so the later of the two readings wins.
+   */
   const walletVerdict = (wallet: string, viaTx: boolean, live?: number): Verdict => {
-    const status = live ?? guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase())?.status ?? 0;
+    const cached = guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase())?.status;
+    const status = Math.max(live ?? 0, cached ?? 0);
     if (status === 0)
       return { tone: "err", title: "No deposit: do not approve", text: "This wallet has not deposited.", wallet };
     if (status === 2)
@@ -109,7 +105,7 @@ export function GuestCheck({
       return {
         tone: "warn",
         title: "Already approved: approve only one",
-        text: `A request with this deposit was already approved here on ${clock(before)}. One deposit covers one guest.`,
+        text: `A request with this deposit was already approved here on ${when(Math.floor(before / 1000))}. One deposit covers one guest.`,
         wallet,
         done: true,
       };
@@ -250,8 +246,10 @@ export function GuestCheck({
     input.current?.select();
   };
 
+  const verdict = checked ? walletVerdict(checked.wallet, checked.viaTx, checked.live) : null;
+  // a guest turned away or refunded after the mark is no longer approved
   const result: Verdict = checked
-    ? checked.marked
+    ? checked.marked && verdict?.tone !== "err"
       ? {
           tone: "ok",
           title: "Marked as approved",
@@ -259,7 +257,7 @@ export function GuestCheck({
           wallet: checked.wallet,
           done: true,
         }
-      : walletVerdict(checked.wallet, checked.viaTx, checked.live)
+      : verdict
     : fixed;
 
   return (

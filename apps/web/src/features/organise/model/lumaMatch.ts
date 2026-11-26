@@ -13,17 +13,23 @@ export interface LumaMatchRow {
   dupOf?: string;
 }
 
+/** Luma's own verified wallet column ("Require Ethereum wallet"); a custom question about wallets does not count. */
+const verifiedWalletColumn = (headers: readonly string[]) =>
+  headers.find((h) => h.trim().toLowerCase() === "eth_address");
+
 /**
  * Luma registrations against the event's deposits, by the wallet Luma verified ("Require Ethereum
  * wallet"). Booked guests first, then the rest, so the organiser can approve the matches in one go.
  */
 export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow[] {
   const rows = parseCsv(text);
-  const cols = detectColumns(rows[0] ? Object.keys(rows[0]) : []);
+  const headers = rows[0] ? Object.keys(rows[0]) : [];
+  const cols = detectColumns(headers);
+  const walletCol = verifiedWalletColumn(headers);
   const paid = new Set(booked.map((w) => w.toLowerCase()));
   const out = rows.map((r, i): LumaMatchRow => {
     // only the column Luma verified: an address typed in a free-text answer proves nothing
-    const wallet = cols.wallet ? normAddress(r[cols.wallet]) || null : null;
+    const wallet = walletCol ? normAddress(r[walletCol]) || null : null;
     return {
       name: (cols.name && r[cols.name]) || `Row ${i + 2}`,
       email: (cols.email && r[cols.email]) || "",
@@ -52,5 +58,5 @@ export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow
 /** Whether an export has the wallet column Luma fills when "Require Ethereum wallet" is on. */
 export function hasWalletColumn(text: string): boolean {
   const rows = parseCsv(text);
-  return !!detectColumns(rows[0] ? Object.keys(rows[0]) : []).wallet;
+  return !!verifiedWalletColumn(rows[0] ? Object.keys(rows[0]) : []);
 }

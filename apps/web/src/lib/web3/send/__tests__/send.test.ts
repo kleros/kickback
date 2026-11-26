@@ -1,5 +1,5 @@
 import { gasLimitFor, TX_GAS_CAP } from "@kickback/core";
-import { HttpRequestError, type Address, type Hash, type TransactionReceipt } from "viem";
+import { HttpRequestError, InsufficientFundsError, type Address, type Hash, type TransactionReceipt } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { sendLock } from "../lock";
@@ -260,6 +260,24 @@ describe("refusals before the wallet prompt", () => {
       message: "The network did not answer, so nothing was sent. Try again.",
     });
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("an RPC failure during the dry run or gas estimate is a network error, not a refusal", async () => {
+    const { deps, prepare, client, wallet } = setup();
+    client.call.mockRejectedValueOnce(new HttpRequestError({ url: "https://rpc.example", details: "fetch failed" }));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "network",
+      message: "The network did not answer, so nothing was sent. Try again.",
+    });
+    client.estimateGas.mockRejectedValueOnce(new HttpRequestError({ url: "https://rpc.example", status: 429 }));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "network" });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("a dry run that fails for lack of funds stays a refusal", async () => {
+    const { deps, prepare, client } = setup();
+    client.call.mockRejectedValueOnce(new InsufficientFundsError());
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "refused" });
   });
 
   it("a wallet refusal is put in plain words", async () => {

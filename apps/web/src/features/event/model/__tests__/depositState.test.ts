@@ -156,3 +156,16 @@ describe("depositState", () => {
     expect(view.receipt?.when).toBeUndefined();
   });
 });
+
+describe("challenge window while the chain's time loads", () => {
+  it("never says the window has closed before the time is known", () => {
+    const input = { ...galleryInput("challenge"), chainNow: undefined };
+    const view = depositState(input);
+    expect(view.key).toBe("checking");
+    expect(view.key).not.toBe("not-attended");
+  });
+
+  it("offers the challenge once the time is known", () => {
+    expect(depositState(galleryInput("challenge")).key).toBe("challenge");
+  });
+});

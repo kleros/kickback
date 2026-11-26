@@ -6,7 +6,8 @@ import { addNames, markChecked, readChecked, readNames, type CheckedBook, type L
 
 /**
  * The organiser's local Luma names and door checks for one event, shared by the tabs. Names are shown only
- * while `enabled` (the organiser's wallet is connected); door checks always count, so no one is approved twice.
+ * while `enabled` (the organiser's wallet is connected); door checks and the Luma request status always count,
+ * so no one is approved twice.
  */
 export function useLumaBook(contract: string, enabled: boolean) {
   const [names, setNames] = useState<LumaBook>({});
@@ -44,10 +45,7 @@ export function useLumaBook(contract: string, enabled: boolean) {
     (wallet: string) => (enabled ? names[wallet.toLowerCase()]?.name : undefined),
     [names, enabled],
   );
-  const lumaOf = useCallback(
-    (wallet: string) => (enabled ? names[wallet.toLowerCase()]?.luma : undefined),
-    [names, enabled],
-  );
+  const lumaOf = useCallback((wallet: string) => names[wallet.toLowerCase()]?.luma, [names]);
   const approvedAt = useCallback((wallet: string) => checked[wallet.toLowerCase()], [checked]);
   return { names: enabled ? names : {}, checked, add, check, nameOf, lumaOf, approvedAt };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { CopyButton } from "@/components/ui/CopyButton";
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -19,7 +19,7 @@ import { tx } from "../operations/tx";
 
 const LUMA_SETUP = [
   "Copy the guest link and put it in your Luma ticket's description.",
-  'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet", and add a required question: "Paste your Kickback deposit link".',
+  "On that Luma ticket, turn on “Require approval” and “Require Ethereum wallet”, and add a required question: “Paste your Kickback deposit link”.",
   "Guests deposit, then paste their deposit link in their Luma registration.",
   "Approve each request that has a deposit; you can check them on the Guests tab.",
 ];
@@ -28,6 +28,9 @@ export function OverviewScreen({ court }: { court: string }) {
   const event = useOrganiserEvent();
   const { overview, phase, address } = event;
   const [cancel, setCancel] = useState(false);
+  // the dialog belongs to the wallet that opened it: close it on Disconnect, an account or a network switch
+  const accountKey = event.account?.toLowerCase();
+  useEffect(() => setCancel(false), [accountKey, event.onChain]);
   const data = overview.data;
   if (!data || !phase) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
@@ -75,7 +78,7 @@ export function OverviewScreen({ court }: { court: string }) {
       ? `Starts ${when(info.eventStart)} · deposits stay open until it ends`
       : phase === "Live now"
         ? `The event is under way · walk-ins can deposit until ${when(info.eventEnd)}`
-        : phase === "Attendance due" || phase === "Adding names"
+        : phase === "Attendance due" || phase === "List not closed"
           ? `Confirm who came by ${when(info.claimDeadline)}`
           : phase === "Challenge window"
             ? `Challenges close ${when(info.challengeEndsAt)}`
@@ -187,7 +190,7 @@ export function OverviewScreen({ court }: { court: string }) {
         </section>
       )}
       <Messages event={event} />
-      {cancel && (
+      {cancel && canCancel && (
         <ConfirmDialog
           isOpen
           title="Cancel the event"

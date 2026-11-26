@@ -9,6 +9,8 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 
 import { shortenAddress } from "@/utils/address";
 
+import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
+
 import { DEFAULT_CHAIN } from "@/config/chains";
 import { paths } from "@/config/paths";
 
@@ -16,10 +18,11 @@ import { useMyEvents } from "../hooks/useMyEvents";
 
 /** Every event the connected wallet created, read from the factory: works on any device. */
 export function WalletEvents() {
-  const { address, status } = useAccount();
+  const { address } = useAccount();
   const mine = useMyEvents();
+  const restoring = useRestoringWallet();
   // no Connect button flashing while a saved wallet reconnects on load; a press keeps the button and its spinner
-  if (status === "reconnecting") return null;
+  if (restoring) return null;
   const events = mine.data ?? [];
   let body: ReactNode;
   if (!address)

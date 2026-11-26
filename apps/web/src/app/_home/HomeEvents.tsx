@@ -13,9 +13,16 @@ import { paths } from "@/config/paths";
  * No public or featured events: Kickback is a tool, not a listing, and guests arrive from Luma.
  * A connected wallet sees the events it created, as its own record.
  */
-// each row opens the organiser page: its pill says the same as that page's phase pill
+// each row opens the organiser page: its pill follows that page's phase pill. The row does not read each
+// challenge, so a late challenge counts as waiting until its latest possible answer time: the pill may show
+// "Challenges pending" a little longer than the organiser page, never "Payouts ready" too early
 const organiserStatus: RowStatus = (event, now) => {
-  const phase = phaseOf(event, now);
+  const mayWait =
+    event.phase === 1 &&
+    event.waitingChallenges > 0 &&
+    now > event.challengeEndsAt &&
+    now <= event.challengeEndsAt + event.matchPeriod;
+  const phase = phaseOf(event, now, mayWait ? 1 : 0);
   return { text: phase, tone: PHASE_TONE[phase] };
 };
 

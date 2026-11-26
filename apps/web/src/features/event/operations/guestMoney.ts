@@ -126,7 +126,7 @@ export async function prepareGuestMoney(
       abi: presenceEventAbi,
       functionName: "depositAmount",
     });
-    if (amount !== shownAmount || !token) throw new Error("The deposit changed. Reload the page.");
+    if (amount !== shownAmount || !token) throw new Error("The deposit amount changed. Reload the page.");
     // exactly the deposit, never an unlimited allowance
     return {
       to: token,

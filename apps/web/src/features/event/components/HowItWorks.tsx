@@ -192,10 +192,19 @@ function SplitPanel({ example }: { example: ShareExample }) {
   const bonus = cut(bonusRaw);
   const approx = /^[~≈]/.test(bonusRaw) || /^[~≈]/.test(backRaw);
   const amount = text(example.back - example.bonus);
-  const pillW = Math.max(88, (pool.length + unit.length + 1) * 10 + 24);
+  const pillW = Math.max(76, (pool.length + unit.length + 1) * 8 + 20);
   const poolX = noX.length
     ? Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, pillW / 2 + 6), 402 - pillW / 2)
     : 204;
+  const pillL = poolX - pillW / 2;
+  const pillR = poolX + pillW / 2;
+  // an attendee above the pill takes their share from its top edge (on the rounded corner where it falls);
+  // the others hang from the line that leaves the pill's left side
+  const pillTop = (x: number) => {
+    const dx = Math.min(x - pillL, pillR - x);
+    return dx >= 12 ? 62 : 74 - Math.sqrt(144 - (12 - dx) ** 2);
+  };
+  const busStart = Math.max(pillL - 4, ...attendX.filter((x) => x < pillL));
   const noShowsPossessive = example.noShows === 1 ? "no-show's" : "no-shows'";
   const depositsText = `${example.deposits} ${example.deposits === 1 ? "deposit" : "deposits"}`;
   const note: ReactNode =
@@ -250,13 +259,13 @@ function SplitPanel({ example }: { example: ShareExample }) {
         {!none && (
           <>
             <g className="pop" style={d(900)}>
-              <rect x={poolX - pillW / 2} y={62} width={pillW} height={30} rx={12} className="card" />
+              <rect x={pillL} y={62} width={pillW} height={30} rx={12} className="card" />
               <text x={poolX} y={81.5} textAnchor="middle">
                 {pool} {unit}
               </text>
             </g>
             <path
-              d={`M${poolX - pillW / 2 - 4} 77H${attendX[0] ?? 20}V38`}
+              d={`M${busStart} 77H${attendX[0] ?? 20}V38`}
               className="flow"
               stroke={stroke}
               pathLength={1}
@@ -265,14 +274,14 @@ function SplitPanel({ example }: { example: ShareExample }) {
             {attendX.slice(1).map((x, i) => (
               <path
                 key={i}
-                d={`M${x} 77V38`}
+                d={`M${x} ${x >= pillL && x <= pillR ? pillTop(x).toFixed(1) : 77}V38`}
                 className="flow"
                 stroke={stroke}
                 pathLength={1}
                 style={d(1300 + i * 40)}
               />
             ))}
-            <text x={poolX - pillW / 2 - 10} y={106} textAnchor="end" className="dim">
+            <text x={pillL - 10} y={106} textAnchor="end" className="dim">
               ÷ {ways}
             </text>
           </>
@@ -362,9 +371,12 @@ function TimelinePanel({
   challengeEndsAt,
   clock,
   now,
+  phase,
 }: {
   eventEnd: number;
   claimDeadline: number;
+  /** The contract's phase: 0 open, 1 list posted, 2 paid out, 3 cancelled. */
+  phase: number;
   challengePeriod: number;
   challengeEndsAt: number;
   clock: EventClock | null;
@@ -373,17 +385,21 @@ function TimelinePanel({
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
+  const cancelled = phase === 3;
+  const missed = phase === 0 && now !== undefined && now > claimDeadline;
   // once the list is posted, the rows follow what happened: posted, then the challenge window
-  const rows: readonly (readonly [string, number])[] = challengeEndsAt
-    ? [
-        ["Deposits closed", eventEnd],
-        ["Attendance confirmed", challengeEndsAt - challengePeriod],
-        [now !== undefined && now > challengeEndsAt ? "Challenges closed" : "Challenges close", challengeEndsAt],
-      ]
-    : [
-        [now !== undefined && now >= eventEnd ? "Deposits closed" : "Deposits close", eventEnd],
-        ["Attendance confirmed by", claimDeadline],
-      ];
+  const rows: readonly (readonly [string, number])[] = cancelled
+    ? []
+    : challengeEndsAt
+      ? [
+          ["Deposits closed", eventEnd],
+          ["Attendance confirmed", challengeEndsAt - challengePeriod],
+          [now !== undefined && now > challengeEndsAt ? "Challenges closed" : "Challenges close", challengeEndsAt],
+        ]
+      : [
+          [now !== undefined && now >= eventEnd ? "Deposits closed" : "Deposits close", eventEnd],
+          [missed ? "Attendance not confirmed by" : "Attendance confirmed by", claimDeadline],
+        ];
   return (
     <Panel title="When does it all happen?" testId="how-deadlines">
       <svg
@@ -419,19 +435,27 @@ function TimelinePanel({
           <b>Payouts</b>claimed by attendees
         </span>
       </div>
-      <div className="how-caps" style={{ marginTop: 16 }}>
-        {rows.map(([label, unix]) => (
-          <div key={label} className="how-sum is-stack" style={{ marginTop: 0 }}>
-            <span>{label}</span>
-            <span className="how-sum-date">
-              <b className="kb-num">{deadlineText(unix, clock)}</b>
-              {!sameClock(unix, clock) && <span className="how-when">{visitorText(unix)} your time</span>}
-            </span>
-          </div>
-        ))}
-      </div>
+      {rows.length > 0 && (
+        <div className="how-caps" style={{ marginTop: 16 }}>
+          {rows.map(([label, unix]) => (
+            <div key={label} className="how-sum is-stack" style={{ marginTop: 0 }}>
+              <span>{label}</span>
+              <span className="how-sum-date">
+                <b className="kb-num">{deadlineText(unix, clock)}</b>
+                {!sameClock(unix, clock) && <span className="how-when">{visitorText(unix)} your time</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {!challengeEndsAt && (
-        <p className="how-note">Attendance not confirmed by the deadline? You can withdraw your full deposit.</p>
+        <p className="how-note">
+          {cancelled
+            ? "The organiser cancelled this event. Every guest can withdraw their full deposit."
+            : missed
+              ? "Attendance was not confirmed in time. You can withdraw your full deposit."
+              : "Attendance not confirmed by the deadline? You can withdraw your full deposit."}
+        </p>
       )}
     </Panel>
   );
@@ -456,6 +480,8 @@ export interface HowItWorksProps {
   matchPeriod: number;
   /** The chain's time, unix seconds; undefined while loading. */
   now?: number;
+  /** The contract's phase: 0 open, 1 list posted, 2 paid out, 3 cancelled. */
+  phase: number;
   /** The closing button: back up to the card. */
   onDeposit: () => void;
   depositOpen: boolean;
@@ -476,6 +502,7 @@ export function HowItWorks({
   challengeFee,
   matchPeriod,
   now,
+  phase,
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
@@ -496,6 +523,7 @@ export function HowItWorks({
             challengeEndsAt={challengeEndsAt}
             clock={clock}
             now={now}
+            phase={phase}
           />
         </div>
         {depositOpen && (

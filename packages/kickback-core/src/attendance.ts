@@ -33,7 +33,7 @@ export function attendanceFromCsv(text: string, stakers: readonly Address[], ove
   const attending: Address[] = [];
   const skipped: SkippedRow[] = [];
   rows.forEach((r, i) => {
-    const name = (columns.name && r[columns.name]) || (columns.email && r[columns.email]) || `Row ${i + 2}`;
+    const name = (columns.name && r[columns.name]) || (columns.email && r[columns.email]) || "";
     // only the wallet column when there is one (an address typed in a free-text answer proves nothing);
     // otherwise any cell holding an address
     const wallet = columns.wallet

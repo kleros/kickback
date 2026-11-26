@@ -723,7 +723,15 @@ export function depositState(input: DepositInput): DepositView {
         undefined,
         "Waiting for the list",
       );
-    if (!windowOver && input.chainNow !== undefined) {
+    // never say the window has closed before the chain's time is known
+    if (input.chainNow === undefined)
+      return {
+        ...readOnly("checking", "Refundable deposit", [{ text: "Loading the event…" }]),
+        button: "Loading",
+        glyph: "arc",
+        status: false,
+      };
+    if (!windowOver) {
       const cost = input.challengeDeposit ?? 0n;
       const error = errorFor("challenge");
       // the wallet also pays the network fee; while that is unknown, only the Kleros fee is checked
@@ -864,7 +872,10 @@ export function depositState(input: DepositInput): DepositView {
     return pendingView(input, record.hash, input.wallNow - record.at);
   }
 
-  if (connected && sent?.outcome === "pending")
+  if (connected && sent?.outcome === "pending") {
+    // this visit's own deposit whose receipt wait timed out: still the same deposit, not an earlier one
+    if (send.status === "error" && send.errorKind === "unconfirmed" && send.hash === sent.hash)
+      return pendingView(input, sent.hash, input.wallNow - sent.at);
     return {
       key: "earlier",
       label: "Sending",
@@ -880,6 +891,7 @@ export function depositState(input: DepositInput): DepositView {
       glyph: "arc",
       foot: DEFAULT_FOOT,
     };
+  }
 
   if (input.chainNow === undefined)
     return {
@@ -892,7 +904,7 @@ export function depositState(input: DepositInput): DepositView {
   if (connected && input.guestUnknown)
     return {
       ...readOnly("checking", "Refundable deposit", [{ text: "Checking your deposit." }]),
-      button: "Checking deposits",
+      button: "Checking your deposit",
       glyph: "arc",
       status: false,
     };
@@ -1125,6 +1137,8 @@ export function depositState(input: DepositInput): DepositView {
       case "refused":
         return refused("errorName" in send ? send.errorName : undefined);
       case "unconfirmed":
+        // once the record for this hash has settled, it decides (dropped, replaced or failed) below
+        if (send.hash && sent?.hash === send.hash && sent.outcome !== "pending") break;
         return send.hash ? pendingView(input, send.hash, PENDING_STAGE_3_MS) : dropped;
       case "wallet":
         notice = { text: walletText(send.errorMessage), tone: "err" };
@@ -1139,7 +1153,7 @@ export function depositState(input: DepositInput): DepositView {
 
   if (sent?.outcome === "dropped") return dropped;
   if (sent?.outcome === "replaced") return replaced(sent.hash);
-  if (sent?.outcome === "failed" && send.status === "idle") return failed(true);
+  if (sent?.outcome === "failed" && (send.status === "idle" || send.errorKind === "unconfirmed")) return failed(true);
 
   if (isToken) {
     if (input.tokenBalance !== undefined && input.tokenBalance < amount)
