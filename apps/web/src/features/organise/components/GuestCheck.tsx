@@ -54,6 +54,8 @@ export function GuestCheck({
   approvedAt,
   check: remember,
   closed,
+  ended,
+  statusOf,
 }: {
   contract: Address;
   guests: readonly GuestRow[];
@@ -62,6 +64,10 @@ export function GuestCheck({
   lumaOf?: (wallet: string) => "approved" | "pending" | "declined" | undefined;
   /** The event no longer takes approvals: cancelled, or the deadline to confirm who came was missed. */
   closed?: "cancelled" | "missed";
+  /** The event has ended (or its list is closed, or it is paid out): nothing is left to approve on Luma. */
+  ended?: boolean;
+  /** The wallet's status as the guest list shows it ("Came", "Not on the list", "With Kleros"). */
+  statusOf?: (wallet: string) => string | undefined;
   /** When this browser recorded the wallet as approved on Luma. */
   approvedAt: (wallet: string) => number | undefined;
   check: (wallet: string) => number | undefined;
@@ -94,12 +100,28 @@ export function GuestCheck({
   const walletVerdict = (wallet: string, viaTx: boolean, live?: number): Verdict => {
     const cached = guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase())?.status;
     const status = Math.max(live ?? 0, cached ?? 0);
+    // once the event is over there is nothing to approve: the titles state the fact, not an instruction
     if (status === 0)
-      return { tone: "err", title: "No deposit: do not approve", text: "This wallet has not deposited.", wallet };
+      return {
+        tone: "err",
+        title: ended ? "No deposit" : "No deposit: do not approve",
+        text: "This wallet did not deposit.",
+        wallet,
+      };
     if (status === 2)
-      return { tone: "err", title: "Turned away: do not approve", text: "Their deposit was refunded.", wallet };
+      return {
+        tone: "err",
+        title: ended ? "Turned away" : "Turned away: do not approve",
+        text: "Their deposit was refunded.",
+        wallet,
+      };
     if (status === 3)
-      return { tone: "err", title: "Refunded: do not approve", text: "This wallet withdrew its deposit.", wallet };
+      return {
+        tone: "err",
+        title: ended ? "Refunded" : "Refunded: do not approve",
+        text: "This wallet withdrew its deposit.",
+        wallet,
+      };
     const before = approvedAt(wallet);
     if (before !== undefined)
       return {
@@ -118,6 +140,14 @@ export function GuestCheck({
             ? "This event is cancelled, so this guest can withdraw their full deposit on the guest page."
             : "Attendance was not confirmed in time, so this guest can withdraw their full deposit on the guest page.",
         wallet,
+      };
+    if (ended)
+      return {
+        tone: "warn",
+        title: "Event over: no approval needed",
+        text: `Status: ${statusOf?.(wallet) ?? "Deposited"}.`,
+        wallet,
+        done: true,
       };
     if (lumaOf?.(wallet) === "approved")
       return {

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import type { Address } from "viem";
 import { useAccount } from "wagmi";
 
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
@@ -17,7 +18,12 @@ import { paths } from "@/config/paths";
 import { useMyEvents } from "../hooks/useMyEvents";
 
 /** Every event the connected wallet created, read from the factory: works on any device. */
-export function WalletEvents() {
+export function WalletEvents({
+  renderEvents,
+}: {
+  /** The route's list of the events (name, date, deposit, phase), composed from the event feature. */
+  renderEvents?: (events: readonly { contract: Address; name: string | null }[]) => ReactNode;
+}) {
   const { address } = useAccount();
   const mine = useMyEvents();
   const restoring = useRestoringWallet();
@@ -50,12 +56,13 @@ export function WalletEvents() {
   else if (!mine.data) return null;
   else if (!events.length)
     body = <p className="og-note">This wallet has not created any events on {DEFAULT_CHAIN.name}.</p>;
+  else if (renderEvents) body = renderEvents(events);
   else
     body = (
       <ul className="og-events">
         {events.map((row) => (
           <li key={row.contract} className="og-event-row">
-            <span>{row.name || shortenAddress(row.contract)}</span>
+            <span title={row.name || row.contract}>{row.name || shortenAddress(row.contract)}</span>
             <Link className="kb-link" href={paths.organiseEvent.getHref(row.contract)}>
               Open
             </Link>

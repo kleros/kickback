@@ -88,7 +88,8 @@ type Decoded = { errorName: string; args: readonly unknown[] };
 
 const isRevertData = (d: unknown): d is Hex => typeof d === "string" && /^0x[0-9a-fA-F]{8}/.test(d);
 
-// Every object in an error's cause chain, and the nested `error` / `info.error` objects wallets and RPCs use.
+// Every object in an error's cause chain, and the nested `error` / `info.error` / `data` / `originalError`
+// objects wallets and RPCs use.
 function chain(e: unknown): Record<string, unknown>[] {
   const out: Record<string, unknown>[] = [];
   const seen = new Set<unknown>();
@@ -100,6 +101,10 @@ function chain(e: unknown): Record<string, unknown>[] {
     visit(o.cause);
     visit(o.error);
     visit((o.info as Record<string, unknown> | undefined)?.error);
+    // nodes and wallets nest the revert under `data`: Hardhat {data:{message,data}}, MetaMask
+    // {data:{code:3,data}} or {data:{originalError:{data}}}
+    if (o.data && typeof o.data === "object") visit(o.data);
+    visit(o.originalError);
   };
   visit(e);
   return out;

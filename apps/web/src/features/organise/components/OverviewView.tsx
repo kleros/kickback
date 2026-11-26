@@ -11,7 +11,8 @@ import { NumberPop } from "@/components/ui/NumberPop";
 import { paths } from "@/config/paths";
 
 import { Messages } from "./Messages";
-import { ConfirmDialog, Figures } from "./parts";
+import { ConfirmDialog, Figures, TxLink } from "./parts";
+import { useEventRecord } from "../hooks/useEventRecord";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { NEXT_STEP, type NextStep } from "../model/phase";
 import { assetText, TYPED_WORDS, when } from "../model/view";
@@ -27,6 +28,7 @@ const LUMA_SETUP = [
 export function OverviewScreen({ court }: { court: string }) {
   const event = useOrganiserEvent();
   const { overview, phase, address } = event;
+  const record = useEventRecord(address);
   const [cancel, setCancel] = useState(false);
   // the dialog belongs to the wallet that opened it: close it on Disconnect, an account or a network switch
   const accountKey = event.account?.toLowerCase();
@@ -36,7 +38,8 @@ export function OverviewScreen({ court }: { court: string }) {
   const info = data.event;
   const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
   // a late challenge can still be inside its answer time after the window: releasePayouts waits for it
-  const waiting = data.challenges.filter((c) => c.state === 1 && data.now <= c.matchEndsAt);
+  const now = event.now ?? data.now;
+  const waiting = data.challenges.filter((c) => c.state === 1 && now <= c.matchEndsAt);
   const lastAnswer = Math.max(0, ...waiting.map((c) => c.matchEndsAt));
   // nothing to answer yet: say when to come back instead
   const step: NextStep =
@@ -65,7 +68,7 @@ export function OverviewScreen({ court }: { court: string }) {
           : phase === "Payouts released" && data.unpaid.length === 0
             ? {
                 title: "All done",
-                detail: "Every attendee's share has been sent or can be claimed on the guest page.",
+                detail: "Every attendee has been paid their share.",
                 tab: null,
                 action: null,
                 done: true,
@@ -86,7 +89,8 @@ export function OverviewScreen({ court }: { court: string }) {
               ? `Answer by ${when(lastAnswer)}`
               : null;
 
-  const canCancel = event.isOwner && event.onChain && info.phase === 0 && data.now <= info.claimDeadline;
+  const cancelled = info.phase === 3;
+  const canCancel = event.isOwner && event.onChain && info.phase === 0 && now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
       <div className="flex flex-col gap-1">
@@ -170,8 +174,18 @@ export function OverviewScreen({ court }: { court: string }) {
             { label: "Deposit", value: assetText(info.depositAmount, info) },
             { label: "Capacity", value: info.capacity ? String(info.capacity) : "No limit" },
             { label: "Starts", value: when(info.eventStart) },
-            { label: "Ends · deposits close", value: when(info.eventEnd) },
-            { label: "Confirm who came by", value: when(info.claimDeadline) },
+            // a cancelled event has no deadline left to meet: it shows its cancellation instead
+            { label: cancelled ? "Ends" : "Ends · deposits close", value: when(info.eventEnd) },
+            cancelled
+              ? {
+                  label: "Cancelled",
+                  value: record.data?.cancelled ? <TxLink tx={record.data.cancelled.tx} testId="cancel-tx" /> : "—",
+                }
+              : {
+                  label:
+                    phase === "Past the deadline" ? "Deadline to confirm who came (missed)" : "Confirm who came by",
+                  value: when(info.claimDeadline),
+                },
             { label: "Disputes", value: court },
           ]}
         />

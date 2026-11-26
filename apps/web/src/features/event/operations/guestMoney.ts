@@ -2,7 +2,7 @@ import { presenceEventAbi } from "@kickback/contracts";
 import { challengeOf, readGuest } from "@kickback/core";
 import { encodeFunctionData, erc20Abi, parseAbi, zeroAddress, type Address, type PublicClient } from "viem";
 
-import type { GuestState, MoneyAction } from "../model/depositState";
+import type { AppealInfo, GuestState, MoneyAction } from "../model/depositState";
 
 /** The wallet's place in the event, plus what it lets the event take (token events). */
 export async function readGuestMoney(
@@ -46,7 +46,37 @@ export async function readGuestMoney(
       // unknown: the card keeps the plain wording
     }
   }
-  return { ...guest, challenge: { ...guest.challenge, ruling, isRuled }, allowance, tokenBalance };
+  // with Kleros and not final yet: the jurors' current ruling and the appeal window (a funded appeal starts a
+  // new round, so this is read on every poll)
+  const appeal =
+    guest.challenge.state === 2 && isRuled !== true ? await readAppeal(client, contract, wallet) : undefined;
+  return { ...guest, challenge: { ...guest.challenge, ruling, isRuled, appeal }, allowance, tokenBalance };
+}
+
+/** appealStatus(staker), or undefined when it cannot be read (the page keeps the plain wording). */
+export async function readAppeal(
+  client: PublicClient,
+  contract: Address,
+  staker: Address,
+): Promise<AppealInfo | undefined> {
+  try {
+    const [ruling, start, end, loserEnd, costAttended, costAbsent] = await client.readContract({
+      address: contract,
+      abi: presenceEventAbi,
+      functionName: "appealStatus",
+      args: [staker],
+    });
+    return {
+      ruling: Number(ruling),
+      start: Number(start),
+      end: Number(end),
+      loserEnd: Number(loserEnd),
+      costAttended,
+      costAbsent,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 /** After the challenge window: the challenges releasePayouts must be given, and whether one still blocks it. */

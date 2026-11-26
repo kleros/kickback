@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 
 import type { Address } from "viem";
 
+import { Refusal } from "@/components/Refusal";
 import { CopyButton } from "@/components/ui/CopyButton";
 import { SegmentedNav } from "@/components/ui/SegmentedNav";
 import { ConnectWallet } from "@/components/wallet/ConnectWallet";
@@ -15,7 +16,12 @@ import { EventRefused } from "@/lib/presence";
 import { paths } from "@/config/paths";
 
 import { PhasePill } from "./parts";
-import { OrganiserEventContext, useOrganiserEventSource, type OrganiserEvent } from "../hooks/useOrganiserEvent";
+import {
+  isEventAddress,
+  OrganiserEventContext,
+  useOrganiserEventSource,
+  type OrganiserEvent,
+} from "../hooks/useOrganiserEvent";
 import { shortHex } from "../model/view";
 
 export const organiserTabs = (address: string) => [
@@ -39,8 +45,56 @@ export function ShellView({
   const data = event.overview.data;
   const tabs = organiserTabs(address);
   const current = tabs.find((tab) => tab.href.split("?")[0] === pathname)?.href ?? tabs[0]!.href;
+  const back = (
+    <div className="og-head">
+      <Link href={paths.organise.getHref()} className="kb-link text-sm">
+        ← Manage your events
+      </Link>
+    </div>
+  );
+  // not an event at all: a plain refusal, whatever wallet is connected (no event layout, no Connect prompt)
+  const error = event.overview.error;
+  const refused = !isEventAddress(address) ? "not-address" : error instanceof EventRefused ? error.reason : null;
+  if (refused)
+    return (
+      <div className="og-page og-narrow" data-testid="organiser-refused">
+        {back}
+        <Refusal
+          reason={refused}
+          address={address}
+          footer={
+            <p>
+              If this is your wallet address, your events are listed under{" "}
+              <Link href={paths.organise.getHref()} className="kb-link">
+                Manage your events
+              </Link>
+              .
+            </p>
+          }
+        />
+      </div>
+    );
+  // a saved wallet is still reconnecting, or the owner is not known yet: nothing of the event, no Connect button
+  if (event.restoring || (!data && !event.overview.isError))
+    return (
+      <div className="og-page og-narrow" data-testid="organiser-restoring">
+        {back}
+        <p className="og-note" role="status">
+          Loading…
+        </p>
+      </div>
+    );
   // the organiser page is for the organiser's wallet only: anyone else sees nothing of the event
-  const locked = !event.restoring && (!event.connected || (!!data && !event.isOwner));
+  const locked = !event.connected || (!!data && !event.isOwner);
+  if (!locked && !data)
+    return (
+      <div className="og-page og-narrow" data-testid="organiser-read-error">
+        {back}
+        <p className="og-err" role="alert" data-testid="read-error">
+          The network did not answer. Reload to try again.
+        </p>
+      </div>
+    );
   if (locked)
     return (
       <div className="og-page og-narrow" data-testid="organiser-locked">
@@ -79,7 +133,7 @@ export function ShellView({
           </Link>
           <div className="og-head-row">
             <h1 className="og-title" data-testid="event-name">
-              {data?.event.eventName ?? (event.overview.isError ? "Event could not be loaded" : "Loading the event…")}
+              {data?.event.eventName}
             </h1>
             {event.phase && <PhasePill phase={event.phase} />}
           </div>
@@ -103,23 +157,7 @@ export function ShellView({
             <ConnectWallet className="is-quiet" />
           </div>
         )}
-        {event.overview.isError ? (
-          <p className="og-err" role="alert" data-testid="read-error">
-            {event.overview.error instanceof EventRefused ? (
-              <>
-                This address is not an event on this site. If it is your wallet address, open{" "}
-                <Link href={paths.organise.getHref()} className="kb-link">
-                  Manage your events
-                </Link>{" "}
-                and connect that wallet: your events are listed there.
-              </>
-            ) : (
-              "The network did not answer. Reload to try again."
-            )}
-          </p>
-        ) : (
-          children
-        )}
+        {children}
       </div>
     </OrganiserEventContext.Provider>
   );

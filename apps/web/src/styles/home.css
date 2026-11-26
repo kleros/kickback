@@ -165,11 +165,16 @@
   align-items: flex-end;
   flex-shrink: 0;
 }
+/* a long name wraps to two lines, so similar names can be told apart */
 .home-event-name {
+  display: -webkit-box;
   overflow: hidden;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .home-event-when {
   color: var(--kb-text-2);

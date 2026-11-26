@@ -268,7 +268,7 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
   if (!Number.isFinite(s) || !(s > 0)) throw new Error("Enter a start date and time.");
   if (!Number.isFinite(e) || !(e > 0)) throw new Error("Enter an end date and time.");
   if (![s, e, d].every(Number.isInteger)) throw new Error("The dates must be whole seconds.");
-  if (!(e >= s)) throw new Error("The event must end after it starts.");
+  if (!(e > s)) throw new Error("The event must end after it starts.");
   if (!(e > now)) throw new Error("The event's end time has already passed.");
   if (!(d >= e + MIN_SETTLEMENT_WINDOW))
     throw new Error("The deadline to confirm who came must be at least 7 days after the event ends.");
@@ -276,8 +276,9 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
     throw new Error("The deadline to confirm who came must be at most 90 days after the event ends.");
   if (!(e <= now + MAX_LEAD_TIME)) throw new Error("The event must end within 2 years.");
   const cap = Number(form.capacity) || 0;
-  if (!Number.isInteger(cap) || cap < 0 || cap > 2 ** 32 - 1)
+  if (!Number.isInteger(cap) || cap < 0)
     throw new Error("Capacity must be a whole number. Leave it empty for no limit.");
+  if (cap > 2 ** 32 - 1) throw new Error("Capacity can be at most 4,294,967,295. Leave it empty for no limit.");
   return {
     name: n,
     url: u,

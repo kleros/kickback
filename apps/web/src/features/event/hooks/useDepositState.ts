@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { presenceEventAbi } from "@kickback/contracts";
 import { gasLimitFor, isEth, revertName } from "@kickback/core";
 import { useAppKit, useAppKitState } from "@reown/appkit/react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getConnectorClient } from "@wagmi/core";
 import { encodeFunctionData, type Address } from "viem";
 import { addChain } from "viem/actions";
@@ -22,8 +22,15 @@ import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { caseUrl, FROM_BLOCK, resolverCaseUrl } from "@/config/protocol";
 
 import { useDeposit } from "./useDeposit";
-import { useGuestMoney } from "./useGuestMoney";
-import { useBlockTime, useCreatedBlock, useEventDeposits, type KickbackEvent } from "../api/useEvent";
+import { moneyKey, useGuestMoney } from "./useGuestMoney";
+import {
+  depositsKey,
+  eventKey,
+  useBlockTime,
+  useCreatedBlock,
+  useEventDeposits,
+  type KickbackEvent,
+} from "../api/useEvent";
 import { chainName } from "../model/chainNames";
 import { depositState, depositsOpen, type DepositInput, type DepositView } from "../model/depositState";
 import { dayText, deadlineText } from "../model/when";
@@ -158,6 +165,15 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
   });
   const fee = useDepositFee(event.contract, address, token ? 0n : event.depositAmount, onChain);
   const sentTx = useSentTx(event.contract);
+  // a recorded transaction (seen pending after a reload) has mined: read its effect now, not at the next poll
+  const queryClient = useQueryClient();
+  const sentOutcome = sentTx.data?.outcome;
+  const sentHash = sentTx.data?.record.hash;
+  useEffect(() => {
+    if (sentOutcome !== "mined") return;
+    for (const queryKey of [depositsKey(event.contract), moneyKey(event.contract), eventKey(event.contract)])
+      void queryClient.invalidateQueries({ queryKey });
+  }, [sentOutcome, sentHash, event.contract, queryClient]);
   const now = chainTime?.now;
   const windowOver = phase === 1 && !!event.challengeEndsAt && now !== undefined && now > event.challengeEndsAt;
   const challengeOpen = phase === 1 && !!event.challengeEndsAt && now !== undefined && !windowOver;

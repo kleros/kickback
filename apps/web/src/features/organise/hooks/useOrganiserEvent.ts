@@ -2,13 +2,16 @@
 
 import { createContext, useContext, useEffect, useState } from "react";
 
-import { errorText } from "@kickback/core";
+import { errorText, revertName } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAddressEqual, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
+import { EventRefused } from "@/lib/presence";
 import { STALE_TIME } from "@/lib/query";
+import { useChainTime } from "@/lib/web3/chain-time";
 import { useSend, useSendBusy } from "@/lib/web3/send";
+import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
@@ -16,6 +19,9 @@ import { phaseOf } from "../model/phase";
 import { readOrganiser } from "../operations/read";
 
 type Request = { to: Address; data: `0x${string}`; value: bigint };
+
+/** A well-formed contract address (anything else cannot be an event). */
+export const isEventAddress = (address: string) => /^0x[0-9a-fA-F]{40}$/.test(address);
 
 export const organiserKey = (address: string) => ["organise", DEFAULT_CHAIN_ID, address.toLowerCase()] as const;
 
@@ -25,19 +31,26 @@ export function useOrganiserEventSource(address: Address) {
   const queries = useQueryClient();
   const overview = useQuery({
     queryKey: organiserKey(address),
-    enabled: client !== undefined,
+    // a link that is no address at all is refused without a read
+    enabled: client !== undefined && isEventAddress(address),
     staleTime: STALE_TIME.live,
-    refetchInterval: 15_000,
-    retry: 1,
+    // a refusal is final: no retry delay, no polling
+    refetchInterval: (q) => (q.state.error instanceof EventRefused ? false : 15_000),
+    retry: (count, e) => !(e instanceof EventRefused) && count < 1,
     queryFn: () => readOrganiser(client!, address),
   });
-  const { address: account, chainId, status } = useAccount();
+  const { address: account, chainId } = useAccount();
+  const restoring = useRestoringWallet();
   const onChain = !!account && chainId === DEFAULT_CHAIN_ID;
   const data = overview.data;
+  // the chain's clock, re-read every block: the overview read is up to 15 s old, so a tab could still offer
+  // something the contract refuses since the start (or end) passed; take the later of the two
+  const chainTime = useChainTime(DEFAULT_CHAIN_ID);
+  const now = data ? Math.max(data.now, chainTime.data?.now ?? 0) : undefined;
   const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
   // a late challenge still inside its answer time holds up the release: the pill says so
   const phase = data
-    ? phaseOf(data.event, data.now, data.challenges.filter((c) => c.state === 1 && data.now <= c.matchEndsAt).length)
+    ? phaseOf(data.event, now!, data.challenges.filter((c) => c.state === 1 && now! <= c.matchEndsAt).length)
     : null;
 
   const [running, setRunning] = useState<string | null>(null);
@@ -61,7 +74,14 @@ export function useOrganiserEventSource(address: Address) {
   });
 
   /** Sends one request under a label ("Turn away 2"); `success` is said when it is confirmed. */
-  const run = (label: string, request: () => Request | Promise<Request>, success: string, onSent?: () => void) => {
+  const run = (
+    label: string,
+    request: () => Request | Promise<Request>,
+    success: string,
+    onSent?: () => void,
+    /** Plain words for a contract refusal this action can meet, by its custom error ("TooLate"). */
+    refusals?: Record<string, string>,
+  ) => {
     setRunning(label);
     setError(null);
     setDone(null);
@@ -72,7 +92,13 @@ export function useOrganiserEventSource(address: Address) {
           setDone(success);
           onSent?.();
         },
-        onError: (e) => setError({ text: e.message || errorText(e), at: Date.now() }),
+        onError: (e) => {
+          const name = revertName(e) ?? revertName((e as { cause?: unknown }).cause);
+          const known = name ? refusals?.[name] : undefined;
+          setError({ text: known ?? (e.message || errorText(e)), at: Date.now() });
+          // a refusal means the page is behind the chain: read it again so the controls follow
+          if (name) void queries.invalidateQueries({ queryKey: organiserKey(address) });
+        },
         onSettled: () => setRunning(null),
       },
     );
@@ -82,10 +108,12 @@ export function useOrganiserEventSource(address: Address) {
     address,
     overview,
     phase,
+    /** The chain's time (seconds): the later of the overview read and the latest block. */
+    now,
     isOwner,
     connected: !!account,
     /** wagmi is restoring a saved session on page load: no "Connect" prompt yet. */
-    restoring: !account && status === "reconnecting",
+    restoring,
     /** Connected, and on the network the event lives on. */
     onChain,
     account,

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+import { Refusal } from "@/components/Refusal";
+
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 import { courtName } from "@/config/protocol";
@@ -10,7 +12,6 @@ import { EventDetails } from "./EventDetails";
 import { EventHead } from "./EventHead";
 import { HowItWorks } from "./HowItWorks";
 import { ReceiptExtras } from "./ReceiptExtras";
-import { Refusal } from "./Refusal";
 import { TicketCard } from "./TicketCard";
 import { TicketSkeleton } from "./TicketSkeleton";
 import { EventRefused, useEvent, type KickbackEvent } from "../api/useEvent";

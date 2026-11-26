@@ -146,6 +146,18 @@ describe("useSend", () => {
 });
 
 describe("useSentTx", () => {
+  it("marks a recorded send mined as soon as its receipt is in, without waiting for the next poll", async () => {
+    const { useSend, useSentTx, client, wrapper } = await load("hardhat");
+    const watcher = renderHook(() => useSentTx(EVENT), { wrapper });
+    await vi.waitFor(() => expect(watcher.result.current.data).toBeNull());
+    const sender = renderHook(() => useSend({ record: true }), { wrapper });
+    await act(() => sender.result.current.mutateAsync(deposit));
+    expect(client.getTransactionReceipt).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(watcher.result.current.data).toMatchObject({ record: { hash: HASH }, outcome: "mined" }),
+    );
+  });
+
   it("starts watching a newly saved send and stays pending after receipt waiting times out", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { useSend, useSentTx, useSendBusy, client, wrapper } = await load("hardhat");

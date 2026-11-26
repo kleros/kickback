@@ -22,8 +22,24 @@ export interface OrganiserState {
   attendees: Address[];
   /** Attendees whose share is not paid out yet (only after payouts are released). */
   unpaid: Address[];
-  /** Challenges, oldest first; a case with Kleros carries whether it is ruled, and the ruling. */
-  challenges: (ChallengeInfo & { wallet: Address; isRuled?: boolean; ruling?: number })[];
+  /**
+   * Challenges, oldest first; a case with Kleros carries whether it is ruled, and the ruling, and while it is not
+   * final, the jurors' current ruling and its appeal window.
+   */
+  challenges: (ChallengeInfo & { wallet: Address; isRuled?: boolean; ruling?: number; appeal?: AppealInfo })[];
+}
+
+/** The contract's appealStatus(staker). */
+export interface AppealInfo {
+  /** 0 refused to rule, 1 attended, 2 did not attend. */
+  ruling: number;
+  start: number;
+  /** 0 while no appeal window is open. */
+  end: number;
+  /** The losing side (both sides after a 0) must fund an appeal by then. */
+  loserEnd: number;
+  costAttended: bigint;
+  costAbsent: bigint;
 }
 
 const RESOLVER_ABI = parseAbi(["function disputes(uint256) view returns (bytes, bool, uint256, uint256)"]);
@@ -65,7 +81,25 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
       ),
     ),
   ]);
-  const challenges = listed.map((ch, i) => ({ ...ch, ...rulings[i] }));
+  // a case with Kleros that is not final: read its appeal window (a read that fails keeps the plain wording)
+  const appeals = await Promise.all(
+    listed.map((ch, i) =>
+      ch.state === 2 && rulings[i]?.isRuled !== true
+        ? client
+            .readContract({ ...c, functionName: "appealStatus", args: [ch.wallet] })
+            .then(([ruling, start, end, loserEnd, costAttended, costAbsent]) => ({
+              ruling: Number(ruling),
+              start: Number(start),
+              end: Number(end),
+              loserEnd: Number(loserEnd),
+              costAttended,
+              costAbsent,
+            }))
+            .catch(() => undefined)
+        : Promise.resolve(undefined),
+    ),
+  );
+  const challenges = listed.map((ch, i) => ({ ...ch, ...rulings[i], appeal: appeals[i] }));
   const unpaid = event.phase === 2 ? attendees.filter((_, i) => paid[i]! < event.payoutShare) : [];
   const byWallet = new Map(challenges.map((ch) => [ch.wallet.toLowerCase(), ch]));
   const guests = stakers.map((wallet, i) => ({

@@ -2,7 +2,7 @@ import { parseEther } from "viem";
 import { describe, expect, it } from "vitest";
 
 import { depositState } from "../depositState";
-import { baseInput, galleryInput } from "../fixtures";
+import { baseInput, FIXTURE, galleryInput } from "../fixtures";
 
 describe("depositState", () => {
   it("does not offer a deposit while the wallet's booking is still unknown", () => {
@@ -167,5 +167,86 @@ describe("challenge window while the chain's time loads", () => {
 
   it("offers the challenge once the time is known", () => {
     expect(depositState(galleryInput("challenge")).key).toBe("challenge");
+  });
+
+  it("shows a turned-away guest the refund transaction, and keeps the card's two lines", () => {
+    const view = depositState(galleryInput("refunded"));
+    expect(view.key).toBe("refunded");
+    expect(view.lines).toHaveLength(2);
+    expect(view.lines[1]?.link?.label).toBe("Refund transaction");
+    expect(view.foot).toBe("This wallet cannot deposit again.");
+  });
+
+  it("gives a wallet with no deposit the reason deposits are closed, first", () => {
+    const b = baseInput();
+    const cancelled = depositState({
+      ...b,
+      phase: 3,
+      guest: { ...galleryInput("claim").guest!, status: 0, claimable: 0n },
+    });
+    expect(cancelled.lines[0]?.text).toBe("The event was cancelled.");
+    expect(cancelled.lines[1]?.text).toContain("No deposit from");
+    const ended = depositState({
+      ...b,
+      chainNow: b.eventEnd + 60,
+      guest: { ...galleryInput("claim").guest!, status: 0, claimable: 0n },
+    });
+    expect(ended.lines[0]?.text).toBe("The event has ended.");
+  });
+
+  it("shows the deposit link as soon as the browser's deposit record is mined, before the logs catch up", () => {
+    const b = baseInput();
+    const guest = { ...galleryInput("claim").guest!, status: 1, attended: false, claimable: 0n, phase: 0 };
+    const view = depositState({
+      ...b,
+      guest,
+      history: {},
+      sent: { data: "0xd0e30db0", value: b.amount.toString(), outcome: "mined", hash: FIXTURE.tx, at: FIXTURE.nowMs },
+    });
+    expect(view.button).toBe("Copy deposit link");
+    expect(view.receipt?.tx).toBe(FIXTURE.tx);
+  });
+
+  it("keeps the ≈ on a share that does not divide evenly", () => {
+    const b = galleryInput("claim");
+    const view = depositState({ ...b, guest: { ...b.guest!, claimable: 16666666666666666n } });
+    expect(view.amount).toBe("≈0.016667");
+  });
+
+  it("says 'Joining the list' while an unanswered challenge's join is confirming", () => {
+    const b = galleryInput("resolve");
+    const pending = (joins: boolean) =>
+      depositState({
+        ...b,
+        moneySend: { account: b.wallet.address, action: "resolve", status: "pending", joins },
+      }).label;
+    expect(pending(true)).toBe("Joining the list");
+    expect(pending(false)).toBe("Settling the ruling");
+  });
+
+  it("during Kleros's appeal window, says how the jurors ruled and until when it can be appealed", () => {
+    const d = galleryInput("disputed");
+    const now = d.chainNow!;
+    const appeal = (ruling: number, loserEnd: number, end: number) =>
+      depositState({
+        ...d,
+        guest: {
+          ...d.guest!,
+          challenge: {
+            ...d.guest!.challenge,
+            appeal: { ruling, start: now - 60, end, loserEnd, costAttended: 10n ** 16n, costAbsent: 2n * 10n ** 16n },
+          },
+        },
+      });
+    const lost = appeal(2, now + 600, now + 1200);
+    expect(lost.lines[0]?.text).toBe("Jurors ruled you were not there.");
+    expect(lost.lines[1]?.text).toContain("Appeal by");
+    expect(lost.button).toBe("Appeal period");
+    const won = appeal(1, now + 600, now + 1200);
+    expect(won.lines[0]?.text).toBe("Jurors ruled you attended.");
+    expect(won.lines[1]?.text).toContain("The organiser can appeal until");
+    const over = appeal(1, now - 600, now - 60);
+    expect(over.lines[1]?.text).toBe("Appeals have closed. The ruling becomes final soon.");
+    expect(over.button).toBe("Waiting for the final ruling");
   });
 });

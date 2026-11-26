@@ -15,8 +15,11 @@ const MATCH_TONE = { deposit: "ok", none: "err", "no-wallet": "end" } as const;
 export function LumaMatch({
   booked,
   onRows,
+  ended = false,
 }: {
   booked: readonly string[];
+  /** The event is over: the export only adds names to the guest list and the record, nothing is left to approve. */
+  ended?: boolean;
   /** Called with the parsed rows, so names can be shown next to wallets on this device. */
   onRows?: (rows: readonly LumaMatchRow[]) => void;
 }) {
@@ -42,11 +45,11 @@ export function LumaMatch({
   return (
     <section className="flex flex-col gap-3" data-testid="luma-match">
       <div className="flex flex-col gap-1">
-        <h2 className="og-h2">Match all Luma requests</h2>
+        <h2 className="og-h2">{ended ? "Load the Luma guest export" : "Match all Luma requests"}</h2>
         <p className="og-lede">
-          On Luma, open Guests and export the list (CSV), then choose it here. Each request is matched by the wallet
-          Luma verified, so you see at once who has a deposit and can copy their emails. Names and emails stay in this
-          browser only; nothing from the export goes on the blockchain.
+          {ended
+            ? "On Luma, open Guests and export the list (CSV), then choose it here. It adds each guest's name to the guest list and to the record you download. Names and emails stay in this browser only; nothing from the export goes on the blockchain."
+            : "On Luma, open Guests and export the list (CSV), then choose it here. Each request is matched by the wallet Luma verified, so you see at once who has a deposit and can copy their emails. Names and emails stay in this browser only; nothing from the export goes on the blockchain."}
         </p>
       </div>
       <FilePick
@@ -77,38 +80,46 @@ export function LumaMatch({
       )}
       {rows && !noWalletCol && (
         <div className="flex flex-col gap-3 border-t border-[var(--kb-hair)] pt-3">
-          <p className="og-lede" data-testid="luma-summary">
-            {`${found.length} of ${rows.length} ${plural(rows.length, "request", "requests")} ${plural(found.length, "has", "have")} a deposit`}
-            {toApprove.length > 0
-              ? `; ${toApprove.length} still ${plural(toApprove.length, "needs", "need")} approval on Luma.`
-              : "."}{" "}
-            {toDecline.length > 0 &&
-              `${toDecline.length} pending ${plural(toDecline.length, "request has", "requests have")} no deposit: decline ${plural(toDecline.length, "it", "them")}, or ask the ${plural(toDecline.length, "guest", "guests")} to deposit first. `}
-            {dups.length > 0 &&
-              `${dups.length} ${plural(dups.length, "request shares", "requests share")} a wallet with another request: decline ${plural(dups.length, "it", "them")} on Luma. `}
-            {wronglyIn.length > 0 &&
-              `${wronglyIn.length} approved ${plural(wronglyIn.length, "request has", "requests have")} no deposit (no wallet, never deposited, or turned away): decline ${plural(wronglyIn.length, "it", "them")} on Luma.`}
-          </p>
-          {approveMails.length + declineMails.length + wrongMails.length > 0 && (
+          {ended ? (
+            <p className="og-lede" data-testid="luma-summary">
+              {`${found.length} of ${rows.length} ${plural(rows.length, "request", "requests")} had a deposit. The event is over: nothing to approve or decline on Luma.`}
+            </p>
+          ) : (
             <>
-              <div className="og-actions">
-                {approveMails.length > 0 && (
-                  <CopyTextButton
-                    value={approveMails.join(", ")}
-                  >{`Copy ${count(approveMails.length)} to approve`}</CopyTextButton>
-                )}
-                {declineMails.length > 0 && (
-                  <CopyTextButton
-                    value={declineMails.join(", ")}
-                  >{`Copy ${count(declineMails.length)} with no deposit`}</CopyTextButton>
-                )}
-                {wrongMails.length > 0 && (
-                  <CopyTextButton
-                    value={wrongMails.join(", ")}
-                  >{`Copy ${count(wrongMails.length)} to decline`}</CopyTextButton>
-                )}
-              </div>
-              <p className="og-note">On Luma, search each email under Guests.</p>
+              <p className="og-lede" data-testid="luma-summary">
+                {`${found.length} of ${rows.length} ${plural(rows.length, "request", "requests")} ${plural(found.length, "has", "have")} a deposit`}
+                {toApprove.length > 0
+                  ? `; ${toApprove.length} still ${plural(toApprove.length, "needs", "need")} approval on Luma.`
+                  : "."}{" "}
+                {toDecline.length > 0 &&
+                  `${toDecline.length} pending ${plural(toDecline.length, "request has", "requests have")} no deposit: decline ${plural(toDecline.length, "it", "them")}, or ask the ${plural(toDecline.length, "guest", "guests")} to deposit first. `}
+                {dups.length > 0 &&
+                  `${dups.length} ${plural(dups.length, "request shares", "requests share")} a wallet with another request: decline ${plural(dups.length, "it", "them")} on Luma. `}
+                {wronglyIn.length > 0 &&
+                  `${wronglyIn.length} approved ${plural(wronglyIn.length, "request has", "requests have")} no deposit (no wallet, never deposited, or turned away): decline ${plural(wronglyIn.length, "it", "them")} on Luma.`}
+              </p>
+              {approveMails.length + declineMails.length + wrongMails.length > 0 && (
+                <>
+                  <div className="og-actions">
+                    {approveMails.length > 0 && (
+                      <CopyTextButton
+                        value={approveMails.join(", ")}
+                      >{`Copy ${count(approveMails.length)} to approve`}</CopyTextButton>
+                    )}
+                    {declineMails.length > 0 && (
+                      <CopyTextButton
+                        value={declineMails.join(", ")}
+                      >{`Copy ${count(declineMails.length)} with no deposit`}</CopyTextButton>
+                    )}
+                    {wrongMails.length > 0 && (
+                      <CopyTextButton
+                        value={wrongMails.join(", ")}
+                      >{`Copy ${count(wrongMails.length)} to decline`}</CopyTextButton>
+                    )}
+                  </div>
+                  <p className="og-note">On Luma, search each email under Guests.</p>
+                </>
+              )}
             </>
           )}
           <div className="og-table is-luma" role="table" aria-label="Luma registrations">
@@ -133,7 +144,7 @@ export function LumaMatch({
                     <span className="og-dot" data-tone={r.dupOf ? "warn" : MATCH_TONE[r.match]} aria-hidden />
                     <span>
                       {r.dupOf
-                        ? r.luma === "declined"
+                        ? r.luma === "declined" || ended
                           ? `Same wallet as ${r.dupOf}`
                           : `Same wallet as ${r.dupOf}: decline this one`
                         : MATCH_TEXT[r.match]}

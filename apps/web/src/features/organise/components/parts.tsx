@@ -9,9 +9,11 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { FileIcon, LockIcon } from "@/components/ui/icons";
 
+import { DEFAULT_CHAIN } from "@/config/chains";
+
 import type { Phase } from "../model/phase";
 import type { Gate } from "../model/shared";
-import { PHASE_TONE } from "../model/view";
+import { PHASE_TONE, shortHex } from "../model/view";
 
 export function PhasePill({ phase }: { phase: Phase }) {
   return (
@@ -218,5 +220,26 @@ function ConfirmForm({ intro, figures, words, action, busy, error, gate, onConfi
         </GradientButton>
       </div>
     </form>
+  );
+}
+
+/** A transaction, short: an explorer link when the chain has one, else the short hash. */
+export function TxLink({ tx, testId }: { tx: string; testId?: string }) {
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  return explorer ? (
+    <a
+      className="kb-link og-mono"
+      href={`${explorer}/tx/${tx}`}
+      target="_blank"
+      rel="noreferrer"
+      title={tx}
+      data-testid={testId}
+    >
+      {shortHex(tx)} ↗
+    </a>
+  ) : (
+    <span className="og-mono" title={tx} data-testid={testId}>
+      {shortHex(tx)}
+    </span>
   );
 }

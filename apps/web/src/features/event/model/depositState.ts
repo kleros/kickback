@@ -72,8 +72,27 @@ export interface GuestState {
     isRuled?: boolean;
     /** ETH paid to Kleros when the challenge was matched. */
     arbitrationPaid?: bigint;
+    /** A case with Kleros, not final yet: the jurors' current ruling and its appeal window (end 0 = none yet). */
+    appeal?: AppealInfo;
   };
 }
+
+/** The contract's appealStatus(staker): the current ruling, the appeal window and what each side pays to appeal. */
+export interface AppealInfo {
+  /** 0 refused to rule, 1 attended, 2 did not attend. */
+  ruling: number;
+  start: number;
+  end: number;
+  /** The losing side (and both sides when the ruling is 0) must fund by then. */
+  loserEnd: number;
+  /** ETH the guest's side ("attended") pays to appeal. */
+  costAttended: bigint;
+  /** ETH the organiser's side ("did not attend") pays to appeal. */
+  costAbsent: bigint;
+}
+
+/** The appeal deadline for one side: the winner has the full window, the loser (or anyone after a 0) half of it. */
+export const appealDeadline = (a: AppealInfo, side: 1 | 2) => (a.ruling === side ? a.end : a.loserEnd);
 
 export interface DepositInput {
   /** The contract's depositAmount, in the asset's smallest unit. */
@@ -103,6 +122,8 @@ export interface DepositInput {
     amount?: bigint;
     /** The unit of `amount` when it is not the event's asset ("ETH" for challenge money). */
     unit?: string;
+    /** A "resolve" that puts the guest on the list: "Joining the list", not "Settling the ruling". */
+    joins?: boolean;
     status: "idle" | "pending" | "success" | "error";
     error?: string;
     /** "refused" when the dry run said the call would fail. */
@@ -328,8 +349,8 @@ export function depositState(input: DepositInput): DepositView {
   const awaitingList = input.phase === 0 && input.chainNow !== undefined && input.chainNow >= input.eventEnd;
   const listDue = input.claimDeadline ? input.dayText(input.claimDeadline) : undefined;
   const me = wallet.address ? `${wallet.address.slice(0, 6)}…${wallet.address.slice(-4)}` : "";
-  // an amount owed to the guest: rounded down, without the "≈" that reads as unsure
-  const owed = (units: bigint, unit?: string) => (unit === "ETH" ? ethText(units) : fmt(units)).replace(/^[~≈]/, "");
+  // an amount owed to the guest: a shortened figure keeps its "≈", so it never reads as exact
+  const owed = (units: bigint, unit?: string) => (unit === "ETH" ? ethText(units) : fmt(units));
   const awaitingLines: StatusLine[] = [
     {
       text: listDue ? `The organiser confirms who came by ${listDue}.` : "Next, the organiser confirms who came.",
@@ -454,7 +475,9 @@ export function depositState(input: DepositInput): DepositView {
               : moneySend.action === "release"
                 ? "Releasing payouts"
                 : moneySend.action === "resolve"
-                  ? "Settling the ruling"
+                  ? moneySend.joins
+                    ? "Joining the list"
+                    : "Settling the ruling"
                   : moneySend.action === "approve"
                     ? "Allowing"
                     : "Sending",
@@ -471,9 +494,17 @@ export function depositState(input: DepositInput): DepositView {
   }
   if (connected && input.sent?.outcome === "pending" && input.sent.data && !isDepositRecord(input.sent))
     return {
-      ...readOnly("earlier", "Sending", [
-        { text: "An earlier transaction is still confirming.", link: etherscan(input.sent.hash) },
-      ]),
+      ...readOnly(
+        "earlier",
+        "Sending",
+        [{ text: "An earlier transaction is still confirming.", link: etherscan(input.sent.hash) }],
+        BigInt(input.sent.value ?? "0"),
+        "ETH",
+      ),
+      // the amount that transaction sends, never the deposit it is not; none when it sends nothing
+      ...(input.sent.value && input.sent.value !== "0"
+        ? { amount: ethText(BigInt(input.sent.value)), unit: "ETH" }
+        : { amount: "—", unit: "" }),
       button: "Confirming",
       glyph: "arc",
       status: false,
@@ -548,10 +579,41 @@ export function depositState(input: DepositInput): DepositView {
     const ev = c.localDisputeID !== undefined ? input.evidenceUrl?.(c.localDisputeID) : undefined;
     return ev ? { label: "Case page", href: ev } : kleros(c.arbitratorDisputeID);
   };
-  const disputedLines = (c: NonNullable<typeof challenge>): StatusLine[] => [
-    { text: "Kleros jurors are deciding.", tone: "pri", link: caseLink(c) },
-    { text: "Send your evidence on the case page." },
-  ];
+  const appealOpen = (c: NonNullable<typeof challenge>) => !!c.appeal && c.appeal.end > 0;
+  // in the appeal window the jurors have voted: say how, and what is left to do, in two lines
+  const disputedLines = (c: NonNullable<typeof challenge>): StatusLine[] => {
+    const a = c.appeal;
+    if (!a || a.end === 0)
+      return [
+        { text: "Kleros jurors are deciding.", tone: "pri", link: caseLink(c) },
+        { text: "Send your evidence on the case page." },
+      ];
+    const ruling =
+      a.ruling === 1
+        ? "Jurors ruled you attended."
+        : a.ruling === 2
+          ? "Jurors ruled you were not there."
+          : "Jurors did not rule either way.";
+    const now = input.chainNow ?? 0;
+    const mine = appealDeadline(a, 1);
+    const next: StatusLine =
+      a.ruling === 1
+        ? now <= a.loserEnd
+          ? { text: `The organiser can appeal until ${timeText(a.loserEnd)}.` }
+          : now <= a.end
+            ? { text: `If appealed, pay ${ethText(a.costAttended)} ETH by ${timeText(a.end)} to keep it.` }
+            : { text: "Appeals have closed. The ruling becomes final soon." }
+        : now <= mine
+          ? { text: `Appeal by ${timeText(mine)}: ${ethText(a.costAttended)} ETH.`, tone: "warn" }
+          : { text: "Appeals have closed. The ruling becomes final soon." };
+    return [{ text: ruling, tone: "pri", link: caseLink(c) }, next];
+  };
+  const disputedFoot = (c: NonNullable<typeof challenge>) =>
+    appealOpen(c)
+      ? (input.chainNow ?? 0) <= c.appeal!.end
+        ? "Appeal period"
+        : "Waiting for the final ruling"
+      : "Waiting for jurors";
   // Kleros has ruled but nobody has settled the case yet: anyone can, so the guest can too
   const ruledCase = (c: NonNullable<typeof challenge>): DepositView | undefined => {
     if (!c.isRuled || c.ruling === undefined || c.ruling > 2) return undefined;
@@ -597,7 +659,7 @@ export function depositState(input: DepositInput): DepositView {
   if (guest?.status === 1 && input.phase === 2 && !guest.attended && challenge?.state === 2)
     return (
       ruledCase(challenge) ??
-      readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors")
+      readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, disputedFoot(challenge))
     );
 
   if (guest?.status === 1 && input.phase === 2 && !guest.attended)
@@ -698,7 +760,7 @@ export function depositState(input: DepositInput): DepositView {
     if (challenge?.state === 2)
       return (
         ruledCase(challenge) ??
-        readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors")
+        readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, disputedFoot(challenge))
       );
     if (ruled)
       return readOnly(
@@ -786,13 +848,14 @@ export function depositState(input: DepositInput): DepositView {
               ? `The organiser returned your deposit on ${input.dayText(history.refundedAt)}.`
               : "The organiser returned your deposit in full.",
         },
-        { text: "This wallet cannot deposit again." },
+        // the proof of the refund, as the organiser's record has it; without it, the rule takes the line
+        ...(paidLink ? paidLine("Refund transaction") : [{ text: "This wallet cannot deposit again." }]),
       ],
       action: "none",
       button: "Deposit returned",
       disabled: true,
       status: true,
-      foot: null,
+      foot: paidLink ? "This wallet cannot deposit again." : null,
     };
   if (guest?.status === 3)
     return readOnly(
@@ -806,8 +869,11 @@ export function depositState(input: DepositInput): DepositView {
 
   if (connected && guest?.status === 1) {
     if (history?.txHash) return done(history.txHash, history.at);
-    // the deposit is on-chain but its transaction is not known yet
-    if (history === undefined)
+    // the browser's own record already names the mined deposit: no need to wait for the logs
+    if (input.sent?.outcome === "mined" && isDepositRecord(input.sent))
+      return done(input.sent.hash, Math.floor(input.sent.at / 1000));
+    // the deposit is on-chain but its transaction is not known yet (or the receipt check has not caught up)
+    if (history === undefined || (input.sent?.outcome === "pending" && isDepositRecord(input.sent)))
       return {
         ...readOnly("already", "Deposit sent", [
           { text: "Your deposit is in.", tone: "pri" },
@@ -969,9 +1035,9 @@ export function depositState(input: DepositInput): DepositView {
     return {
       key: "closed",
       label: "Refundable deposit",
-      // two lines fit: a wallet with no deposit gets the fix instead of the reason
+      // two lines fit: a wallet with no deposit gets the reason, then the fix
       lines: !guest?.status
-        ? [{ text: `No deposit from ${me}.`, tone: "warn" as const }, { text: "Used another wallet? Switch to it." }]
+        ? [{ text: reason }, { text: `No deposit from ${me}.`, tone: "warn" as const }]
         : [{ text: reason }],
       action: "none",
       button: "Deposits closed",
@@ -1091,6 +1157,7 @@ export function depositState(input: DepositInput): DepositView {
       WasRejected: ["The organiser turned this wallet away.", "Deposit returned"],
       NotOpen: ["Deposits have just closed.", "Deposits closed"],
       TooLate: ["Deposits have just closed.", "Deposits closed"],
+      AlreadyStaker: ["This wallet has already deposited.", "Already deposited"],
     };
     const hit = name ? final[name] : undefined;
     return {

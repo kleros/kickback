@@ -85,6 +85,7 @@
   border-radius: var(--kb-r-btn);
   border: 1px solid var(--kb-hair);
   color: var(--kb-text);
+  flex: none;
 }
 .kb-icon-link:hover {
   border-color: var(--kb-violet);
@@ -104,7 +105,16 @@
     font-size: 1.1rem;
     white-space: nowrap;
   }
-  .kb-icon-link {
+  /* GitHub stays on phones: with a wallet chip in the header, the wordmark takes its compact form instead */
+  .kb-header-row:has(.kb-wallet-chip) .kb-brand-sep {
+    display: none;
+  }
+  .kb-header-row:has(.kb-wallet-chip) .kb-brand-logo {
+    aspect-ratio: 1;
+    -webkit-mask-image: url(/img/kleros-symbol.svg);
+    mask-image: url(/img/kleros-symbol.svg);
+  }
+  .kb-header-row:has(.kb-wallet-chip) .kb-test-pill {
     display: none;
   }
 }
@@ -144,9 +154,18 @@
   display: grid;
   gap: 0;
 }
+/* tap targets: a one-letter link ("X") still gets a thumb-sized box, without moving the rows */
 .kb-footer li a {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 36px;
   padding: 8px 0;
+}
+.kb-footer-base a {
+  display: inline-block;
+  padding: 3px 6px;
+  margin: -3px -6px;
 }
 .kb-footer a {
   color: var(--kb-text-2);
@@ -201,6 +220,11 @@ body {
 @media (max-width: 400px) {
   .kb-brand-name {
     font-size: 0.95rem;
+  }
+  .kb-header-right .kb-icon-link,
+  .kb-header-right .kb-icon-btn {
+    width: 32px;
+    height: 32px;
   }
   .kb-wallet-chip {
     padding: 0 10px;

@@ -15,7 +15,7 @@ import { DEFAULT_CHAIN_ID, isDevWalletOnly } from "@/config/chains";
 
 import { sendLock } from "./lock";
 import { sendTx, type SendArgs, type SendDeps, type SendWallet } from "./send";
-import { createSentTxStore, reconcileSentTx } from "./sentTx";
+import { createSentTxStore, reconcileSentTx, type SentTx } from "./sentTx";
 
 const browserStorage = () => {
   try {
@@ -64,8 +64,9 @@ export function useSend({ errorText, gasLimitFor, record = false, onSuccess, onE
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (args: SendArgs) =>
-      sendTx(
+    mutationFn: async (args: SendArgs) => {
+      let saved: SentTx | undefined;
+      const receipt = await sendTx(
         {
           client: publicClient(),
           wallet: wagmiWallet(),
@@ -76,6 +77,7 @@ export function useSend({ errorText, gasLimitFor, record = false, onSuccess, onE
             ? {
                 ...sentTxStore,
                 save: (record) => {
+                  saved = record;
                   sentTxStore.save(record);
                   const queryKey = sentTxQueryKey(record.chainId, record.contract, record.account);
                   // An older reconciliation must not overwrite the newly sent hash.
@@ -87,7 +89,17 @@ export function useSend({ errorText, gasLimitFor, record = false, onSuccess, onE
           devWalletOnly: isDevWalletOnly,
         },
         args,
-      ),
+      );
+      // the receipt is in: the record is mined now, not at the next poll (a page reading "pending" would
+      // call the guest's own transaction "an earlier one" for a few seconds)
+      if (saved) {
+        const queryKey = sentTxQueryKey(saved.chainId, saved.contract, saved.account);
+        const current = sentTxStore.read(saved.chainId, saved.contract, saved.account) ?? saved; // a fee bump's hash
+        void queryClient.cancelQueries({ queryKey, exact: true });
+        queryClient.setQueryData(queryKey, { record: current, outcome: "mined" });
+      }
+      return receipt;
+    },
     onSuccess,
     onError,
   });

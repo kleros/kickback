@@ -290,9 +290,10 @@ function SplitPanel({ example }: { example: ShareExample }) {
       <div className="how-caps two">
         <span>
           <b>
-            {example.attend} {past ? "attended" : example.attend === 1 ? "attends" : "attend"}
+            {example.attend} {example.attend === 1 ? "attendee" : "attendees"}
           </b>
-          +{bonus} {unit} each
+          +{bonus} {unit}
+          {example.attend === 1 ? "" : " each"}
         </span>
         <span>
           <b>
@@ -316,13 +317,30 @@ function ListPanel({
   court,
   challengeFee,
   matchPeriod,
+  phase,
+  now,
+  challengeEndsAt,
+  held,
+  clock,
 }: {
   court: string;
   challengeFee?: bigint;
   matchPeriod: number;
+  /** The contract's phase: 0 open, 1 list posted, 2 paid out, 3 cancelled. */
+  phase: number;
+  /** The chain's time; undefined while loading (the instructions stay). */
+  now?: number;
+  /** 0 until the list is closed. */
+  challengeEndsAt: number;
+  /** Kleros cases still open after the payout. */
+  held: number;
+  clock: EventClock | null;
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
+  const cancelled = phase === 3;
+  // the challenge window is over: what happened is told in the past tense
+  const over = !cancelled && challengeEndsAt > 0 && now !== undefined && now > challengeEndsAt;
   return (
     <Panel title="Left off the list?">
       <svg
@@ -347,19 +365,34 @@ function ListPanel({
           <b>Not on the list</b>but you were there
         </span>
         <span>
-          <b>Challenge it</b>in {court}
+          <b>{over ? "Challenges" : "Challenge it"}</b>in {court}
         </span>
         <span>
-          <b>Jurors decide</b>on the evidence
+          <b>{over ? "Jurors" : "Jurors decide"}</b>
+          {over ? "decided each case sent to them" : "on the evidence"}
         </span>
       </div>
-      <p className="how-note" data-testid="challenge-fee">
-        To challenge, you pay the Kleros fee
-        {challengeFee ? ` (currently ${unitsText(challengeFee, 18)} ETH, set by Kleros)` : ""}. If the organiser does
-        not answer within {spanText(matchPeriod)}, you can join the list and get the fee back. If they send the case to
-        Kleros, they pay the same fee and Kleros jurors decide: whichever side wins gets back what is left of the two
-        fees.
-      </p>
+      {cancelled ? (
+        <p className="how-note" data-testid="challenge-fee">
+          The organiser cancelled this event, so there is no list to challenge.
+        </p>
+      ) : over ? (
+        <p className="how-note" data-testid="challenge-fee">
+          Challenges closed on {deadlineText(challengeEndsAt, clock)}.
+          {held > 0
+            ? ` ${held === 1 ? "One case is" : `${held} cases are`} still with Kleros jurors; a share is held until ${held === 1 ? "it is" : "they are"} decided.`
+            : ""}
+        </p>
+      ) : (
+        <p className="how-note" data-testid="challenge-fee">
+          To challenge, you pay the Kleros fee
+          {challengeFee ? ` (currently ${unitsText(challengeFee, 18)} ETH, set by Kleros)` : ""}. If the organiser does
+          not answer within {spanText(matchPeriod)}, you can join the list and get the fee back. If they send the case
+          to Kleros, they pay the same fee and Kleros jurors decide: whichever side wins gets back what is left of the
+          two fees.
+          {challengeEndsAt > 0 ? ` Challenges are open until ${deadlineText(challengeEndsAt, clock)}.` : ""}
+        </p>
+      )}
     </Panel>
   );
 }
@@ -387,6 +420,8 @@ function TimelinePanel({
   const stroke = `url(#${axis})`;
   const cancelled = phase === 3;
   const missed = phase === 0 && now !== undefined && now > claimDeadline;
+  // paid out: the strip tells what happened
+  const done = phase === 2;
   // once the list is posted, the rows follow what happened: posted, then the challenge window
   const rows: readonly (readonly [string, number])[] = cancelled
     ? []
@@ -422,17 +457,19 @@ function TimelinePanel({
       </svg>
       <div className="how-caps four">
         <span>
-          <b>Ends</b>deposits close
+          <b>{done ? "Ended" : "Ends"}</b>
+          {done ? "deposits closed" : "deposits close"}
         </span>
         <span>
           <b>Attendance</b>confirmed by the organiser
         </span>
         <span>
           <b>Challenges</b>
-          {spanText(challengePeriod)}
+          {done ? "closed" : spanText(challengePeriod)}
         </span>
         <span>
-          <b>Payouts</b>claimed by attendees
+          <b>Payouts</b>
+          {done ? "released" : "claimed by attendees or sent by the organiser"}
         </span>
       </div>
       {rows.length > 0 && (
@@ -515,7 +552,16 @@ export function HowItWorks({
         <div className="how-grid">
           <BackPanel amount={amount} />
           <SplitPanel example={example} />
-          <ListPanel court={court} challengeFee={challengeFee} matchPeriod={matchPeriod} />
+          <ListPanel
+            court={court}
+            challengeFee={challengeFee}
+            matchPeriod={matchPeriod}
+            phase={phase}
+            now={now}
+            challengeEndsAt={challengeEndsAt}
+            held={example.basis === "paid" ? example.held : 0}
+            clock={clock}
+          />
           <TimelinePanel
             eventEnd={eventEnd}
             claimDeadline={claimDeadline}

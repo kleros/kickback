@@ -12,7 +12,8 @@ import { GradientButton } from "@/components/ui/GradientButton";
 import { spanText } from "@/utils/time";
 
 import { Messages } from "./Messages";
-import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures } from "./parts";
+import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, TxLink } from "./parts";
+import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { matchLuma } from "../model/lumaMatch";
@@ -31,6 +32,7 @@ const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
 export function AttendanceScreen() {
   const event = useOrganiserEvent();
   const luma = useLumaBook(event.address, event.isOwner);
+  const record = useEventRecord(event.address);
   const [csv, setCsv] = useState<{ name: string; text: string } | null>(null);
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
   const [picked, setPicked] = useState<Set<string> | null>(null);
@@ -94,16 +96,90 @@ export function AttendanceScreen() {
         </p>
       </GlassCard>
     );
-  if (info.phase === 2 || info.phase === 3 || (info.phase === 0 && data.now > info.claimDeadline))
+  const listClosedTx = record.data?.listClosed?.tx;
+  if (info.phase === 2) {
+    // the final record, read only: who came, who did not, and how each challenge ended
+    const came = booked.filter((w) => already.has(w.toLowerCase()));
+    const noShowCount = booked.length - info.attendeeCount;
+    const releasedTx = record.data?.released?.tx;
+    return (
+      <div className="flex flex-col gap-5" data-testid="attendance-final">
+        <div className="flex flex-col gap-1">
+          <h2 className="kb-h1">Attendance</h2>
+          <p className="og-lede">
+            {`Payouts were released to ${info.attendeeCount} ${info.attendeeCount === 1 ? "attendee" : "attendees"}.`}
+          </p>
+        </div>
+        <Figures
+          rows={[
+            { label: "Deposits", value: String(booked.length) },
+            { label: "Came", value: String(info.attendeeCount) },
+            { label: "Did not come", value: String(Math.max(0, noShowCount)) },
+            { label: "Each attendee got", value: assetText(info.payoutShare, info) },
+          ]}
+        />
+        {(listClosedTx || releasedTx) && (
+          <p className="og-note flex flex-wrap gap-x-4" data-testid="attendance-txs">
+            {listClosedTx && (
+              <span>
+                Attendance list closed: <TxLink tx={listClosedTx} testId="list-closed-tx" />
+              </span>
+            )}
+            {releasedTx && (
+              <span>
+                Payouts released: <TxLink tx={releasedTx} />
+              </span>
+            )}
+          </p>
+        )}
+        <div className="og-table" role="table" aria-label="Final attendance">
+          {booked.map((w) => {
+            const name = luma.nameOf(w);
+            const challenge = data.challenges.find((c) => c.wallet.toLowerCase() === w.toLowerCase());
+            const on = already.has(w.toLowerCase());
+            const text = on
+              ? challenge
+                ? "Came (added after a challenge)"
+                : "Came"
+              : challenge?.state === 2
+                ? "With Kleros: a share is held"
+                : challenge?.state === 3
+                  ? challenge.ruling === 0
+                    ? "Did not come (Kleros did not rule either way)"
+                    : "Did not come (challenge lost at Kleros)"
+                  : "Did not come";
+            return (
+              <div key={w} className="og-row" data-testid="attendance-final-row" data-wallet={w.toLowerCase()}>
+                <div className="og-row-main">
+                  <span title={w}>
+                    {name && <b className="mr-2">{name}</b>}
+                    <span className="og-mono">{shortHex(w)}</span>
+                  </span>
+                  <span className="og-cell-status">
+                    <span
+                      className="og-dot"
+                      data-tone={on ? "ok" : challenge?.state === 2 ? "warn" : "end"}
+                      aria-hidden
+                    />
+                    <span>{text}</span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {came.length === 0 && <p className="og-note">Nobody is on the list.</p>}
+      </div>
+    );
+  }
+  if (info.phase === 3 || (info.phase === 0 && data.now > info.claimDeadline))
     return (
       <div className="flex flex-col gap-5">
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
-          {info.phase === 2
-            ? `Payouts were released to ${info.attendeeCount} ${info.attendeeCount === 1 ? "attendee" : "attendees"}.`
-            : info.phase === 3
-              ? "The event was cancelled."
-              : "The deadline to confirm who came has passed: guests can withdraw their deposits."}
+          {info.phase === 3
+            ? "The event was cancelled."
+            : "The deadline to confirm who came has passed: guests can withdraw their deposits."}
         </p>
       </div>
     );
@@ -158,6 +234,11 @@ export function AttendanceScreen() {
               : `The list is closed. Until ${when(info.challengeEndsAt)}, you can still add guests left off by mistake.`
             : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once it is confirmed, guests cannot be removed, and guests left off have ${spanText(info.challengePeriod)} to challenge.`}
         </p>
+        {listed && listClosedTx && (
+          <p className="og-note">
+            Attendance list closed: <TxLink tx={listClosedTx} testId="list-closed-tx" />
+          </p>
+        )}
       </div>
       {!listed && event.isOwner && (
         <FilePick

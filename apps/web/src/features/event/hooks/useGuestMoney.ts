@@ -31,6 +31,8 @@ export function useGuestMoney(
     action: MoneyAction;
     amount?: bigint;
     unit?: string;
+    /** A "resolve" that puts the guest on the list (an unanswered challenge, or a ruling that they came). */
+    joins?: boolean;
     hash?: Hash;
   }>({
     action: "claim",
@@ -74,7 +76,10 @@ export function useGuestMoney(
       (token && (action === "claim" || action === "withdraw") && data !== undefined && data.claimable === 0n)
         ? "ETH"
         : undefined;
-    setSending({ account: address, action, amount, unit, hash: undefined });
+    const joins =
+      action === "resolve" &&
+      (data?.challenge.state === 1 || (data?.challenge.state === 2 && data.challenge.ruling === 1));
+    setSending({ account: address, action, amount, unit, joins, hash: undefined });
     send.mutate({
       expectedAccount: address,
       onSent: (hash) => setSending((s) => ({ ...s, hash })),

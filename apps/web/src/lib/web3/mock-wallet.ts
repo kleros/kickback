@@ -31,7 +31,9 @@ const isMock = (connector: { id: string }) => connector.id === MOCK_CONNECTOR_ID
  */
 /** Attempts to make a connection stick, and how long each is given to. */
 const CONNECT_ATTEMPTS = 4;
-const HOLD_MS = 250;
+const HOLD_MS = 600;
+/** How long a reconnect from storage, started when the page loaded, is waited out before connecting. */
+const SETTLE_MS = 15_000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -65,6 +67,9 @@ export const connectMockAccount = async (account: MockAccountRef, features?: Moc
   // The provider reconnects from storage when it mounts and writes the result
   // when it finishes, which can land either side of this and undo it. Held
   // rather than assumed: the caller is about to act as this account.
+  for (let waited = 0; wagmiConfig.state.status === "reconnecting" && waited < SETTLE_MS; waited += 100) {
+    await sleep(100);
+  }
   for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt += 1) {
     await connectOnce(address, features);
     await sleep(HOLD_MS);

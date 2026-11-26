@@ -258,6 +258,10 @@ export function galleryInput(state: GalleryState): DepositInput {
     case "replaced":
       return { ...b, send: { account: WALLET, status: "error", errorKind: "replaced", hash: TX } };
     case "refunded":
-      return { ...b, guest: guest({ status: 2 }), history: { txHash: TX, refundedAt: NOW_MS / 1000 - 86_400 } };
+      return {
+        ...b,
+        guest: guest({ status: 2 }),
+        history: { txHash: TX, refundedAt: NOW_MS / 1000 - 86_400, paidTx: TX },
+      };
   }
 }
