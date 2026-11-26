@@ -11,11 +11,12 @@ import { GradientButton } from "@/components/ui/GradientButton";
 
 import { publishCase } from "@/lib/kleros/publishCase";
 
-import { DEFAULT_CHAIN_ID } from "@/config/chains";
+import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { caseUrl, resolverCaseUrl } from "@/config/protocol";
 
 import { Messages } from "./Messages";
 import { ConfirmDialog, Figures } from "./parts";
+import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { assetText, ethText, shortHex, TYPED_WORDS, when } from "../model/view";
@@ -32,6 +33,8 @@ const left = (from: number, to: number) => {
 
 export function PayoutScreen() {
   const event = useOrganiserEvent();
+  const record = useEventRecord(event.address);
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   const luma = useLumaBook(event.address, event.isOwner);
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [confirm, setConfirm] = useState<"release" | null>(null);
@@ -259,6 +262,25 @@ export function PayoutScreen() {
           ) : (
             <GlassCard className="og-card">
               <h3 className="og-h2">Payouts released</h3>
+              {record.data?.released && (
+                <p className="og-note" data-testid="release-tx">
+                  Released in transaction{" "}
+                  {explorer ? (
+                    <a
+                      className="kb-link og-mono"
+                      href={`${explorer}/tx/${record.data.released.tx}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {shortHex(record.data.released.tx)} ↗
+                    </a>
+                  ) : (
+                    <span className="og-mono">{shortHex(record.data.released.tx)}</span>
+                  )}
+                  . Releasing moves no money by itself: each payment is its own transaction, listed per guest on the
+                  Guests tab and in its downloadable record.
+                </p>
+              )}
               <p className="og-lede">
                 {data.unpaid.length > 0
                   ? `Each attendee can claim ${assetText(info.payoutShare, info)} on the guest page. You can also send every attendee their share now (you pay the network fee).`

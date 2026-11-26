@@ -893,17 +893,47 @@
   font-size: 11px;
   font-weight: 600;
 }
+/* phones: the name on its own line above the wallet */
+.og-table.is-guests .og-cell-person {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+}
+.og-table.is-guests .og-cell-status {
+  grid-row: 3;
+}
+.og-cell-txs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  font-size: 14px;
+}
+.og-cell-noname {
+  color: var(--kb-text-3, var(--kb-text-2));
+}
+/* no name yet: phones skip the empty line */
+@media (max-width: 767px) {
+  .og-table.is-guests .og-cell-person:has(.og-cell-noname) {
+    display: none;
+  }
+  .og-table.is-guests .og-row-main:has(.og-cell-noname) .og-cell-status {
+    grid-row: 2;
+  }
+}
 .og-row[data-new] {
   background: color-mix(in srgb, var(--kb-blue) 5%, transparent);
 }
 @media (min-width: 768px) {
   .og-table.is-guests .og-thead,
   .og-table.is-guests .og-row-main {
-    grid-template-columns: minmax(180px, 2fr) 110px 80px minmax(140px, 1.4fr) 120px;
+    grid-template-columns: minmax(110px, 1.2fr) minmax(130px, 1.1fr) 100px minmax(120px, 1fr) minmax(130px, 1.2fr) 110px;
   }
-  .og-table.is-guests.no-explorer .og-thead,
-  .og-table.is-guests.no-explorer .og-row-main {
-    grid-template-columns: minmax(180px, 2fr) 110px minmax(140px, 1.4fr) 120px;
+  .og-table.is-guests .og-cell-person {
+    grid-column: auto;
+    grid-row: auto;
+  }
+  .og-table.is-guests .og-cell-status {
+    grid-row: auto;
   }
 }
 .og-thumb {

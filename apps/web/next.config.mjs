@@ -2,6 +2,8 @@ import process from "node:process";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // a separate build folder per dev server, so several local test servers can run side by side
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   async headers() {
     const rpcUrls = [
       "https://rpc.mevblocker.io",

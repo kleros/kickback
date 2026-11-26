@@ -89,29 +89,6 @@
 .kb-icon-link:hover {
   border-color: var(--kb-violet);
 }
-/* header text links: a 44px tap area that stays clear of the toggle beside them */
-.kb-header-link {
-  min-height: 44px;
-  padding-inline: 4px;
-  line-height: 1.2;
-}
-.kb-nav-short {
-  display: none;
-}
-@media (max-width: 345px) {
-  .kb-nav-long {
-    display: none;
-  }
-  .kb-nav-short {
-    display: inline;
-  }
-}
-/* phones keep one text link; "Create an event" is on the home page, Manage your events and the footer */
-@media (max-width: 640px) {
-  .kb-header-create {
-    display: none;
-  }
-}
 /* the theme toggle wears the same frame as the GitHub link */
 .kb-header-right .kb-icon-btn {
   border: 1px solid var(--kb-hair);

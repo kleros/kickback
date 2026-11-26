@@ -39,6 +39,37 @@ export function ShellView({
   const data = event.overview.data;
   const tabs = organiserTabs(address);
   const current = tabs.find((tab) => tab.href.split("?")[0] === pathname)?.href ?? tabs[0]!.href;
+  // the organiser page is for the organiser's wallet only: anyone else sees nothing of the event
+  const locked = !event.restoring && (!event.connected || (!!data && !event.isOwner));
+  if (locked)
+    return (
+      <div className="og-page og-narrow" data-testid="organiser-locked">
+        <div className="og-head">
+          <Link href={paths.organise.getHref()} className="kb-link text-sm">
+            ← Manage your events
+          </Link>
+        </div>
+        <section className="og-card og-locked flex flex-col gap-3">
+          <h1 className="og-h2">Only the organiser can open this page</h1>
+          {!event.connected ? (
+            <>
+              <p className="og-note">Connect the wallet that created this event to manage it.</p>
+              <div className="og-actions">
+                <ConnectWallet text="Connect wallet" />
+              </div>
+            </>
+          ) : (
+            <p className="og-note" data-testid="not-owner">
+              The connected wallet did not create this event. Switch to the wallet that created it, or open{" "}
+              <Link href={paths.organise.getHref()} className="kb-link">
+                Manage your events
+              </Link>{" "}
+              to see the events of this wallet.
+            </p>
+          )}
+        </section>
+      </div>
+    );
   return (
     <OrganiserEventContext.Provider value={event}>
       <div className="og-page">
@@ -66,27 +97,11 @@ export function ShellView({
         <div className="og-nav-scroll">
           <SegmentedNav items={tabs} current={current} label="Organiser" />
         </div>
-        {event.restoring ? null : !event.connected ? (
+        {event.connected && !event.onChain && (
           <div className="og-actions">
-            <p className="og-note">
-              Connect a wallet to act on this event. Only the organiser&apos;s wallet can manage guests and the list.
-            </p>
-            <ConnectWallet text="Connect wallet" className="is-quiet" />
+            <p className="og-note">Your wallet is on another network.</p>
+            <ConnectWallet className="is-quiet" />
           </div>
-        ) : (
-          !event.onChain && (
-            <div className="og-actions">
-              <p className="og-note">Your wallet is on another network.</p>
-              <ConnectWallet className="is-quiet" />
-            </div>
-          )
-        )}
-        {event.connected && data && !event.isOwner && (
-          <p className="og-note" data-testid="not-owner">
-            The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
-            everything. Only the organiser can turn guests away, confirm the list, add guests or cancel the event.
-            Anyone can settle a ruling, release payouts or send attendees their share.
-          </p>
         )}
         {event.overview.isError ? (
           <p className="og-err" role="alert" data-testid="read-error">

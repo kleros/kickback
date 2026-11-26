@@ -13,8 +13,10 @@ import { GuestCheck } from "./GuestCheck";
 import { LumaMatch } from "./LumaMatch";
 import { Messages } from "./Messages";
 import { ConfirmDialog } from "./parts";
+import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
+import { recordCsv, type WalletRecord } from "../model/record";
 import { assetText, shortHex } from "../model/view";
 import type { GuestRow } from "../operations/read";
 import { tx } from "../operations/tx";
@@ -33,8 +35,19 @@ function statusText(row: GuestRow, phase: number, refundable: boolean) {
   return "Not on the list";
 }
 
+/** The transactions behind one guest: their deposit, then every payment to them (refund or payout). */
+function txLinks(rec: WalletRecord | undefined, refund: boolean) {
+  if (!rec) return [];
+  const links: { label: string; tx: string }[] = [];
+  if (rec.deposit) links.push({ label: "Deposit", tx: rec.deposit.tx });
+  const kind = refund ? "Refund" : "Payout";
+  rec.payments.forEach((p, i) => links.push({ label: rec.payments.length > 1 ? `${kind} ${i + 1}` : kind, tx: p.tx }));
+  return links;
+}
+
 export function GuestsScreen() {
   const event = useOrganiserEvent();
+  const record = useEventRecord(event.address);
   const luma = useLumaBook(event.address, event.isOwner);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
@@ -69,6 +82,36 @@ export function GuestsScreen() {
   const first = chosen.slice(0, BATCH_SIZE);
   const batched = batches(chosen, BATCH_SIZE).length > 1;
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  const txUrl = (hash: string) => (explorer ? `${explorer}/tx/${hash}` : hash);
+  const recOf = (wallet: string) => record.data?.wallets.get(wallet.toLowerCase());
+  const isRefund = (row: GuestRow) => row.status !== 1 || closed !== undefined || !!recOf(row.wallet)?.rejected;
+  const download = () => {
+    const rows = [...guests].map((g) => {
+      const rec = recOf(g.wallet);
+      const paid = rec?.payments.reduce((sum, p) => sum + p.amount, 0n) ?? 0n;
+      return {
+        name: luma.nameOf(g.wallet),
+        wallet: g.wallet,
+        status: statusText(g, info.phase, closed !== undefined),
+        deposit: assetText(info.depositAmount, info),
+        depositTx: rec?.deposit ? txUrl(rec.deposit.tx) : undefined,
+        paid: paid > 0n ? assetText(paid, info) : "",
+        paymentTxs: rec?.payments.map((p) => txUrl(p.tx)) ?? [],
+      };
+    });
+    const r = record.data;
+    const steps = [
+      r?.listClosed && { label: "Attendance list closed", tx: txUrl(r.listClosed.tx) },
+      r?.released && { label: "Payouts released", tx: txUrl(r.released.tx) },
+      r?.cancelled && { label: "Event cancelled", tx: txUrl(r.cancelled.tx) },
+    ].filter((s): s is { label: string; tx: string } => !!s);
+    const blob = new Blob([recordCsv(rows, steps)], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${(info.eventName || "event").replace(/[^\w-]+/g, "-")}-record.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
   const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
   const q = search.trim().toLowerCase();
   const rows = [...guests].reverse().filter((g) => {
@@ -135,6 +178,23 @@ export function GuestsScreen() {
                     : "Newest first. Guests could only be turned away before the event started."}
           </p>
         </div>
+        {guests.length > 0 && event.isOwner && !guests.some((g) => luma.nameOf(g.wallet)) && (
+          <p className="og-note">Names appear once you load the Luma export above. They stay in this browser only.</p>
+        )}
+        {guests.length > 0 && (
+          <div className="og-actions">
+            <GradientButton className="is-quiet" isDisabled={!record.data} onPress={download}>
+              Download the record (CSV)
+            </GradientButton>
+            <span className="og-note">
+              {record.isError
+                ? "The transactions could not be read. Reload to try again."
+                : record.data
+                  ? "Every guest with their deposit and payout transactions."
+                  : "Reading the transactions…"}
+            </span>
+          </div>
+        )}
         {guests.length > 0 && (
           <input
             className="og-input"
@@ -151,11 +211,12 @@ export function GuestsScreen() {
             <p className="og-lede">Guests appear here as soon as they deposit on the guest page.</p>
           </GlassCard>
         ) : (
-          <div className={`og-table is-guests${explorer ? "" : " no-explorer"}`} role="table" aria-label="Guests">
+          <div className="og-table is-guests" role="table" aria-label="Guests">
             <div className="og-thead" role="row">
-              <span>Guest</span>
+              <span>Name</span>
+              <span>Wallet</span>
               <span>Deposit</span>
-              {explorer && <span>Explorer</span>}
+              <span>Transactions</span>
               <span>Status</span>
               <span className="text-right">{open ? "Turn away" : ""}</span>
             </div>
@@ -170,24 +231,40 @@ export function GuestsScreen() {
                   data-new={isNew(row.wallet) || undefined}
                 >
                   <div className="og-row-main">
+                    <span className="og-cell-person">
+                      {name ? (
+                        <span className="og-cell-name">{name}</span>
+                      ) : (
+                        <span className="og-cell-noname" title="Load the Luma export above to see names">
+                          —
+                        </span>
+                      )}
+                    </span>
                     <span className="og-cell-wallet" title={row.wallet}>
-                      {name && <span className="og-cell-name">{name}</span>}
                       <span className="og-mono">{shortHex(row.wallet)}</span>
                       {isNew(row.wallet) && <span className="og-new">New</span>}
                     </span>
                     <span className="og-cell-hide kb-num">{assetText(info.depositAmount, info)}</span>
-                    {explorer && (
-                      <span className="og-cell-hide">
-                        <a
-                          className="kb-link"
-                          href={`${explorer}/address/${row.wallet}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Open
-                        </a>
-                      </span>
-                    )}
+                    <span className="og-cell-hide og-cell-txs" data-testid="guest-txs">
+                      {txLinks(recOf(row.wallet), isRefund(row)).map((link) =>
+                        explorer ? (
+                          <a
+                            key={link.tx + link.label}
+                            className="kb-link"
+                            href={txUrl(link.tx)}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={link.tx}
+                          >
+                            {link.label}
+                          </a>
+                        ) : (
+                          <span key={link.tx + link.label} title={link.tx}>
+                            {link.label}
+                          </span>
+                        ),
+                      )}
+                    </span>
                     <span className="og-cell-status">
                       <span className="og-dot" data-tone={TONE[row.status] ?? "end"} aria-hidden />
                       <span>{statusText(row, info.phase, closed !== undefined)}</span>

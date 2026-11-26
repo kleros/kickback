@@ -41,13 +41,6 @@ export function Header() {
               Sepolia test
             </span>
           )}
-          <Link href={paths.organiseNew.getHref()} className="kb-link kb-header-link kb-header-create text-sm">
-            Create an event
-          </Link>
-          <Link href={paths.organise.getHref()} className="kb-link kb-header-link text-sm">
-            <span className="kb-nav-long">Manage your events</span>
-            <span className="kb-nav-short">Your events</span>
-          </Link>
           <a
             className="kb-icon-link"
             href={siteConfig.repo}
