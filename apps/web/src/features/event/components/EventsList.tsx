@@ -17,9 +17,17 @@ import { unitsText } from "../model/depositState";
 import { eventStatus, STATUS_TEXT, type ListedEvent } from "../model/listing";
 import { eventDateText, isShowableTime } from "../model/when";
 
-function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
+function EventRow({
+  row,
+  now,
+  hrefOf,
+}: {
+  row: ListedEvent;
+  now: number | undefined;
+  hrefOf?: (row: ListedEvent) => string;
+}) {
   const event = useEvent(row.contract);
-  const href = paths.event.getHref(row.contract, row.from);
+  const href = hrefOf ? hrefOf(row) : paths.event.getHref(row.contract, row.from);
   const data = event.data;
   const status = data && now !== undefined ? eventStatus(data.phase, data.eventEnd, data.claimDeadline, now) : null;
 
@@ -79,17 +87,17 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   );
 }
 
-/** The connected wallet's own events, on the home page. */
-export function EventsList({ rows }: { rows: readonly ListedEvent[] }) {
+/** A list of events, each row linking to `hrefOf` (the guest page by default). Renders nothing when empty. */
+export function EventsList({ rows, hrefOf }: { rows: readonly ListedEvent[]; hrefOf?: (row: ListedEvent) => string }) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;
 
-  if (!rows.length) return <p className="home-empty">No featured events yet. Guests find each event on Luma.</p>;
+  if (!rows.length) return null;
   return (
     <ul className="home-events" data-testid="home-events">
       {rows.map((row) => (
         <ErrorBoundary key={row.contract.toLowerCase()} fallback={null}>
-          <EventRow row={row} now={now} />
+          <EventRow row={row} now={now} hrefOf={hrefOf} />
         </ErrorBoundary>
       ))}
     </ul>

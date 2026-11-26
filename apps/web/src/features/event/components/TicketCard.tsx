@@ -25,6 +25,7 @@ export interface TicketActions {
   challenge: () => void;
   approve: () => void;
   resolve: () => void;
+  release: () => void;
   recheck: () => void;
 }
 
@@ -126,6 +127,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     challenge: actions.challenge,
     approve: actions.approve,
     resolve: actions.resolve,
+    release: actions.release,
     copy: () => {},
     none: () => {},
   }[view.action];
@@ -229,7 +231,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
       </div>
       <div className="tk-foot">
         {copyFailed && view.receipt ? (
-          <span>Press and hold the link above to copy it.</span>
+          <span>Press and hold the link to copy.</span>
         ) : (
           view.foot && <span>{view.foot}</span>
         )}
@@ -251,14 +253,15 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         <Disclosure title="Proof of Presence contract" icon={<ShieldCheckIcon className="ok" />}>
           <div className="tk-vrows">
             <p className="tk-vnote">
-              Created by this site&apos;s official event contract, with disputes settled in Kleros Court. This checks
-              the code, not the organiser: anyone can create an event, so only use the link on the organiser&apos;s Luma
-              event page.
+              This event was created by this site&apos;s official factory, and its disputes go to Kleros Court. This
+              checks the code, not the organiser: anyone can create an event, so only use the link from the
+              organiser&apos;s Luma event page.
             </p>
             <div className="tk-vrow">
               <span>Code</span>
               <span>
-                Proof of Presence factory&nbsp;<span className="kb-mono">{short(verified.factory)}</span>
+                Proof of Presence factory&nbsp;
+                <span className="kb-mono whitespace-nowrap">{short(verified.factory)}</span>
                 <ExplorerLink explorer={verified.explorer} address={verified.factory} label="Open the factory" />
               </span>
             </div>

@@ -3,7 +3,7 @@
 import { EventHead } from "./EventHead";
 import { ReceiptExtras } from "./ReceiptExtras";
 import { TicketCard, type TicketActions } from "./TicketCard";
-import { depositState } from "../model/depositState";
+import { depositState, unitsText } from "../model/depositState";
 import { GALLERY_STATES, galleryInput, type GalleryState } from "../model/fixtures";
 
 const noop = () => {};
@@ -17,6 +17,7 @@ const ACTIONS: TicketActions = {
   challenge: noop,
   approve: noop,
   resolve: noop,
+  release: noop,
   recheck: noop,
 };
 const VERIFIED = {
@@ -37,7 +38,7 @@ function Card({ state }: { state: GalleryState }) {
     <>
       <TicketCard
         view={view}
-        amount="0.01"
+        amount={unitsText(input.amount, input.asset.decimals)}
         unit={input.asset.symbol}
         actions={ACTIONS}
         verified={VERIFIED}

@@ -50,7 +50,7 @@ interface IERC20Min {
 ///     token through `deposit()` after an approval) and is registered as a staker in the same transaction. Walk-ins
 ///     can still deposit while the event is running. A wrong amount, a second deposit from the same wallet, a full
 ///     event or a late payment is refused, so the money stays in the sender's wallet.
-///  2. Curation: until the list is closed, the organiser can turn a staker away with `reject`, which gives back
+///  2. Curation: until the event starts, the organiser can turn a staker away with `reject`, which gives back
 ///     exactly their deposit (bots, wrong audience, someone who cancelled).
 ///  3. Attendance: from `eventEnd` until `claimDeadline`, the organiser posts the stakers who showed up
 ///     (`postAttendance`, in several batches if needed) and closes the list, which opens the challenge window.

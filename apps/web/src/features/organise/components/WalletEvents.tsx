@@ -18,14 +18,14 @@ import { useMyEvents } from "../hooks/useMyEvents";
 export function WalletEvents() {
   const { address, status } = useAccount();
   const mine = useMyEvents();
-  // no Connect button flashing while the wallet reconnects on load
-  if (status === "connecting" || status === "reconnecting") return null;
+  // no Connect button flashing while a saved wallet reconnects on load; a press keeps the button and its spinner
+  if (status === "reconnecting") return null;
   const events = mine.data ?? [];
   let body: ReactNode;
   if (!address)
     body = (
       <>
-        <p className="og-note">Connect the wallet you created your events with to see them here.</p>
+        <p className="og-lede">Connect the wallet you created your events with to see them here.</p>
         <div className="og-actions">
           <ConnectWallet text="Connect wallet" />
         </div>
@@ -61,8 +61,7 @@ export function WalletEvents() {
       </ul>
     );
   return (
-    <section className="flex flex-col gap-2" data-testid="wallet-events">
-      <h2 className="og-h2">Your events</h2>
+    <section className="flex flex-col gap-2" data-testid="wallet-events" aria-label="Your events">
       {body}
     </section>
   );

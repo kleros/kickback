@@ -20,7 +20,7 @@ import { tx } from "../operations/tx";
 const LUMA_SETUP = [
   "Copy the guest link and put it in your Luma ticket's description.",
   'On that Luma ticket, turn on "Require approval" and "Require Ethereum wallet", and add a required question: "Paste your Kickback deposit link".',
-  "Guests deposit, then paste their deposit link in the Luma request.",
+  "Guests deposit, then paste their deposit link in their Luma registration.",
   "Approve each request that has a deposit; you can check them on the Guests tab.",
 ];
 
@@ -32,37 +32,56 @@ export function OverviewScreen({ court }: { court: string }) {
   if (!data || !phase) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
+  // a late challenge can still be inside its answer time after the window: releasePayouts waits for it
+  const waiting = data.challenges.filter((c) => c.state === 1 && data.now <= c.matchEndsAt);
+  const lastAnswer = Math.max(0, ...waiting.map((c) => c.matchEndsAt));
   // nothing to answer yet: say when to come back instead
   const step: NextStep =
-    phase === "Challenge window" && open === 0
+    phase === "Payouts ready" && waiting.length > 0
       ? {
-          title: "Release payouts after the challenge window",
-          detail: `No challenges so far. After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
-          tab: null,
-          action: null,
+          title: "Answer challenges",
+          detail: `The challenge window is over, but ${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} still waiting for your answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released. You can release payouts after ${when(lastAnswer)}.`,
+          tab: "payout",
+          action: "Open Payout",
         }
-      : phase === "Payouts released" && info.openCases > 0
+      : phase === "Challenge window" && open === 0
         ? {
-            title: "Settle the Kleros cases",
-            detail: "A share is held for each open case. Settle each ruling on the Payout tab once the jurors decide.",
-            tab: "payout",
-            action: "Open Payout",
+            title: "Release payouts after the challenge window",
+            detail: `${data.challenges.length ? "No open challenges." : "No challenges so far."} After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
+            tab: null,
+            action: null,
           }
-        : phase === "Payouts released" && data.unpaid.length === 0
-          ? { title: "All done", detail: "Every attendee has received their payout.", tab: null, action: null }
-          : NEXT_STEP[phase];
+        : phase === "Payouts released" && info.openCases > 0
+          ? {
+              title: "Settle the Kleros cases",
+              detail:
+                "A share is held for each open case. Settle each ruling on the Payout tab once the jurors decide.",
+              tab: "payout",
+              action: "Open Payout",
+            }
+          : phase === "Payouts released" && data.unpaid.length === 0
+            ? {
+                title: "All done",
+                detail: "Every attendee's share has been sent or can be claimed on the guest page.",
+                tab: null,
+                action: null,
+                done: true,
+              }
+            : NEXT_STEP[phase];
   const booking = phase === "Deposits open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
     phase === "Deposits open"
       ? `Starts ${when(info.eventStart)} · deposits stay open until it ends`
       : phase === "Live now"
-        ? `The event is on · walk-ins can deposit until ${when(info.eventEnd)}`
+        ? `The event is under way · walk-ins can deposit until ${when(info.eventEnd)}`
         : phase === "Attendance due" || phase === "Adding names"
           ? `Confirm who came by ${when(info.claimDeadline)}`
           : phase === "Challenge window"
             ? `Challenges close ${when(info.challengeEndsAt)}`
-            : null;
+            : phase === "Payouts ready" && waiting.length > 0
+              ? `Answer by ${when(lastAnswer)}`
+              : null;
 
   const canCancel = event.isOwner && event.onChain && info.phase === 0 && data.now <= info.claimDeadline;
   return (
@@ -72,7 +91,7 @@ export function OverviewScreen({ court }: { court: string }) {
         {deadline && <p className="og-lede">{deadline}</p>}
       </div>
       <GlassCard as="section" className="og-card" data-testid="next-step">
-        <span className="og-kicker">Next</span>
+        <span className="og-kicker">{step.done ? "Status" : "Next"}</span>
         <div className="flex flex-col gap-1">
           <h2 className="og-h2">{step.title}</h2>
           <p className="og-lede">{step.detail}</p>
@@ -115,7 +134,11 @@ export function OverviewScreen({ court }: { court: string }) {
         )}
         {booking && (
           <p className="og-note">
-            Bookmark this organiser page. If you lose it, connect this wallet on Organise to find your events.
+            Bookmark this organiser page. If you lose it, open{" "}
+            <Link href={paths.organise.getHref()} className="kb-link">
+              Manage your events
+            </Link>{" "}
+            and connect the wallet you created the event with.
           </p>
         )}
       </GlassCard>

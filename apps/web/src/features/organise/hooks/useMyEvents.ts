@@ -9,7 +9,10 @@ import { useAccount, usePublicClient } from "wagmi";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
 
-/** The events the connected wallet organises, from the factory, newest first, with their names. */
+/**
+ * The events the connected wallet created, from the factory, newest first, with their names. An event whose
+ * ownership has since moved to another wallet is left out; a failed owner read keeps the row.
+ */
 export function useMyEvents() {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const { address } = useAccount();
@@ -18,14 +21,20 @@ export function useMyEvents() {
     enabled: !!client && !!address && PROTOCOL !== null,
     queryFn: async () => {
       const contracts = (await eventsOf(client!, PROTOCOL!.factory, address!)) as Address[];
-      return Promise.all(
-        contracts.map(async (contract) => ({
-          contract,
-          name: await client!
-            .readContract({ address: contract, abi: presenceEventAbi, functionName: "eventName" })
-            .catch(() => null),
-        })),
+      const rows = await Promise.all(
+        contracts.map(async (contract) => {
+          const [name, owner] = await Promise.all([
+            client!
+              .readContract({ address: contract, abi: presenceEventAbi, functionName: "eventName" })
+              .catch(() => null),
+            client!.readContract({ address: contract, abi: presenceEventAbi, functionName: "owner" }).catch(() => null),
+          ]);
+          return { contract, name, owner };
+        }),
       );
+      return rows
+        .filter((r) => !r.owner || r.owner.toLowerCase() === address!.toLowerCase())
+        .map(({ contract, name }) => ({ contract, name }));
     },
   });
 }

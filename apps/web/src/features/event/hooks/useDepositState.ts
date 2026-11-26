@@ -13,12 +13,13 @@ import { useAccount, useBalance, usePublicClient, useSwitchChain } from "wagmi";
 
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
+import { isUnknownChain } from "@/lib/web3/chainErrors";
 import { connectWallet, hasInjectedWallet, installedWallets } from "@/lib/web3/connect";
 import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
-import { caseUrl, resolverCaseUrl } from "@/config/protocol";
+import { caseUrl, FROM_BLOCK, resolverCaseUrl } from "@/config/protocol";
 
 import { useDeposit } from "./useDeposit";
 import { useGuestMoney } from "./useGuestMoney";
@@ -26,13 +27,7 @@ import { useBlockTime, useCreatedBlock, useEventDeposits, type KickbackEvent } f
 import { chainName } from "../model/chainNames";
 import { depositState, depositsOpen, type DepositInput, type DepositView } from "../model/depositState";
 import { dayText, deadlineText } from "../model/when";
-
-/** wallet_switchEthereumChain's "unknown chain" code, wherever viem nested it. */
-const isUnknownChain = (error: unknown): boolean => {
-  for (let e = error as { code?: number; cause?: unknown } | undefined; e; e = e.cause as typeof e)
-    if (e.code === 4902) return true;
-  return false;
-};
+import { readRelease } from "../operations/guestMoney";
 
 /** The network fee the wallet reserves for a deposit: gas limit × max fee per gas. */
 function useDepositFee(contract: Address, account: Address | undefined, value: bigint, enabled: boolean) {
@@ -61,6 +56,23 @@ function useDepositFee(contract: Address, account: Address | undefined, value: b
   });
 }
 
+/** The network fee a challenge is expected to cost: a fixed gas allowance, since a wallet that cannot pay
+ * would make estimateGas throw. */
+function useChallengeFee(enabled: boolean) {
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  return useQuery({
+    queryKey: ["challenge-fee", DEFAULT_CHAIN_ID],
+    enabled: enabled && client !== undefined,
+    staleTime: STALE_TIME.balance,
+    refetchInterval: 15_000,
+    retry: false,
+    queryFn: async () => {
+      const fees = await client!.estimateFeesPerGas();
+      return gasLimitFor(150_000n) * (fees.maxFeePerGas ?? fees.gasPrice ?? 0n);
+    },
+  });
+}
+
 /** Re-renders every second while `on`, for the pending timer. */
 function useTicker(on: boolean) {
   const [now, setNow] = useState(() => Date.now());
@@ -84,6 +96,9 @@ export interface DepositController {
   challenge: () => void;
   approve: () => void;
   resolve: () => void;
+  release: () => void;
+  /** The latest block's time, unix seconds; undefined while loading. */
+  now?: number;
   depositOpen: boolean;
   /** Chain time has passed the event's end. False while chain time is loading. */
   ended: boolean;
@@ -92,8 +107,9 @@ export interface DepositController {
 }
 
 /** The deposit card's state machine: wallet, chain, balance, history and the pending record, folded into one view. */
-export function useDepositState(event: KickbackEvent): DepositController {
+export function useDepositState(event: KickbackEvent, from?: string): DepositController {
   const { address, chainId, status } = useAccount();
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const { open } = useAppKit();
   const { open: modalOpen } = useAppKitState();
   const { switchChainAsync } = useSwitchChain();
@@ -119,8 +135,9 @@ export function useDepositState(event: KickbackEvent): DepositController {
 
   const { data: chainTime } = useChainTime();
   const token = isEth(event.token) ? undefined : event.token;
-  const created = useCreatedBlock(event.contract);
-  const deposits = useEventDeposits(event.contract, created.data);
+  const created = useCreatedBlock(event.contract, from === undefined ? undefined : Number(from));
+  // a failed created-block scan still lets the deposit logs load, from the factory's deploy
+  const deposits = useEventDeposits(event.contract, created.data ?? (created.isError ? FROM_BLOCK : undefined));
   const mine = address ? deposits.data?.byWallet.get(address.toLowerCase()) : undefined;
   const depositedAt = useBlockTime(mine?.block);
   const money = useGuestMoney(event.contract, token, event.depositAmount, event.challengeDeposit);
@@ -134,6 +151,18 @@ export function useDepositState(event: KickbackEvent): DepositController {
   });
   const fee = useDepositFee(event.contract, address, token ? 0n : event.depositAmount, onChain);
   const sentTx = useSentTx(event.contract);
+  const now = chainTime?.now;
+  const windowOver = phase === 1 && !!event.challengeEndsAt && now !== undefined && now > event.challengeEndsAt;
+  const challengeOpen = phase === 1 && !!event.challengeEndsAt && now !== undefined && !windowOver;
+  const challengeFee = useChallengeFee(onChain && challengeOpen);
+  // anyone can release payouts after the window: the card offers it to attendees when nothing blocks it
+  const release = useQuery({
+    queryKey: ["release", DEFAULT_CHAIN_ID, event.contract.toLowerCase()],
+    enabled: client !== undefined && windowOver,
+    staleTime: STALE_TIME.live,
+    refetchInterval: 15_000,
+    queryFn: () => readRelease(client!, event.contract),
+  });
   const send = useDeposit(event.contract, event.token, event.depositAmount);
 
   const sendError = send.error instanceof SendError ? send.error : undefined;
@@ -141,17 +170,21 @@ export function useDepositState(event: KickbackEvent): DepositController {
   const waiting = send.isPending || sent?.outcome === "pending";
   const wallNow = useTicker(waiting);
 
-  const history: DepositInput["history"] =
-    connected && deposits.data
+  // a failed log read gives an empty history, so the card falls back to the wallet link instead of spinning
+  const history: DepositInput["history"] = connected
+    ? deposits.data
       ? mine
         ? {
             paidTx: mine.paid?.tx,
             txHash: mine.txHash,
             at: depositedAt.data,
-            refundedAt: mine.refundedBlock === undefined ? undefined : (refundedAt.data ?? chainTime?.now),
+            refundedAt: mine.refundedBlock === undefined ? undefined : refundedAt.data,
           }
         : {}
-      : undefined;
+      : deposits.isError
+        ? {}
+        : undefined
+    : undefined;
 
   const view = depositState({
     amount: event.depositAmount,
@@ -184,6 +217,8 @@ export function useDepositState(event: KickbackEvent): DepositController {
     },
     balance: balance.data?.value,
     fee: fee.data,
+    challengeFee: challengeFee.data,
+    release: release.data,
     history,
     sent,
     send: {
@@ -215,6 +250,8 @@ export function useDepositState(event: KickbackEvent): DepositController {
     challenge: money.challenge,
     approve: money.approve,
     resolve: money.resolve,
+    release: money.release,
+    now,
     connect: () => {
       // a session being restored is already connecting: a second connect() would race it
       if (restoring) return;

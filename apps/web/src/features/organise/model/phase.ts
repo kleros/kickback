@@ -32,6 +32,8 @@ export interface NextStep {
   tab: "guests" | "attendance" | "payout" | null;
   /** The button label, verb first; null when there is nothing to open. */
   action: string | null;
+  /** The event is finished: the card shows a status, not a next step. */
+  done?: boolean;
 }
 
 export const NEXT_STEP: Record<Phase, NextStep> = {
@@ -44,14 +46,14 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   "Live now": {
     title: "Check a guest",
     detail:
-      "Walk-ins register on Luma, then deposit here. Deposits made after the start cannot be refunded, so tell a walk-in to deposit only once you know there is room, then check them here and approve them on Luma. Scan every guest's Luma QR code at the door: only checked-in guests count as attendees.",
+      "Walk-ins register on Luma, then deposit on the guest page. Once the event has started, you can no longer turn anyone away, so tell a walk-in to deposit only once you know there is room. Then check their deposit on the Guests tab and approve them on Luma. Scan every guest's Luma QR code at the door: only checked-in guests count as attendees.",
     tab: "guests",
     action: "Open Guests",
   },
   "Attendance due": {
     title: "Confirm who came",
     detail:
-      "Export the Luma guest list (it includes check-ins and wallets) and load it here. Review who came and confirm it before the deadline. The list is recorded on the blockchain and not published anywhere else.",
+      "Export the Luma guest list (it includes check-ins and wallets) and load it here. Review who came and confirm the list before the deadline. Only wallet addresses go on the blockchain; names and emails stay in this browser.",
     tab: "attendance",
     action: "Open Attendance",
   },
@@ -66,7 +68,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     detail:
       "Guests left off the list can challenge until the window closes. Add anyone who came. If a guest did not come, send their case to Kleros within 1 day of their challenge, or they will be added.",
     tab: "payout",
-    action: "Answer on Payout",
+    action: "Open Payout",
   },
   "Payouts ready": {
     title: "Release payouts",
@@ -86,11 +88,14 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     detail: "Every guest can withdraw their full deposit on the guest page.",
     tab: null,
     action: null,
+    done: true,
   },
   "Past the deadline": {
     title: "Attendance was not confirmed",
-    detail: "The deadline to confirm who came has passed. Guests can withdraw their full deposits.",
+    detail:
+      "The deadline to confirm who came has passed. Every guest can withdraw their full deposit on the guest page.",
     tab: null,
     action: null,
+    done: true,
   },
 };

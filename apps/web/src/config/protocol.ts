@@ -57,7 +57,7 @@ export const PROTOCOL: Protocol | null =
 export const FROM_BLOCK = PROTOCOL?.fromBlock ?? 0;
 
 /** The court's name as guests and organisers read it. */
-export const courtName = (chainId: number) => (chainId === sepolia.id ? "Test court (Sepolia)" : "Kleros Court");
+export const courtName = (chainId: number) => (chainId === sepolia.id ? "Kleros test court (Sepolia)" : "Kleros Court");
 
 /** Kleros Court's page for a case (its arbitrator dispute ID), where there is one. */
 export const caseUrl = (chainId: number, arbitratorDisputeID: bigint): string | undefined => {

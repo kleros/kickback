@@ -8,7 +8,10 @@ export function shareUrls(text: string, luma: string, guestLink: string) {
   return {
     X: `https://x.com/intent/post?text=${e(text.includes(url) ? text : `${text} ${url}`)}`,
     LinkedIn: `https://www.linkedin.com/sharing/share-offsite/?url=${e(url)}`,
-    Telegram: `https://t.me/share/url?url=${e(url)}&text=${e(text)}`,
+    // Telegram prints `url` and then `text`: a text that carries the link goes alone, so the link shows once
+    Telegram: text.includes(url)
+      ? `https://t.me/share/url?url=${e(text)}`
+      : `https://t.me/share/url?url=${e(url)}&text=${e(text)}`,
   };
 }
 

@@ -71,6 +71,8 @@ export interface SendArgs {
   expectedAccount?: Address;
   /** Re-reads whatever the request depends on and builds it, right before the wallet prompt. Throw to refuse. */
   prepare: () => Promise<TxRequest>;
+  /** Called once the wallet has signed and broadcast, before the receipt is awaited. */
+  onSent?: (hash: Hash) => void;
 }
 
 export type SendErrorKind =
@@ -136,7 +138,7 @@ export async function sendTx(deps: SendDeps, args: SendArgs): Promise<Transactio
   }
 }
 
-async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs): Promise<TransactionReceipt> {
+async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: SendArgs): Promise<TransactionReceipt> {
   const { client, wallet, chainId, errorText, gasLimitFor, sent } = deps;
   const now = deps.now ?? Date.now;
 
@@ -211,6 +213,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount }: SendArgs
   } catch (error) {
     throw new SendError("wallet", errorText(error), undefined, { cause: error });
   }
+  onSent?.(hash);
 
   const waiting = new AbortController();
   if (sent) {

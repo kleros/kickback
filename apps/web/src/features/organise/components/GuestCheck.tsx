@@ -26,9 +26,18 @@ type Verdict = {
   text?: string;
   /** The paying wallet, shown in full so it can be compared with the Luma request. */
   wallet?: string;
+  /** Nothing left to record: the "I approved them on Luma" button is hidden. */
+  done?: boolean;
 } | null;
 
-const clock = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const clock = (ms: number) =>
+  new Date(ms).toLocaleString([], {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
 /** The full address, with the first 6 and last 4 characters stressed: what people compare by eye. */
 function WalletText({ wallet }: { wallet: string }) {
@@ -49,12 +58,18 @@ export function GuestCheck({
   contract,
   guests,
   nameOf,
+  lumaOf,
   approvedAt,
   check: remember,
+  closed,
 }: {
   contract: Address;
   guests: readonly GuestRow[];
   nameOf: (wallet: string) => string | undefined;
+  /** The wallet's request status in the latest Luma export loaded here. */
+  lumaOf?: (wallet: string) => "approved" | "pending" | "declined" | undefined;
+  /** The event no longer takes approvals: cancelled, or the deadline to confirm who came was missed. */
+  closed?: "cancelled" | "missed";
   /** When this browser recorded the wallet as approved on Luma. */
   approvedAt: (wallet: string) => number | undefined;
   check: (wallet: string) => number | undefined;
@@ -78,8 +93,6 @@ export function GuestCheck({
   /** `live` is the wallet's status read from the contract just now; the cached list is the fallback. */
   const walletVerdict = (wallet: string, viaTx: boolean, live?: number): Verdict => {
     const status = live ?? guests.find((g) => g.wallet.toLowerCase() === wallet.toLowerCase())?.status ?? 0;
-    const name = nameOf(wallet);
-    const who = name ? `${name} on Luma. ` : "";
     if (status === 0)
       return { tone: "err", title: "No deposit: do not approve", text: "This wallet has not deposited.", wallet };
     if (status === 2)
@@ -91,15 +104,34 @@ export function GuestCheck({
       return {
         tone: "warn",
         title: "Already approved: approve only one",
-        text: `${who}A request with this deposit was approved here at ${clock(before)}. One deposit covers one guest.`,
+        text: `A request with this deposit was already approved here on ${clock(before)}. One deposit covers one guest.`,
         wallet,
+        done: true,
+      };
+    if (closed)
+      return {
+        tone: "warn",
+        title: closed === "cancelled" ? "Event cancelled: do not approve" : "Deadline missed: do not approve",
+        text:
+          closed === "cancelled"
+            ? "This event is cancelled, so this guest can withdraw their full deposit on the guest page."
+            : "Attendance was not confirmed in time, so this guest can withdraw their full deposit on the guest page.",
+        wallet,
+      };
+    if (lumaOf?.(wallet) === "approved")
+      return {
+        tone: "ok",
+        title: "Deposit found: already approved on Luma",
+        text: "Nothing to do. Do not approve a second request with this deposit.",
+        wallet,
+        done: true,
       };
     return {
       tone: "ok",
       title: "Deposit found: approve",
       text: viaTx
-        ? `${who}Approve if this is the Ethereum address on their Luma request.`
-        : `${who}Approve their request on Luma.`,
+        ? "Approve if this is the Ethereum address on their Luma request, then mark it below."
+        : "Approve their request on Luma, then mark it below.",
       wallet,
     };
   };
@@ -216,8 +248,8 @@ export function GuestCheck({
     <section className="flex flex-col gap-2" id="check" data-testid="guest-check">
       <h2 className="og-h2">Check a guest</h2>
       <p className="og-lede">
-        Paste the Ethereum address Luma verified on the request (safest), or the deposit link they pasted. It is checked
-        against this event&apos;s deposits on the blockchain, so a fake link fails.
+        Paste the Ethereum address Luma verified on the request (safest), or the deposit link the guest pasted. It is
+        checked against this event&apos;s deposits on the blockchain, so a fake link fails.
       </p>
       <div className="og-check-row">
         <input
@@ -247,8 +279,16 @@ export function GuestCheck({
             {busy ? (extractTxHash(text) ? "Checking the transaction…" : "Checking the deposit…") : result?.title}
           </p>
           {!busy && result?.wallet && <WalletText wallet={result.wallet} />}
-          {!busy && result?.text && <p className="og-verdict-text">{result.text}</p>}
-          {!busy && result?.tone === "ok" && result.wallet && result.title !== "Recorded as approved" && (
+          {!busy && result?.text && (
+            <p className="og-verdict-text">
+              {/* the name is read now, not kept in the verdict: it disappears at once on Disconnect */}
+              {result.tone !== "err" && result.wallet && nameOf(result.wallet)
+                ? `Luma name: ${nameOf(result.wallet)}. `
+                : ""}
+              {result.text}
+            </p>
+          )}
+          {!busy && result?.tone === "ok" && result.wallet && !result.done && (
             <button
               type="button"
               className="og-paste self-start"
@@ -257,12 +297,13 @@ export function GuestCheck({
                 setResult({
                   ...result,
                   tone: "ok",
-                  title: "Recorded as approved",
-                  text: "Now approve their request on Luma.",
+                  done: true,
+                  title: "Marked as approved",
+                  text: "Saved in this browser only, so this deposit is not approved twice.",
                 });
               }}
             >
-              Record as approved
+              I approved them on Luma
             </button>
           )}
         </div>

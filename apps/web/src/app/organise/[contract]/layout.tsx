@@ -6,7 +6,7 @@ import type { Address } from "viem";
 import { OrganiserShell } from "@/features/organise";
 
 export const metadata: Metadata = {
-  title: "Organise | Kickback",
+  title: "Manage event | Kickback",
 };
 
 export default function OrganiserLayout({ params, children }: { params: { contract: string }; children: ReactNode }) {

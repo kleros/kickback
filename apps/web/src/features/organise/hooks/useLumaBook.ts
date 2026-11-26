@@ -44,6 +44,10 @@ export function useLumaBook(contract: string, enabled: boolean) {
     (wallet: string) => (enabled ? names[wallet.toLowerCase()]?.name : undefined),
     [names, enabled],
   );
+  const lumaOf = useCallback(
+    (wallet: string) => (enabled ? names[wallet.toLowerCase()]?.luma : undefined),
+    [names, enabled],
+  );
   const approvedAt = useCallback((wallet: string) => checked[wallet.toLowerCase()], [checked]);
-  return { names: enabled ? names : {}, checked, add, check, nameOf, approvedAt };
+  return { names: enabled ? names : {}, checked, add, check, nameOf, lumaOf, approvedAt };
 }

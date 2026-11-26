@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { matchLuma } from "../lumaMatch";
+import { hasWalletColumn, matchLuma } from "../lumaMatch";
 
 const A = "0x02459459716683608130dca53f9E0Bf471C0B59C";
 const B = "0x259a1084C2043a7B3b5b288596E05C41b8EFa5d6";
@@ -28,5 +28,23 @@ describe("matchLuma", () => {
       ["Al", undefined],
       ["Al again", "Al"],
     ]);
+  });
+
+  it("keeps the request already approved on Luma as the main one, whatever the CSV order", () => {
+    const csv = [
+      "name,email,approval_status,eth_address",
+      `Al again,al2@x.io,pending_approval,${A}`,
+      `Al,al@x.io,approved,${A.toLowerCase()}`,
+    ].join("\n");
+    const rows = matchLuma(csv, [A]);
+    expect(rows.find((r) => r.name === "Al")?.dupOf).toBeUndefined();
+    expect(rows.find((r) => r.name === "Al again")?.dupOf).toBe("Al");
+  });
+
+  it("never takes a wallet from a free-text answer when the export has no wallet column", () => {
+    const csv = ["name,email,answer", `Al,al@x.io,my wallet is ${A}`].join("\n");
+    expect(matchLuma(csv, [A]).map((r) => r.match)).toEqual(["no-wallet"]);
+    expect(hasWalletColumn(csv)).toBe(false);
+    expect(hasWalletColumn(`name,eth_address\nAl,${A}`)).toBe(true);
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { attendanceFromCsv, batches, BATCH_SIZE } from "@kickback/core";
 import { Button } from "react-aria-components";
@@ -38,6 +38,14 @@ export function AttendanceScreen() {
   const data = event.overview.data;
   const booked = useMemo(() => data?.booked ?? [], [data]);
   const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked) : null), [csv, booked]);
+  // the loaded export holds guest names: drop it on Disconnect or an account switch
+  const accountKey = event.account?.toLowerCase();
+  useEffect(() => {
+    setCsv(null);
+    setPicked(null);
+    setErr(null);
+    setConfirm(null);
+  }, [accountKey]);
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   const already = new Set(data.attendees.map((a) => a.toLowerCase()));
@@ -142,11 +150,13 @@ export function AttendanceScreen() {
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
           {listed
-            ? `The list is closed. Until ${when(info.challengeEndsAt)}, you can still add guests left off by mistake.`
+            ? data.now > info.challengeEndsAt
+              ? `The list is final: the time to add guests ended on ${when(info.challengeEndsAt)}. Release payouts on the Payout tab.`
+              : `The list is closed. Until ${when(info.challengeEndsAt)}, you can still add guests left off by mistake.`
             : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once it is confirmed, names cannot be removed, and guests left off have ${spanText(info.challengePeriod)} to challenge.`}
         </p>
       </div>
-      {!listed && (
+      {!listed && event.isOwner && (
         <FilePick
           label="Load the check-in list"
           hint="A Luma guest export, or any CSV with a wallet column"
@@ -169,8 +179,8 @@ export function AttendanceScreen() {
           testId="checkin-csv"
         />
       )}
-      {!listed && <ErrorLine error={err} />}
-      {plan && plan.skipped.length > 0 && (
+      {!listed && event.isOwner && <ErrorLine error={err} />}
+      {event.isOwner && plan && plan.skipped.length > 0 && (
         <details className="og-skipped" open>
           <summary>
             {`${plan.skipped.length} ${plan.skipped.length === 1 ? "row" : "rows"} not used`}
@@ -182,8 +192,13 @@ export function AttendanceScreen() {
           <ul>
             {plan.skipped.map((s) => (
               <li key={s.row}>
-                Row {s.row} · {s.name} · {SKIP_TEXT[s.reason]}
-                {s.wallet ? ` · ${shortHex(s.wallet)}` : ""}
+                Spreadsheet row {s.row} · {s.name} · {SKIP_TEXT[s.reason]}
+                {s.wallet && (
+                  <>
+                    {" · "}
+                    <span className="og-mono whitespace-nowrap">{shortHex(s.wallet)}</span>
+                  </>
+                )}
               </li>
             ))}
           </ul>
@@ -233,7 +248,9 @@ export function AttendanceScreen() {
                             ? "Came (from Luma)"
                             : "Came"
                           : csv
-                            ? "Did not come"
+                            ? listed
+                              ? "Not on the list"
+                              : "Did not come"
                             : "Not ticked"}
                   </span>
                 </span>
@@ -316,7 +333,7 @@ export function AttendanceScreen() {
             final
               ? "Guests left off can then challenge. The no-shows' deposits are split among the guests on the list."
               : batched
-                ? `The first ${first.length} of ${toAdd.length} guests will be saved. Send the rest next${listed ? "." : ", then close the list."}`
+                ? `The first ${first.length} of ${toAdd.length} guests will be ${listed ? "added" : "saved"}. Send the rest next${listed ? "." : ", then close the list."}`
                 : listed
                   ? `These guests will be added to the attendance list. You can add more until ${when(info.challengeEndsAt)}.`
                   : "These guests will be added to the attendance list. You can keep adding until you close it."

@@ -49,3 +49,11 @@ it.each([luma, ""])("includes the share destination on X without duplicating it:
   const filled = `See you at ${destination}!`;
   expect(new URL(shareUrls(filled, registration, guest).X).searchParams.get("text")).toBe(filled);
 });
+
+it.each([luma, ""])("sends a text that carries the link to Telegram once, whole: %s", (registration) => {
+  const destination = registration || guest;
+  const filled = `I just put down a refundable deposit for Dinner. Join me: ${destination}`;
+  const params = new URL(shareUrls(filled, registration, guest).Telegram).searchParams;
+  expect(params.get("url")).toBe(filled);
+  expect(params.get("text")).toBeNull();
+});

@@ -30,28 +30,39 @@ export function useEvent(contract: string) {
   });
 }
 
-/** The block `contract` was created in (its own EventCreated log): where its logs start. */
-export function useCreatedBlock(contract: Address | undefined) {
+/**
+ * The block `contract` was created in (its own EventCreated log): where its logs start. `hint` (the link's
+ * `from` block) is tried first and trusted only when the log is found from it.
+ */
+export function useCreatedBlock(contract: Address | undefined, hint?: number) {
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  const useHint = hint !== undefined && Number.isInteger(hint) && hint >= FROM_BLOCK;
   return useQuery({
-    queryKey: ["created-block", DEFAULT_CHAIN_ID, contract?.toLowerCase()],
+    queryKey: ["created-block", DEFAULT_CHAIN_ID, contract?.toLowerCase(), useHint ? hint : undefined],
     enabled: client !== undefined && contract !== undefined && PROTOCOL !== null,
     staleTime: STALE_TIME.immutable,
+    retry: 1,
     queryFn: async () => {
       const created = getAbiItem({ abi: presenceEventAbi, name: "EventCreated" });
-      const logs = await getLogsChunked(
-        {
-          getLogs: ({ fromBlock, toBlock }) =>
-            client!.getLogs({
-              address: contract!,
-              event: created,
-              fromBlock,
-              toBlock,
-            }),
-          getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
-        },
-        FROM_BLOCK,
-      );
+      const scan = (from: number) =>
+        getLogsChunked(
+          {
+            getLogs: ({ fromBlock, toBlock }) =>
+              client!.getLogs({
+                address: contract!,
+                event: created,
+                fromBlock,
+                toBlock,
+              }),
+            getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
+          },
+          from,
+          "latest",
+          undefined,
+          { stopWhen: (found) => found.length > 0 },
+        );
+      let logs = useHint ? await scan(hint!) : [];
+      if (!logs.length) logs = await scan(FROM_BLOCK);
       return logs[0]?.blockNumber === undefined || logs[0].blockNumber === null
         ? FROM_BLOCK
         : Number(logs[0].blockNumber);

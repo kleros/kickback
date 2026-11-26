@@ -74,11 +74,22 @@
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.home-note,
-.home-empty {
+.home-note {
   color: var(--kb-text-3);
   font-size: 13px;
   line-height: 19px;
+}
+.home-empty {
+  color: var(--kb-text-2);
+  font-size: 15px;
+  line-height: 22px;
+  max-width: 40rem;
+}
+.home-mine {
+  margin-top: 8px;
+}
+.nowrap {
+  white-space: nowrap;
 }
 
 /* worked example */
@@ -253,6 +264,7 @@
 .home-court p:not(.home-note) {
   color: var(--kb-text-2);
   line-height: 22px;
+  text-wrap: pretty;
 }
 
 .home-court {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
@@ -20,9 +20,11 @@ import { tx } from "../operations/tx";
 const STATUS = ["No deposit", "Deposited", "Turned away", "Refunded"] as const;
 const TONE = ["end", "ok", "warn", "end"] as const;
 
-function statusText(row: GuestRow, phase: number) {
+/** `refundable`: the event is cancelled or its deadline was missed, so every deposit can be withdrawn. */
+function statusText(row: GuestRow, phase: number, refundable: boolean) {
   if (row.status !== 1) return STATUS[row.status] ?? "Unknown";
-  if (phase === 0) return "Deposited";
+  if (refundable) return "Can withdraw deposit";
+  if (phase === 0) return row.attended ? "On the list" : "Deposited";
   if (row.attended) return "Came";
   if (row.challenge?.state === 1) return "Challenged";
   if (row.challenge?.state === 2) return "With Kleros";
@@ -39,6 +41,13 @@ export function GuestsScreen() {
   const data = event.overview.data;
   const guests = useMemo(() => data?.guests ?? [], [data]);
   const booked = useMemo(() => guests.filter((g) => g.status === 1).map((g) => g.wallet), [guests]);
+  // a search or a selection belongs to the wallet that made it: drop both on Disconnect or an account switch
+  const accountKey = event.account?.toLowerCase();
+  useEffect(() => {
+    setTicked(new Set());
+    setSearch("");
+    setConfirm(false);
+  }, [accountKey]);
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   if (firstSeen.current === null) firstSeen.current = new Set(guests.map((g) => g.wallet.toLowerCase()));
@@ -47,6 +56,12 @@ export function GuestsScreen() {
   const canAct = event.isOwner && event.onChain && open && !event.busy;
   // walk-ins can deposit until the end, but nobody can be turned away once the event has started
   const live = info.phase === 0 && data.now >= info.eventStart && data.now < info.eventEnd;
+  const closed =
+    info.phase === 3
+      ? ("cancelled" as const)
+      : info.phase === 0 && data.now > info.claimDeadline
+        ? ("missed" as const)
+        : undefined;
   const chosen = guests.filter((g) => ticked.has(g.wallet.toLowerCase()) && g.status === 1);
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
@@ -88,8 +103,10 @@ export function GuestsScreen() {
           contract={event.address}
           guests={guests}
           nameOf={luma.nameOf}
+          lumaOf={luma.lumaOf}
           approvedAt={luma.approvedAt}
           check={luma.check}
+          closed={closed}
         />
       </GlassCard>
       {event.isOwner && (
@@ -164,7 +181,7 @@ export function GuestsScreen() {
                     )}
                     <span className="og-cell-status">
                       <span className="og-dot" data-tone={TONE[row.status] ?? "end"} aria-hidden />
-                      <span>{statusText(row, info.phase)}</span>
+                      <span>{statusText(row, info.phase, closed !== undefined)}</span>
                     </span>
                     <span className="og-ticks">
                       {open && row.status === 1 && (
@@ -176,7 +193,7 @@ export function GuestsScreen() {
                             aria-label={`Turn away ${row.wallet}`}
                             onChange={(e) => toggle(row.wallet, e.currentTarget.checked)}
                           />
-                          <span>Turn away</span>
+                          <span className="md:sr-only">Turn away</span>
                         </label>
                       )}
                     </span>
@@ -237,11 +254,12 @@ export function GuestsScreen() {
           onConfirm={() => {
             const wallets = chosen.map((g) => g.wallet);
             setConfirm(false);
-            setTicked(new Set());
+            // the ticks stay until the refund is confirmed: a cancel in the wallet keeps the selection
             event.run(
               `Turn away ${wallets.length}`,
               () => tx.reject(info.contract, wallets),
               `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.`,
+              () => setTicked(new Set()),
             );
           }}
         />

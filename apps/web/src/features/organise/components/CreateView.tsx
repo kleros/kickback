@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import { eventConfig, LUMA_URL, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
@@ -106,6 +106,7 @@ function Field({
 
 export function CreateScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { address, chainId } = useAccount();
   const [form, setForm] = useState<Form>(() => initialForm());
   // the server renders in its own zone: take the device's once in the browser
@@ -116,7 +117,11 @@ export function CreateScreen() {
     setForm((f) => ({ ...f, zone }));
   }, []);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
-  const token = useToken(form.asset === "token" ? form.token : "");
+  // a message belongs to the wallet that sent it: drop it on Disconnect or an account switch
+  const accountKey = address?.toLowerCase();
+  useEffect(() => setError(null), [accountKey]);
+  const tokenAddress = form.token.trim();
+  const token = useToken(form.asset === "token" ? tokenAddress : "");
   const fee = useChallengeFee().data;
   const send = useSend();
   const set = (key: keyof Form) => (e: { currentTarget: { value: string } }) =>
@@ -130,6 +135,14 @@ export function CreateScreen() {
   const build = () => {
     if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
     if (!/^\d+(\.\d+)?$/.test(deposit)) throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
+    // parseUnits would round extra decimals silently, and the deposit cannot change once the event exists
+    const places = (deposit.split(".")[1] ?? "").length;
+    if (places > asset.decimals)
+      throw new Error(
+        asset.decimals === 0
+          ? `Enter the deposit as a whole number: ${asset.symbol} has no decimal places.`
+          : `Enter the deposit with at most ${asset.decimals} decimal places: that is the most ${asset.symbol} allows.`,
+      );
     const days = Number(form.deadlineDays);
     if (!Number.isInteger(days) || days < minDays || days > maxDays)
       throw new Error(`Enter a whole number of days from ${minDays} to ${maxDays}.`);
@@ -139,7 +152,7 @@ export function CreateScreen() {
     return eventConfig({
       name: form.name,
       url: form.url,
-      token: form.asset === "ETH" ? undefined : (form.token as Address),
+      token: form.asset === "ETH" ? undefined : (tokenAddress as Address),
       depositAmount: parseUnits(deposit, asset.decimals),
       eventStart: zonedUnix(form.start, form.zone),
       eventEnd: end,
@@ -181,11 +194,13 @@ export function CreateScreen() {
       { expectedAccount: address, prepare: async () => tx.create(PROTOCOL!.factory, build()) },
       {
         onSuccess: (receipt) => {
+          // the lists of this wallet's events (home and Manage your events) must show the new one
+          void queryClient.invalidateQueries({ queryKey: ["organise", "mine"] });
           const [log] = parseEventLogs({ abi: presenceFactoryAbi, eventName: "EventCreated", logs: receipt.logs });
           const created = log?.args.eventContract;
           if (!created)
             return setError({
-              text: "The event was created, but its address could not be read. Open Organise: it is listed under Your events.",
+              text: "The event was created, but its address could not be read. Open Manage your events: it is listed there.",
               at: Date.now(),
             });
           router.push(paths.organiseEvent.getHref(created));
@@ -208,7 +223,7 @@ export function CreateScreen() {
       {/* connect, or switch a wallet that is on another network; nothing once it is ready */}
       {(!address || chainId !== DEFAULT_CHAIN_ID) && (
         <div className="og-actions">
-          <ConnectWallet text="Connect your wallet" />
+          <ConnectWallet text="Connect wallet" />
         </div>
       )}
       <GlassCard as="section" className="og-card">
@@ -241,7 +256,7 @@ export function CreateScreen() {
               full
               hint={
                 token.data
-                  ? `${token.data.symbol}, ${token.data.decimals} decimals`
+                  ? `${token.data.symbol}, ${token.data.decimals} decimal places`
                   : token.isError
                     ? "Not a token on this network."
                     : "0x…"

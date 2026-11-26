@@ -5,6 +5,8 @@
 export interface LumaPerson {
   name: string;
   email: string;
+  /** The request's status on Luma in the latest export that had it. */
+  luma?: "approved" | "pending" | "declined";
 }
 
 export type LumaBook = Record<string, LumaPerson>;
@@ -35,10 +37,18 @@ export const readChecked = (contract: string): CheckedBook => read<CheckedBook>(
 /** Adds the rows that carry a wallet and a name; later exports win. */
 export function addNames(
   contract: string,
-  rows: readonly { wallet: string | null; name: string; email: string }[],
+  rows: readonly { wallet: string | null; name: string; email: string; luma?: LumaPerson["luma"] }[],
 ): LumaBook {
   const book = { ...readNames(contract) };
-  for (const r of rows) if (r.wallet && r.name) book[r.wallet.toLowerCase()] = { name: r.name, email: r.email };
+  const approved = new Set(rows.filter((r) => r.wallet && r.luma === "approved").map((r) => r.wallet!.toLowerCase()));
+  for (const r of rows)
+    if (r.wallet && r.name) {
+      const k = r.wallet.toLowerCase();
+      // one approved request on a wallet is enough: a duplicate pending row does not hide it
+      const luma = approved.has(k) ? "approved" : r.luma;
+      if (approved.has(k) && r.luma !== "approved" && book[k]?.luma === "approved") continue;
+      book[k] = { name: r.name, email: r.email, ...(luma ? { luma } : {}) };
+    }
   write(key(contract, "names"), book);
   return book;
 }

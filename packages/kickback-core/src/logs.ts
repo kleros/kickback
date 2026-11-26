@@ -15,10 +15,12 @@ export interface LogsReader<L> {
   getLogs: (range: BlockRange) => Promise<readonly L[]>;
   getBlockNumber?: () => Promise<bigint>;
 }
-export interface ChunkOptions {
+export interface ChunkOptions<L = unknown> {
   retries?: number;
   delayMs?: number;
   minStep?: number;
+  /** Stop after the chunk where this first returns true (for example once a one-off log is found). */
+  stopWhen?: (found: readonly L[]) => boolean;
 }
 
 /**
@@ -31,7 +33,7 @@ export async function getLogsChunked<L>(
   fromBlock: number | bigint,
   toBlock: number | bigint | "latest" = "latest",
   step: number = DEFAULT_LOG_CHUNK,
-  { retries = 3, delayMs = 1000, minStep = 100 }: ChunkOptions = {},
+  { retries = 3, delayMs = 1000, minStep = 100, stopWhen }: ChunkOptions<L> = {},
 ): Promise<L[]> {
   if (!Number.isInteger(step) || step < 1)
     throw new Error(`getLogsChunked: the chunk size must be a whole number of blocks, 1 or more (got ${step})`);
@@ -60,7 +62,9 @@ export async function getLogsChunked<L>(
         `(${shortMessage(err)}). Try again in a few minutes, or use another RPC.`,
     );
   };
-  for (let start = Number(fromBlock); start <= latest; start += step)
+  for (let start = Number(fromBlock); start <= latest; start += step) {
     await range(start, Math.min(start + step - 1, latest));
+    if (stopWhen?.(out)) break;
+  }
   return out;
 }

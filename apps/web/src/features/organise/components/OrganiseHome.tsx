@@ -13,7 +13,8 @@ export function OrganiseHome() {
       <div className="flex flex-col gap-2">
         <h1 className="kb-h1">Manage your events</h1>
         <p className="og-lede">
-          Every event you created with this wallet. Open one to check guests, confirm who came and release payouts.
+          Your events, found by the wallet you created them with. Open one to check guests, confirm who came and release
+          payouts.
         </p>
       </div>
       <WalletEvents />

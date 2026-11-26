@@ -35,7 +35,7 @@ export function Footer() {
             </li>
             <li>
               <a href={siteConfig.repo} {...out}>
-                GitHub
+                Source code
               </a>
             </li>
           </ul>
@@ -93,7 +93,7 @@ export function Footer() {
       </div>
       <div className="kb-page kb-footer-base">
         <span>
-          {siteConfig.name} · Proof of Presence protocol · Powered by{" "}
+          {siteConfig.name} · Proof of Presence protocol · Powered by{"\u00a0"}
           <a href="https://kleros.io" {...out}>
             Kleros
           </a>

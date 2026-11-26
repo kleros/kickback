@@ -22,13 +22,18 @@ const STEPS = [
   },
   {
     title: "Show up",
-    body: "Get your Luma QR code scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
+    body: "Guests get their Luma QR code scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
-    body: "Everyone who came claims their deposit back, plus an equal share of the no-shows' deposits. No-shows get nothing back.",
+    body: (
+      <>
+        Everyone who came claims their deposit back, plus an equal share of the{" "}
+        <span className="nowrap">no-shows&apos;</span> deposits. No-shows get nothing back.
+      </>
+    ),
   },
-] as const;
+] satisfies readonly { title: string; body: ReactNode }[];
 
 function Example() {
   const noShows = EXAMPLE.booked - EXAMPLE.came;
@@ -61,8 +66,8 @@ function Example() {
         </div>
       </dl>
       <p className="home-note">
-        That was their own {ethText(EXAMPLE.deposit)} ETH back, plus {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from
-        the no-shows&apos; deposits.
+        Each person who showed up got their own {ethText(EXAMPLE.deposit)} ETH back, plus{" "}
+        {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from the no-shows&apos; deposits.
       </p>
     </GlassCard>
   );
@@ -131,8 +136,8 @@ export function HomeScreen({ events }: { events: ReactNode }) {
           there, and independent jurors decide under a public attendance policy.
         </p>
         <p className="home-note">
-          {isSepolia ? "Cases here go to the Test court (Sepolia). " : ""}The contracts have no owner and cannot be
-          changed: nobody, not even the organiser, can take the deposits.
+          {isSepolia ? "Cases here go to the Kleros test court (Sepolia). " : ""}The contracts have no owner and cannot
+          be changed: nobody, not even the organiser, can take the deposits.
         </p>
       </GlassCard>
     </div>

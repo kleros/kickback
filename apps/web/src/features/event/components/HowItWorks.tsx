@@ -163,8 +163,16 @@ function SplitPanel({ example }: { example: ShareExample }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   const shown = Math.min(example.deposits, 10);
-  const shownNo =
-    example.deposits <= 10 ? example.noShows : Math.max(1, Math.round((shown * example.noShows) / example.deposits));
+  // everyone on the list came: no no-show coin, no pool
+  const none = example.noShows === 0;
+  const shownNo = none
+    ? 0
+    : example.deposits <= 10
+      ? example.noShows
+      : Math.min(shown - 1, Math.max(1, Math.round((shown * example.noShows) / example.deposits)));
+  // the event is over once the list exists: what happened is told in the past tense
+  const past = example.basis === "paid" || example.basis === "list";
+  const paid = example.basis === "paid";
   const gap = 388 / shown;
   const xs = Array.from({ length: shown }, (_, i) => 10 + gap / 2 + i * gap);
   const attendX = xs.slice(0, shown - shownNo);
@@ -181,23 +189,40 @@ function SplitPanel({ example }: { example: ShareExample }) {
   const poolX = noX.length
     ? Math.min(Math.max(noX.reduce((a, b) => a + b, 0) / noX.length, pillW / 2 + 6), 402 - pillW / 2)
     : 204;
-  const note =
-    example.basis === "paid"
-      ? `What each attendee received: this event's ${example.deposits} deposits and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.`
-      : example.basis === "list"
-        ? `Based on this event's ${example.deposits} deposits and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
-        : example.basis === "estimate"
-          ? `An example with this event's ${example.deposits} deposits and ${example.noShows} ${example.noShows === 1 ? "no-show" : "no-shows"}.`
-          : "An example with 10 deposits and 2 no-shows.";
+  const noShowsPossessive = example.noShows === 1 ? "no-show's" : "no-shows'";
+  const note: ReactNode =
+    example.basis === "paid" ? (
+      `This event's result: ${example.deposits} deposits and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.`
+    ) : example.basis === "list" ? (
+      `Based on this event's ${example.deposits} deposits and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
+    ) : example.basis === "estimate" ? (
+      <>
+        An example with this event&apos;s {example.deposits} deposits and{" "}
+        <span className="nowrap">
+          {example.noShows} {example.noShows === 1 ? "no-show" : "no-shows"}.
+        </span>
+      </>
+    ) : (
+      <>
+        An example with 10 deposits and <span className="nowrap">2 no-shows.</span>
+      </>
+    );
+  const split = paid
+    ? example.attend === 1
+      ? "went to the one attendee"
+      : `was split ${example.attend} ways`
+    : example.attend === 1
+      ? "goes to the one attendee"
+      : `is split ${example.attend} ways`;
+  const ariaLabel = none
+    ? `${example.deposits} deposits: everyone ${past ? "attended" : "attends"}, so each attendee ${paid ? "got" : "gets"} their deposit back.`
+    : past
+      ? `${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`
+      : `${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`;
 
   return (
     <Panel title="What happens to no-shows' deposits?" testId="how-split">
-      <svg
-        className="how-fig"
-        viewBox="0 0 408 112"
-        role="img"
-        aria-label={`${example.deposits} deposits: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${example.noShows === 1 ? "no-show's" : "no-shows'"} ${pool} ${unit} ${example.attend === 1 ? "goes to the one attendee" : `is split ${example.attend} ways`}.`}
-      >
+      <svg className="how-fig" viewBox="0 0 408 112" role="img" aria-label={ariaLabel}>
         <Axis id={axis} />
         {attendX.map((x, i) => (
           <g key={`a${i}`} className="pop" style={d(i * 50)}>
@@ -211,30 +236,41 @@ function SplitPanel({ example }: { example: ShareExample }) {
             <path d={`M${x} 36V62H${poolX}`} className="flow" stroke={stroke} pathLength={1} style={d(500)} />
           </g>
         ))}
-        <g className="pop" style={d(900)}>
-          <rect x={poolX - pillW / 2} y={62} width={pillW} height={30} rx={12} className="card" />
-          <text x={poolX} y={81.5} textAnchor="middle">
-            {pool} {unit}
-          </text>
-        </g>
-        <path
-          d={`M${poolX - pillW / 2 - 4} 77H${attendX[0] ?? 20}V38`}
-          className="flow"
-          stroke={stroke}
-          pathLength={1}
-          style={d(1100)}
-        />
-        {attendX.slice(1).map((x, i) => (
-          <path key={i} d={`M${x} 77V38`} className="flow" stroke={stroke} pathLength={1} style={d(1300 + i * 40)} />
-        ))}
-        <text x={poolX - pillW / 2 - 10} y={106} textAnchor="end" className="dim">
-          ÷ {example.attend}
-        </text>
+        {!none && (
+          <>
+            <g className="pop" style={d(900)}>
+              <rect x={poolX - pillW / 2} y={62} width={pillW} height={30} rx={12} className="card" />
+              <text x={poolX} y={81.5} textAnchor="middle">
+                {pool} {unit}
+              </text>
+            </g>
+            <path
+              d={`M${poolX - pillW / 2 - 4} 77H${attendX[0] ?? 20}V38`}
+              className="flow"
+              stroke={stroke}
+              pathLength={1}
+              style={d(1100)}
+            />
+            {attendX.slice(1).map((x, i) => (
+              <path
+                key={i}
+                d={`M${x} 77V38`}
+                className="flow"
+                stroke={stroke}
+                pathLength={1}
+                style={d(1300 + i * 40)}
+              />
+            ))}
+            <text x={poolX - pillW / 2 - 10} y={106} textAnchor="end" className="dim">
+              ÷ {example.attend}
+            </text>
+          </>
+        )}
       </svg>
       <div className="how-caps two">
         <span>
           <b>
-            {example.attend} {example.attend === 1 ? "attends" : "attend"}
+            {example.attend} {past ? "attended" : example.attend === 1 ? "attends" : "attend"}
           </b>
           +{bonus} {unit} each
         </span>
@@ -246,7 +282,7 @@ function SplitPanel({ example }: { example: ShareExample }) {
         </span>
       </div>
       <div className="how-sum" data-testid="how-sum" data-back={example.back.toString()} data-attend={example.attend}>
-        <span>Each attendee gets back</span>
+        <span>{paid ? "Each attendee got back" : "Each attendee gets back"}</span>
         <b>
           {amount} + {bonus} {approx ? "≈" : "="} {cut(backRaw)} {unit}
         </b>
@@ -256,7 +292,15 @@ function SplitPanel({ example }: { example: ShareExample }) {
   );
 }
 
-function ListPanel({ court, challengeFee }: { court: string; challengeFee?: bigint }) {
+function ListPanel({
+  court,
+  challengeFee,
+  matchPeriod,
+}: {
+  court: string;
+  challengeFee?: bigint;
+  matchPeriod: number;
+}) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
   return (
@@ -292,8 +336,9 @@ function ListPanel({ court, challengeFee }: { court: string; challengeFee?: bigi
       <p className="how-note" data-testid="challenge-fee">
         To challenge, you pay the Kleros fee
         {challengeFee ? ` (currently ${unitsText(challengeFee, 18)} ETH, set by Kleros)` : ""}. If the organiser does
-        not answer within 1 day, you are added and get it back. If they send the case to Kleros, they pay the same fee
-        and jurors decide: the side they agree with gets back what is left.
+        not answer within {spanText(matchPeriod)}, you can join the list and get the fee back. If they send the case to
+        Kleros, they pay the same fee and Kleros jurors decide: whichever side wins gets back what is left of the two
+        fees.
       </p>
     </Panel>
   );
@@ -305,12 +350,15 @@ function TimelinePanel({
   challengePeriod,
   challengeEndsAt,
   clock,
+  now,
 }: {
   eventEnd: number;
   claimDeadline: number;
   challengePeriod: number;
   challengeEndsAt: number;
   clock: EventClock | null;
+  /** The chain's time; undefined while loading. */
+  now?: number;
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
@@ -319,10 +367,10 @@ function TimelinePanel({
     ? [
         ["Deposits closed", eventEnd],
         ["Attendance confirmed", challengeEndsAt - challengePeriod],
-        ["Challenges close", challengeEndsAt],
+        [now !== undefined && now > challengeEndsAt ? "Challenges closed" : "Challenges close", challengeEndsAt],
       ]
     : [
-        ["Deposits close", eventEnd],
+        [now !== undefined && now >= eventEnd ? "Deposits closed" : "Deposits close", eventEnd],
         ["Attendance confirmed by", claimDeadline],
       ];
   return (
@@ -350,7 +398,7 @@ function TimelinePanel({
           <b>Ends</b>deposits close
         </span>
         <span>
-          <b>Attendance</b>confirmed by the deadline
+          <b>Attendance</b>confirmed by the organiser
         </span>
         <span>
           <b>Challenges</b>
@@ -393,6 +441,10 @@ export interface HowItWorksProps {
   court: string;
   /** Kleros's fee a guest pays to challenge, in wei, read now. */
   challengeFee?: bigint;
+  /** Seconds the organiser has to answer a challenge. */
+  matchPeriod: number;
+  /** The chain's time, unix seconds; undefined while loading. */
+  now?: number;
   /** The closing button: back up to the card. */
   onDeposit: () => void;
   depositOpen: boolean;
@@ -411,6 +463,8 @@ export function HowItWorks({
   clock,
   court,
   challengeFee,
+  matchPeriod,
+  now,
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
@@ -423,13 +477,14 @@ export function HowItWorks({
         <div className="how-grid">
           <BackPanel amount={amount} />
           <SplitPanel example={example} />
-          <ListPanel court={court} challengeFee={challengeFee} />
+          <ListPanel court={court} challengeFee={challengeFee} matchPeriod={matchPeriod} />
           <TimelinePanel
             eventEnd={eventEnd}
             claimDeadline={claimDeadline}
             challengePeriod={challengePeriod}
             challengeEndsAt={challengeEndsAt}
             clock={clock}
+            now={now}
           />
         </div>
         {depositOpen && (

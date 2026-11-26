@@ -27,7 +27,7 @@ const attendees = (n: number) => `${n} ${n === 1 ? "attendee" : "attendees"}`;
 /** "23 h 40 min left", from now to a deadline. */
 const left = (from: number, to: number) => {
   const m = Math.max(0, Math.floor((to - from) / 60));
-  return m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m} min left`;
+  return m >= 60 ? (m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m / 60} h left`) : `${m} min left`;
 };
 
 export function PayoutScreen() {
@@ -51,7 +51,7 @@ export function PayoutScreen() {
       : now <= info.challengeEndsAt
         ? `The challenge window closes ${when(info.challengeEndsAt)}.`
         : stillOpen.length
-          ? `${stillOpen.length} ${stillOpen.length === 1 ? "challenge is" : "challenges are"} still waiting for your answer.`
+          ? `${stillOpen.length} ${stillOpen.length === 1 ? "challenge is" : "challenges are"} ${event.isOwner ? "still waiting for your answer." : "still waiting for the organiser's answer."}`
           : null;
   const pool = info.depositAmount * BigInt(info.stakerCount);
   // releasing first accepts every unanswered challenge whose answer window is over
@@ -63,7 +63,7 @@ export function PayoutScreen() {
 
   return (
     <div className="flex flex-col gap-5" data-testid="payout">
-      <h2 className="kb-h1">Challenges and payout</h2>
+      <h2 className="kb-h1">Payout</h2>
       {info.phase === 0 || info.phase === 3 ? (
         <GlassCard className="og-card">
           <h3 className="og-h2">
@@ -91,8 +91,17 @@ export function PayoutScreen() {
               { label: "Each gets", value: assetText(share, info) },
               {
                 label: "Challenges",
-                value: String(stillOpen.length || disputed.length || data.challenges.length),
-                note: stillOpen.length ? "waiting for you" : disputed.length ? "with Kleros" : undefined,
+                value: String(data.challenges.length),
+                // every open kind, not only the first: a waiting answer must not hide a Kleros case
+                note:
+                  [
+                    stillOpen.length &&
+                      `${stillOpen.length} ${event.isOwner ? "waiting for you" : "waiting for the organiser"}`,
+                    disputed.length && `${disputed.length} with Kleros`,
+                    info.phase === 1 && expired.length && `${expired.length} to be added`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ") || undefined,
               },
             ]}
           />
@@ -125,8 +134,8 @@ export function PayoutScreen() {
                 const status =
                   c.state === 1
                     ? now <= c.matchEndsAt
-                      ? `Waiting for you · ${left(now, c.matchEndsAt)}`
-                      : "Not answered in time: accepted"
+                      ? `${event.isOwner ? "Waiting for you" : "Waiting for the organiser"} · ${left(now, c.matchEndsAt)}`
+                      : "Not answered in time: will be added at release"
                     : c.state === 2
                       ? c.isRuled
                         ? "Ruled by Kleros: ready to settle"
@@ -149,15 +158,15 @@ export function PayoutScreen() {
                     </div>
                     <p className="og-lede">
                       {c.state === 1 && now <= c.matchEndsAt && now <= info.challengeEndsAt
-                        ? `This guest says they came and paid ${ethText(c.deposit)} to challenge. If they came, add them and they get the fee back. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet; jurors decide, and the side they agree with gets its fee back. If you do nothing by ${when(c.matchEndsAt)}, they will be added automatically.`
+                        ? `This guest says they came, and has paid ${ethText(c.deposit)} to challenge. If they did come, add them: they get the fee back. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet. Kleros jurors then decide, and whichever side wins gets back what is left of the two fees. If you do nothing by ${when(c.matchEndsAt)}, they will be added automatically when payouts are released.`
                         : c.state === 1 && now <= c.matchEndsAt
-                          ? `This guest says they came and paid ${ethText(c.deposit)} to challenge. The time to add guests has passed. If they came, do nothing: they will be added when payouts are released after ${when(c.matchEndsAt)}. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet before then; jurors decide, and the side they agree with gets its fee back.`
+                          ? `This guest says they came, and has paid ${ethText(c.deposit)} to challenge. The time to add guests has passed. If they came, do nothing: they will be added when payouts are released after ${when(c.matchEndsAt)}. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet before then. Kleros jurors then decide, and whichever side wins gets back what is left of the two fees.`
                           : c.state === 1
                             ? "You did not answer in time, so this guest will be added automatically when payouts are released."
                             : c.state === 2
                               ? "Kleros jurors are deciding. Send your evidence (Luma check-in, photos) on the case page. Once they rule, settle it here."
                               : !wentToKleros
-                                ? "This guest was added because you accepted the challenge or did not answer it in time. They get their deposit back and a share."
+                                ? "This guest was added to the list. Their Kleros fee was returned, and they get their deposit back plus a share."
                                 : came
                                   ? "Kleros jurors ruled this guest came. They were added to the list and get a share."
                                   : c.ruling === 0
@@ -250,7 +259,7 @@ export function PayoutScreen() {
               <p className="og-lede">
                 {data.unpaid.length > 0
                   ? `Each attendee can claim ${assetText(info.payoutShare, info)} on the guest page. You can also send every attendee their share now (you pay the network fee).`
-                  : `Each attendee can claim ${assetText(info.payoutShare, info)} on the guest page.`}
+                  : `Each attendee's share is ${assetText(info.payoutShare, info)}.`}
               </p>
               {data.unpaid.length > 0 ? (
                 <div className="og-actions">
@@ -270,12 +279,12 @@ export function PayoutScreen() {
                       : `Send to ${attendees(toSend.length)}`}
                   </GradientButton>
                   <span className="og-note">
-                    A wallet that does not accept the payment can still claim on the guest page.
+                    A wallet that refuses the payment can still claim it on the guest page.
                   </span>
                 </div>
               ) : (
                 <p className="og-note">
-                  Every attendee has received their share.
+                  Nothing is left to send. A wallet that refused the payment can still claim it on the guest page.
                   {info.openCases > 0 && " A share is held for each open Kleros case until it is decided."}
                 </p>
               )}
@@ -292,7 +301,7 @@ export function PayoutScreen() {
           figures={[
             { label: "Pool", value: assetText(pool, info) },
             { label: "Attendees", value: String(attendeesAfter) },
-            { label: "Of whom unanswered challengers", value: String(expired.length) },
+            { label: "Added from unanswered challenges", value: String(expired.length) },
             { label: "Each gets", value: assetText(share, info) },
           ]}
           action="Release payouts"

@@ -29,11 +29,11 @@ export const KLEROS_ERRORS: readonly (readonly [RegExp, string])[] = [
   [/evidence period time has not passed/i, "The evidence period of this case is still running."],
   [/not finished drawing/i, "Kleros is still drawing jurors for this round."],
   [/(commit|vote) period time has not passed/i, "Jurors are still voting."],
+  [/already in the last period/i, 'The case already has its final ruling. Press "Settle the ruling".'],
   [
-    /already in the last period/i,
-    'The case already has its final ruling. Press "Settle the ruling".',
+    /Ruling already executed|has been ruled already/i,
+    'The final ruling was already delivered. Press "Settle the ruling".',
   ],
-  [/Ruling already executed|has been ruled already/i, 'The final ruling was already delivered. Press "Settle the ruling".'],
   [/Value is less than required/i, "The Kleros fee changed a moment ago. Reload the page and try again."],
 ];
 
@@ -76,7 +76,7 @@ export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => s
   InDispute: ([x]) => `${x} is in a Kleros case, so the jurors decide; this cannot be changed by hand.`,
   NotAppealable: ([x]) => `The challenge from ${x} is not in a Kleros case that can be appealed.`,
   NotEnoughGas: () =>
-    "The transaction ran out of gas while paying someone. Nothing changed. Try again, and use a higher gas limit if it fails again.",
+    "The transaction ran out of gas while paying someone. Try again, with a higher gas limit if it fails again.",
   SpareTooLow: ([x]) => `The contract only holds ${eth(x)} of spare money.`,
   BadTemplate: () => "The case description template does not fit the contract.",
   NotAnImplementation: () => "That address is not a Proof of Presence event implementation.",
@@ -164,7 +164,9 @@ export function errorText(error: unknown, abi: Abi = PRESENCE_ERRORS_ABI): strin
   const decoded = decodeRevert(error, abi);
   if (decoded && decoded.errorName !== "Error" && decoded.errorName !== "Panic") {
     const text = KICKBACK_ERROR_TEXT[decoded.errorName];
-    return text ? text(decoded.args) : `The contract refused this transaction (${decoded.errorName}). Nothing was sent.`;
+    return text
+      ? text(decoded.args)
+      : `The contract refused this transaction (${decoded.errorName}). Nothing was sent.`;
   }
   const reason = decoded?.errorName === "Error" ? String(decoded.args[0] ?? "") : "";
   for (const [re, text] of KLEROS_ERRORS) if (re.test(reason) || re.test(raw)) return text;

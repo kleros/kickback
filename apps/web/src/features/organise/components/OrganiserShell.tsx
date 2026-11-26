@@ -44,7 +44,7 @@ export function ShellView({
       <div className="og-page">
         <div className="og-head">
           <Link href={paths.organise.getHref()} className="kb-link text-sm">
-            ← Your events
+            ← Manage your events
           </Link>
           <div className="og-head-row">
             <h1 className="og-title" data-testid="event-name">
@@ -66,7 +66,7 @@ export function ShellView({
         <div className="og-nav-scroll">
           <SegmentedNav items={tabs} current={current} label="Organiser" />
         </div>
-        {!event.connected ? (
+        {event.restoring ? null : !event.connected ? (
           <div className="og-actions">
             <p className="og-note">Connect the organiser&apos;s wallet to act on this event.</p>
             <ConnectWallet text="Connect wallet" className="is-quiet" />
@@ -82,15 +82,23 @@ export function ShellView({
         {event.connected && data && !event.isOwner && (
           <p className="og-note" data-testid="not-owner">
             The connected wallet is not this event&apos;s organiser ({shortHex(data.event.owner)}). You can view
-            everything. Only the organiser can turn guests away, confirm the list, add guests or cancel. Anyone can send
-            a case to Kleros, release payouts, settle a ruling or send payouts.
+            everything. Only the organiser can turn guests away, confirm the list, add guests or cancel the event.
+            Anyone can send a case to Kleros, settle a ruling, release payouts or send attendees their share.
           </p>
         )}
         {event.overview.isError ? (
           <p className="og-err" role="alert" data-testid="read-error">
-            {event.overview.error instanceof EventRefused
-              ? "This address is not an event on this site. If it is your wallet address, open Organise and connect that wallet: your events are listed there."
-              : "The network did not answer. Reload to try again."}
+            {event.overview.error instanceof EventRefused ? (
+              <>
+                This address is not an event on this site. If it is your wallet address, open{" "}
+                <Link href={paths.organise.getHref()} className="kb-link">
+                  Manage your events
+                </Link>{" "}
+                and connect that wallet: your events are listed there.
+              </>
+            ) : (
+              "The network did not answer. Reload to try again."
+            )}
           </p>
         ) : (
           children

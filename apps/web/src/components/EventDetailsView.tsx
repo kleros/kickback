@@ -47,6 +47,7 @@ function Venue({ where }: { where: string }) {
 
 export function EventDetailsView({ details, description, coverUrl, links, preview, tint, ended }: EventDetailsProps) {
   const registration = visibleLink(details.link);
+  const isLuma = !!registration && /^(?:www\.)?(?:lu\.ma|luma\.com)$/.test(registration.domain);
   const title = details.title ?? details.name;
   if (
     !title &&
@@ -104,13 +105,14 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
               target="_blank"
               rel="noopener noreferrer"
               className="ed-preview"
-              aria-label={`${preview?.title || "Luma event page"} (opens Luma in a new tab)`}
+              aria-label={`${preview?.title || (isLuma ? "Luma event page" : "Event page")} ${isLuma ? "(opens Luma in a new tab)" : "(opens in a new tab)"}`}
             >
               {preview?.image && <Image src={preview.image} alt="" width={960} height={540} unoptimized />}
               <span className="ed-preview-text">
                 <span className="ed-label">{preview?.siteName || (ended ? "Event page" : "Registration")}</span>
                 <strong>
-                  {preview?.title || "Luma event page"} <ExternalIcon size={14} aria-hidden="true" />
+                  {preview?.title || (isLuma ? "Luma event page" : "Event page")}{" "}
+                  <ExternalIcon size={14} aria-hidden="true" />
                 </strong>
                 <span className="ed-domain">{registration.domain}</span>
               </span>

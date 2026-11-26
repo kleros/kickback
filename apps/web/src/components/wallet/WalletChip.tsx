@@ -5,13 +5,15 @@ import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 
 import { shortenAddress } from "@/utils/address";
 
+import { switchErrorText } from "@/lib/web3/chainErrors";
+
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 
 /** The connected wallet in the header; tap it to disconnect. Nothing while disconnected. */
 export function WalletChip() {
   const { address, isConnected, chainId } = useAccount();
   const { disconnect } = useDisconnect();
-  const { switchChain } = useSwitchChain();
+  const { switchChain, error, reset } = useSwitchChain();
   if (!isConnected || !address) return null;
   const wrongNet = chainId !== DEFAULT_CHAIN_ID;
 
@@ -22,6 +24,7 @@ export function WalletChip() {
         aria-label={wrongNet ? `Wallet ${address} on another network: open menu` : `Wallet ${address}: open menu`}
         data-testid="wallet-chip"
         data-wrong-net={wrongNet || undefined}
+        data-switch-failed={(wrongNet && !!error) || undefined}
       >
         <span className="dot" aria-hidden />
         <span className="kb-mono kb-wallet-long">{shortenAddress(address)}</span>
@@ -32,13 +35,20 @@ export function WalletChip() {
       </Button>
       <Popover placement="bottom end" className="kb-wallet-pop">
         <p className="kb-wallet-full kb-mono">{address}</p>
-        {wrongNet && <p className="og-note">Your wallet is on another network.</p>}
+        {wrongNet && (
+          <p className={error ? "og-err" : "og-note"}>
+            {error ? switchErrorText(error, DEFAULT_CHAIN.name) : "Your wallet is on another network."}
+          </p>
+        )}
         <Menu className="kb-wallet-menu" aria-label="Wallet">
           {wrongNet && (
             <MenuItem
               className="kb-wallet-item"
               data-testid="switch-chain"
-              onAction={() => switchChain({ chainId: DEFAULT_CHAIN_ID })}
+              onAction={() => {
+                reset();
+                switchChain({ chainId: DEFAULT_CHAIN_ID });
+              }}
             >
               {`Switch to ${DEFAULT_CHAIN.name}`}
             </MenuItem>

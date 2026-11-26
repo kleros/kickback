@@ -31,7 +31,7 @@ export function useOrganiserEventSource(address: Address) {
     retry: 1,
     queryFn: () => readOrganiser(client!, address),
   });
-  const { address: account, chainId } = useAccount();
+  const { address: account, chainId, status } = useAccount();
   const onChain = !!account && chainId === DEFAULT_CHAIN_ID;
   const data = overview.data;
   const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
@@ -81,6 +81,8 @@ export function useOrganiserEventSource(address: Address) {
     phase,
     isOwner,
     connected: !!account,
+    /** wagmi is restoring a saved session on page load: no "Connect" prompt yet. */
+    restoring: !account && status === "reconnecting",
     /** Connected, and on the network the event lives on. */
     onChain,
     account,

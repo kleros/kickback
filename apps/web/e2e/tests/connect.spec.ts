@@ -30,6 +30,6 @@ test("one tap connects the only wallet in this browser", async ({ page }) => {
     };
   }, MOCK_ACCOUNTS.bob);
   await page.goto("/organise/new");
-  await page.getByRole("button", { name: "Connect your wallet" }).click();
+  await page.getByRole("button", { name: "Connect wallet", exact: true }).click();
   await expect(page.getByTestId("wallet-chip")).toBeVisible({ timeout: 15_000 });
 });

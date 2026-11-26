@@ -122,6 +122,12 @@
   font-size: 15px;
   line-height: 22px;
 }
+/* keep organiser prose readable on wide screens; tables and figure rows stay full width */
+.og-page .og-lede,
+.og-page .og-note,
+.og-card p {
+  max-width: 68ch;
+}
 .og-note {
   color: var(--kb-text-3);
   font-size: 13px;
@@ -250,7 +256,7 @@
 }
 .og-locked {
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
   color: var(--kb-text-2);
   font-size: 13px;
@@ -258,6 +264,7 @@
 }
 .og-locked svg {
   flex: none;
+  margin-top: 2px;
 }
 .og-thumb {
   position: sticky;
@@ -273,10 +280,6 @@
   background: var(--kb-chip);
   color: var(--kb-text);
   box-shadow: inset 0 0 0 1px var(--kb-glass-ring);
-}
-.kb-btn.is-quiet[data-disabled]:not([data-pending]) {
-  background: var(--kb-chip);
-  color: var(--kb-text-3);
 }
 
 /* ---------- form ---------- */

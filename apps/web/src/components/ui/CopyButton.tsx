@@ -115,7 +115,7 @@ export function CopyPrimaryButton({
       <span className="kb-btn-glyph">
         <SwapIcon copied={copied} size={20} />
       </span>
-      <TextSwap>{copied ? "Copied" : failed ? "Could not copy. Tap to try again" : children}</TextSwap>
+      <TextSwap>{copied ? "Copied" : failed ? "Could not copy. Try again" : children}</TextSwap>
     </Button>
   );
 }

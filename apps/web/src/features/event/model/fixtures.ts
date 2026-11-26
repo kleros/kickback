@@ -40,6 +40,8 @@ export const GALLERY_STATES = [
   "full-visitor",
   "addchain-failed",
   "resolve",
+  "release",
+  "ruled",
 ] as const;
 
 export type GalleryState = (typeof GALLERY_STATES)[number];
@@ -116,6 +118,28 @@ export function galleryInput(state: GalleryState): DepositInput {
       return { ...b, phase: 2, guest: guest() };
     case "on-list":
       return { ...listed, guest: guest({ attended: true }) };
+    case "release":
+      return {
+        ...listed,
+        challengeEndsAt: b.chainNow! - 60,
+        release: { expired: [], blocked: false },
+        guest: guest({ attended: true }),
+      };
+    case "ruled":
+      return {
+        ...listed,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+            isRuled: true,
+            ruling: 1,
+          },
+        }),
+      };
     case "listing":
       return { ...listed, challengeEndsAt: 0, guest: guest() };
     case "challenge":

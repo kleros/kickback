@@ -17,7 +17,7 @@ export function ShareRow({ text, luma, guestLink }: { text: string; luma: string
       <p className="receipt-share-label">
         {luma ? "Invite friends (shares the Luma event link)" : "Invite friends (shares this page)"}
       </p>
-      <div className="receipt-share" aria-label="Share your deposit" data-testid="share-row">
+      <div className="receipt-share" aria-label="Invite friends" data-testid="share-row">
         {share.native ? (
           <Button className="kb-icon-btn" aria-label="Share" onPress={() => void share.share()}>
             <ArrowUpIcon />

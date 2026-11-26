@@ -24,7 +24,7 @@ const COURT = courtName(DEFAULT_CHAIN_ID);
 function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const ticket = useRef<HTMLElement>(null);
   const share = useReceiptShare(event, from);
-  const controller = useDepositState(event);
+  const controller = useDepositState(event, from);
   const amount = unitsText(event.depositAmount, event.decimals);
   // once the list is posted, the example uses it; once paid, the real share
   const listed = event.phase === 1 || event.phase === 2 ? event.attendeeCount : undefined;
@@ -81,8 +81,12 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         clock={event.clock}
         court={COURT}
         challengeFee={event.challengeDeposit}
+        matchPeriod={event.matchPeriod}
+        now={controller.now}
         onDeposit={backToCard}
-        depositOpen={controller.depositOpen && ["rest", "nowallet", "connect", "ready"].includes(controller.view.key)}
+        depositOpen={
+          controller.depositOpen && ["rest", "nowallet", "connect", "approve", "ready"].includes(controller.view.key)
+        }
       />
     </>
   );

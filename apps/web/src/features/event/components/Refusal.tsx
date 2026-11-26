@@ -18,7 +18,7 @@ export function Refusal({ reason, address }: { reason: RefusalReason; address: s
   return (
     <div className="kb-narrow">
       <GlassCard as="section" className="kb-refusal" data-testid="refusal" data-reason={reason}>
-        <h1>No verified event at this address</h1>
+        <h1>This link is not a verified event</h1>
         <p>{BODY[reason]}</p>
         {address && <span className="addr kb-mono">{address}</span>}
         <p>Check the link on the event&apos;s Luma page.</p>

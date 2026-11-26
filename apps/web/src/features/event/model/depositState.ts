@@ -36,6 +36,7 @@ export const DEPOSIT_STATES = [
   "checking",
   "restoring",
   "resolve",
+  "release",
 ] as const;
 
 export type DepositStateKey = (typeof DEPOSIT_STATES)[number];
@@ -43,7 +44,7 @@ export type DepositStateKey = (typeof DEPOSIT_STATES)[number];
 export type WalletStatus = "disconnected" | "connecting" | "connected";
 
 /** The calls a guest makes besides the deposit: all money comes out through withdraw(to). */
-export type MoneyAction = "withdraw" | "claim" | "challenge" | "approve" | "resolve";
+export type MoneyAction = "withdraw" | "claim" | "challenge" | "approve" | "resolve" | "release";
 
 /** The deposit() selector: the same for ETH and token events. */
 export const DEPOSIT_DATA = "0xd0e30db0";
@@ -65,8 +66,10 @@ export interface GuestState {
     deposit?: bigint;
     /** The Dispute Resolver's case number, where evidence is sent. */
     localDisputeID?: bigint;
-    /** A settled Kleros case's ruling: 0 refused to rule, 1 came, 2 did not come. */
+    /** A Kleros case's ruling: 0 refused to rule, 1 came, 2 did not come. */
     ruling?: number;
+    /** A case with Kleros: the jurors' ruling is final, so anyone can settle it. Undefined when unknown. */
+    isRuled?: boolean;
   };
 }
 
@@ -102,7 +105,13 @@ export interface DepositInput {
     error?: string;
     /** "refused" when the dry run said the call would fail. */
     errorKind?: SendErrorKind;
+    /** Set once the wallet has signed: the transaction is confirming. */
+    hash?: Hash;
   };
+  /** Phase 1 after the challenge window: whether payouts can be released now, and with which expired challenges. */
+  release?: { expired: readonly Address[]; blocked: boolean };
+  /** Wei, the network fee a challenge is expected to cost. */
+  challengeFee?: bigint;
   busy?: boolean;
   /** The latest block's time, unix seconds; the app's "now". */
   chainNow: number | undefined;
@@ -191,7 +200,8 @@ export type DepositAction =
   | "withdraw"
   | "claim"
   | "challenge"
-  | "resolve";
+  | "resolve"
+  | "release";
 
 export interface DepositView {
   key: DepositStateKey;
@@ -245,10 +255,26 @@ export const txHref = (explorer: string | undefined, hash: Hash) => (explorer ? 
 
 function guestsLine(guests: number | undefined, capacity: number | undefined): StatusLine {
   if (guests === undefined) return { text: "" };
-  if (guests === 0) return { text: "Be the first to deposit" };
+  if (guests === 0) return { text: "Be the first to deposit." };
   const spots = capacity ? Math.max(0, capacity - guests) : 0;
   const left = capacity ? ` · ${spots} ${spots === 1 ? "spot" : "spots"} left` : "";
-  return { text: `${guests} ${guests === 1 ? "deposit" : "deposits"} so far${left}` };
+  return { text: `${guests} ${guests === 1 ? "deposit" : "deposits"} so far${left}.` };
+}
+
+/** The card's one-line version of a send error, where the full sentence would wrap on a phone. */
+const SHORT_ERRORS: Partial<Record<SendErrorKind, string>> = {
+  busy: "Wait for the other action to finish.",
+  "account-changed": "Wallet switched accounts. Try again.",
+  "wrong-chain": "Wrong network. Switch and try again.",
+  "no-account": "Connect your wallet first.",
+};
+
+/** A wallet-side failure: only a rejection is the guest's own cancel. */
+function walletText(message: string | undefined): string {
+  const m = message ?? "";
+  if (m.startsWith("Cancelled in your wallet")) return "Cancelled in your wallet. Nothing was sent.";
+  if (/enough ETH|insufficient funds/i.test(m)) return "Not enough ETH. Nothing was sent.";
+  return "Your wallet hit an error. Nothing was sent.";
 }
 
 export const depositsOpen = (phase: number, eventEnd: number, chainNow: number | undefined) =>
@@ -288,8 +314,11 @@ export function depositState(input: DepositInput): DepositView {
   // an amount owed to the guest: rounded down, without the "≈" that reads as unsure
   const owed = (units: bigint, unit?: string) => (unit === "ETH" ? ethText(units) : fmt(units)).replace(/^[~≈]/, "");
   const awaitingLines: StatusLine[] = [
-    { text: listDue ? `List due ${listDue}, then claim here.` : "Next: the list of who came.", tone: "pri" },
-    { text: "Left off? You can challenge." },
+    {
+      text: listDue ? `The organiser confirms who came by ${listDue}.` : "Next, the organiser confirms who came.",
+      tone: "pri",
+    },
+    { text: "Left off the list? You can challenge." },
   ];
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
@@ -323,8 +352,14 @@ export function depositState(input: DepositInput): DepositView {
           text:
             moneySend.errorKind === "refused"
               ? "This would fail now. Nothing was sent."
-              : (moneySend.error ?? "Nothing was sent. Try again."),
-          tone: "err",
+              : moneySend.errorKind === "unconfirmed"
+                ? "Sent, not confirmed yet. Check before retrying."
+                : moneySend.errorKind === "reverted"
+                  ? "It failed. Only the network fee was spent."
+                  : moneySend.errorKind === "wallet"
+                    ? walletText(moneySend.error)
+                    : (moneySend.error ?? "Nothing was sent. Try again."),
+          tone: moneySend.errorKind === "unconfirmed" ? "warn" : "err",
         }
       : undefined;
   const guest = connected ? input.guest : undefined;
@@ -366,7 +401,9 @@ export function depositState(input: DepositInput): DepositView {
       foot: null,
     });
 
-  if (connected && moneySend?.status === "pending")
+  if (connected && moneySend?.status === "pending") {
+    // before the wallet signs, point to the wallet; after, the transaction is confirming
+    const signed = moneySend.hash !== undefined;
     return {
       ...readOnly(
         "signing",
@@ -376,15 +413,20 @@ export function depositState(input: DepositInput): DepositView {
             ? "Withdrawing"
             : moneySend.action === "challenge"
               ? "Sending challenge"
-              : "Sending",
-        [{ text: "Confirm in your wallet." }, { text: "Then wait for the network." }],
+              : moneySend.action === "release"
+                ? "Releasing payouts"
+                : "Sending",
+        signed
+          ? [{ text: `Confirming on ${chain.name}.`, tone: "pri", link: etherscan(moneySend.hash!) }]
+          : [{ text: "Open your wallet to confirm.", tone: "pri" }, { text: "Then wait for the network." }],
         moneySend.amount ?? amount,
         moneySend.unit ?? (moneySend.action === "challenge" ? "ETH" : undefined),
       ),
-      button: "Confirm in your wallet",
-      glyph: "arc",
+      button: signed ? "Confirming" : "Confirm in your wallet",
+      glyph: signed ? "arc" : "ring",
       status: false,
     };
+  }
   if (connected && input.sent?.outcome === "pending" && input.sent.data && !isDepositRecord(input.sent))
     return {
       ...readOnly("earlier", "Sending", [
@@ -442,13 +484,13 @@ export function depositState(input: DepositInput): DepositView {
   }
 
   const paidLink = history?.paidTx ? txHref(explorer, history.paidTx) : undefined;
-  const paidLine = paidLink ? [{ text: "", link: { label: "Payout transaction", href: paidLink } }] : [];
+  const paidLine = (label: string): StatusLine[] => (paidLink ? [{ text: "", link: { label, href: paidLink } }] : []);
 
   if (guest && input.phase === 2 && guest.attended)
     return readOnly(
       "paid-out",
       "Paid out",
-      [{ text: `Sent to ${me}. All done.` }, ...paidLine],
+      [{ text: `Sent to ${me}. All done.` }, ...paidLine("Payout transaction")],
       guest.sharePaid,
       undefined,
       "Nothing left to do",
@@ -466,8 +508,42 @@ export function depositState(input: DepositInput): DepositView {
   };
   const disputedLines = (c: NonNullable<typeof challenge>): StatusLine[] => [
     { text: "Kleros jurors are deciding.", tone: "pri", link: caseLink(c) },
-    { text: "Send evidence: Luma check-in, photos." },
+    { text: "Send your evidence on the case page." },
   ];
+  // Kleros has ruled but nobody has settled the case yet: anyone can, so the guest can too
+  const ruledCase = (c: NonNullable<typeof challenge>): DepositView | undefined => {
+    if (!c.isRuled || c.ruling === undefined || c.ruling > 2) return undefined;
+    if (c.ruling === 2)
+      return readOnly(
+        "disputed",
+        "Kleros has ruled",
+        [{ text: "Kleros jurors ruled you were not there.", tone: "pri", link: caseLink(c) }],
+        amount,
+        undefined,
+        "Nothing left to do",
+      );
+    const error = errorFor("resolve");
+    return switchOr({
+      key: "resolve",
+      label: "Kleros has ruled",
+      amount: ethText(c.deposit ?? 0n),
+      unit: "ETH",
+      lines: error
+        ? [error]
+        : [
+            {
+              text: c.ruling === 1 ? "Kleros jurors ruled you attended." : "Kleros jurors did not rule either way.",
+              tone: "pri",
+            },
+            { text: "Confirm to settle the ruling." },
+          ],
+      action: "resolve",
+      button: c.ruling === 1 ? "Join the list" : "Settle the ruling",
+      disabled: input.busy,
+      foot: c.ruling === 1 ? "Your Kleros fee comes back." : "Half the remaining fee comes back.",
+      shake: error !== undefined,
+    });
+  };
   const ruled = challenge?.state === 3 && !guest?.attended;
   const refusedToRule = ruled && challenge?.ruling === 0;
   const ruledText = refusedToRule
@@ -475,7 +551,10 @@ export function depositState(input: DepositInput): DepositView {
     : "Kleros jurors ruled you were not there.";
 
   if (guest?.status === 1 && input.phase === 2 && !guest.attended && challenge?.state === 2)
-    return readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors");
+    return (
+      ruledCase(challenge) ??
+      readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors")
+    );
 
   if (guest?.status === 1 && input.phase === 2 && !guest.attended)
     return readOnly(
@@ -491,6 +570,23 @@ export function depositState(input: DepositInput): DepositView {
     const windowOver =
       !!input.challengeEndsAt && input.chainNow !== undefined && input.chainNow > input.challengeEndsAt;
     if (guest.attended) {
+      // anyone can release payouts once no challenge is still waiting for an answer
+      if (windowOver && input.release && !input.release.blocked) {
+        const error = errorFor("release");
+        return switchOr({
+          key: "release",
+          label: "On the attendance list",
+          amount: owed(amount),
+          lines: error
+            ? [error]
+            : [{ text: "Challenges have closed.", tone: "pri" }, { text: "Anyone can release payouts now." }],
+          action: "release",
+          button: "Release payouts",
+          disabled: input.busy,
+          foot: "Then claim your share here.",
+          shake: error !== undefined,
+        });
+      }
       if (windowOver)
         return readOnly(
           "on-list",
@@ -507,13 +603,13 @@ export function depositState(input: DepositInput): DepositView {
           { text: "You are on the list.", tone: "pri" },
           {
             text: input.challengeEndsAt
-              ? `Claim opens ${timeText(input.challengeEndsAt)}.`
-              : "Claim opens once the list is final.",
+              ? `Challenges close ${timeText(input.challengeEndsAt)}.`
+              : "Payouts come once the list is final.",
           },
         ],
         amount,
         undefined,
-        input.challengeEndsAt ? `Claim opens ${input.dayText(input.challengeEndsAt)}` : "Claim opens later",
+        "Waiting for payouts",
       );
     }
     if (challenge?.state === 1) {
@@ -528,7 +624,10 @@ export function depositState(input: DepositInput): DepositView {
           unit: "ETH",
           lines: error
             ? [error]
-            : [{ text: "The organiser did not answer in time.", tone: "pri" }, { text: "Confirm to join the list." }],
+            : [
+                { text: "The organiser did not answer in time.", tone: "pri" },
+                { text: "Join now, or wait for payouts to add you." },
+              ],
           action: "resolve",
           button: "Join the list",
           disabled: input.busy,
@@ -544,7 +643,8 @@ export function depositState(input: DepositInput): DepositView {
             text: paid ? `You paid the ${ethText(paid)} ETH Kleros fee.` : "Challenge sent.",
             tone: "pri",
           },
-          { text: `No answer by ${input.dayText(challenge.matchEndsAt)}? You will be added.` },
+          // the full time, so the guest can tell on the day itself; the card offers "Join the list" once it passes
+          { text: `Answer expected by ${timeText(challenge.matchEndsAt)}.` },
         ],
         paid ?? amount,
         paid ? "ETH" : undefined,
@@ -552,7 +652,10 @@ export function depositState(input: DepositInput): DepositView {
       );
     }
     if (challenge?.state === 2)
-      return readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors");
+      return (
+        ruledCase(challenge) ??
+        readOnly("disputed", "With Kleros", disputedLines(challenge), amount, undefined, "Waiting for jurors")
+      );
     if (ruled)
       return readOnly(
         "not-attended",
@@ -567,8 +670,10 @@ export function depositState(input: DepositInput): DepositView {
         "listing",
         "Attendance list",
         [
-          { text: "The organiser is confirming who came." },
-          { text: listDue ? `List due ${listDue}. Left off? You can challenge.` : "Left off? You can challenge." },
+          {
+            text: listDue ? `The organiser confirms who came by ${listDue}.` : "The organiser is confirming who came.",
+          },
+          { text: "Left off the list? You can challenge." },
         ],
         amount,
         undefined,
@@ -577,7 +682,9 @@ export function depositState(input: DepositInput): DepositView {
     if (!windowOver && input.chainNow !== undefined) {
       const cost = input.challengeDeposit ?? 0n;
       const error = errorFor("challenge");
-      const short = input.balance !== undefined && input.balance < cost;
+      // the wallet also pays the network fee; while that is unknown, only the Kleros fee is checked
+      const need = cost + (input.challengeFee ?? 0n);
+      const short = input.balance !== undefined && input.balance < need;
       return switchOr({
         key: "challenge",
         label: "Kleros fee to challenge",
@@ -588,7 +695,12 @@ export function depositState(input: DepositInput): DepositView {
           : short
             ? [
                 { text: `${ethText(input.balance!)} ETH available`, tone: "err", action: recheck },
-                { text: `Add ETH by ${timeText(input.challengeEndsAt)}.` },
+                {
+                  text:
+                    input.challengeFee === undefined
+                      ? `Add ETH by ${timeText(input.challengeEndsAt)}.`
+                      : `${ethText(need)} ETH needed by ${timeText(input.challengeEndsAt)}.`,
+                },
               ]
             : [
                 { text: "Were you there? Challenge to be added.", tone: "warn" },
@@ -597,7 +709,7 @@ export function depositState(input: DepositInput): DepositView {
         action: "challenge",
         button: short && !error ? "Not enough ETH" : "Challenge the list",
         disabled: input.busy || short || input.challengeDeposit === undefined,
-        foot: "If disputed, Kleros jurors decide.",
+        foot: "Disputed? Kleros jurors decide.",
         shake: error !== undefined,
       });
     }
@@ -631,10 +743,17 @@ export function depositState(input: DepositInput): DepositView {
       foot: null,
     };
   if (guest?.status === 3)
-    return readOnly("withdrawn", "Deposit returned", [{ text: "Your deposit was returned in full." }, ...paidLine]);
+    return readOnly(
+      "withdrawn",
+      "Deposit returned",
+      [{ text: "Your deposit was returned in full." }, ...paidLine("Refund transaction")],
+      amount,
+      undefined,
+      "Nothing left to do",
+    );
 
   if (connected && guest?.status === 1) {
-    if (history?.txHash) return done(history.txHash, history.at ?? input.chainNow ?? 0);
+    if (history?.txHash) return done(history.txHash, history.at);
     // the deposit is on-chain but its transaction is not known yet
     if (history === undefined)
       return {
@@ -649,7 +768,7 @@ export function depositState(input: DepositInput): DepositView {
     if (awaitingList)
       return {
         ...readOnly("already", "Deposit sent", awaitingLines),
-        button: "Deposit sent",
+        button: "Waiting for the list",
       };
     // the logs did not name the transaction: the wallet's own page still proves the deposit
     const walletLink = explorer ? `${explorer}/address/${wallet.address}` : wallet.address!;
@@ -721,7 +840,7 @@ export function depositState(input: DepositInput): DepositView {
   if (input.chainNow === undefined)
     return {
       ...readOnly("checking", "Refundable deposit", [{ text: "Loading the event…" }]),
-      button: "Checking deposits",
+      button: "Loading",
       glyph: "arc",
       status: false,
     };
@@ -784,7 +903,9 @@ export function depositState(input: DepositInput): DepositView {
       input.phase === 3
         ? "The event was cancelled."
         : input.phase === 1
-          ? "Challenges are open for guests left off."
+          ? input.challengeEndsAt && input.chainNow > input.challengeEndsAt
+            ? "Challenges have closed. Payouts come next."
+            : "Challenges are open for guests left off."
           : input.phase === 2
             ? "Payouts have been released."
             : "The event has ended.";
@@ -954,10 +1075,13 @@ export function depositState(input: DepositInput): DepositView {
       case "unconfirmed":
         return send.hash ? pendingView(input, send.hash, PENDING_STAGE_3_MS) : dropped;
       case "wallet":
-        notice = { text: "Cancelled in your wallet. Nothing was sent.", tone: "err" };
+        notice = { text: walletText(send.errorMessage), tone: "err" };
         break;
       default:
-        notice = { text: send.errorMessage ?? "Nothing was sent. Try again.", tone: "err" };
+        notice = {
+          text: (send.errorKind && SHORT_ERRORS[send.errorKind]) ?? send.errorMessage ?? "Nothing was sent. Try again.",
+          tone: "err",
+        };
     }
   }
 
