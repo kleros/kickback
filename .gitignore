@@ -11,6 +11,7 @@ node_modules/
 # build (repo-wide)
 dist/
 .next/
+.next-*/
 out/
 *.tsbuildinfo
 
