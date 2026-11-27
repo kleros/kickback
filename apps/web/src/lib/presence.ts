@@ -1,5 +1,6 @@
 import { presenceEventAbi } from "@kickback/contracts";
 import { challengeOf, isAddressStrict, KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
+import { parseAbi } from "viem";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
@@ -10,7 +11,7 @@ export interface EventClock {
   zone: string;
 }
 
-export type RefusalReason = "not-address" | "no-contract" | "not-kickback" | "look-alike";
+export type RefusalReason = "not-address" | "bad-checksum" | "no-contract" | "not-kickback" | "look-alike";
 
 export interface KickbackEvent extends EventInfo {
   /** The event's name, as the contract stores it. */
@@ -23,6 +24,8 @@ export interface KickbackEvent extends EventInfo {
   challengeCount?: number;
   /** Challenges the organiser sent to Kleros (cases open or settled). */
   casesSent?: number;
+  /** Open Kleros cases the jurors have ruled on (ruling 0, 1 or 2) but nobody has settled yet; undefined when unknown. */
+  ruledCases?: number;
 }
 
 export class EventRefused extends Error {
@@ -42,6 +45,8 @@ const refusalOf = (error: unknown): RefusalReason | undefined => {
   return undefined;
 };
 
+const RESOLVER_ABI = parseAbi(["function disputes(uint256) view returns (bytes, bool, uint256, uint256)"]);
+
 export const eventKey = (contract: string) => ["event", DEFAULT_CHAIN_ID, contract.toLowerCase()] as const;
 
 /** Reads and checks an event: it must be a clone this site's factory created (isEvent), or EventRefused is thrown. */
@@ -57,12 +62,17 @@ export async function loadEvent(
   } catch (error) {
     const reason = refusalOf(error);
     // "not-kickback" only once real code was found: a broken checksum is a bad address, not a contract
-    if (reason) throw new EventRefused(isAddressStrict(contract) ? reason : "not-address", contract);
+    if (reason)
+      throw new EventRefused(
+        isAddressStrict(contract) ? reason : /^0x[0-9a-fA-F]{40}$/.test(contract) ? "bad-checksum" : "not-address",
+        contract,
+      );
     throw error;
   }
   // challenges exist only once the list is closed; a failed read keeps the plain wording
   let challengeCount: number | undefined;
   let casesSent: number | undefined;
+  let ruledCases: number | undefined;
   if (info.challengeEndsAt > 0)
     try {
       const c = { address: info.contract, abi: presenceEventAbi } as const;
@@ -72,9 +82,25 @@ export async function loadEvent(
       );
       challengeCount = challengers.length;
       // a matched challenge has a matcher: with Kleros (2), or settled by Kleros (3)
-      casesSent = raw
-        .map(challengeOf)
-        .filter((ch) => ch.state === 2 || (ch.state === 3 && !/^0x0{40}$/i.test(ch.matcher))).length;
+      const all = raw.map(challengeOf);
+      casesSent = all.filter((ch) => ch.state === 2 || (ch.state === 3 && !/^0x0{40}$/i.test(ch.matcher))).length;
+      // a case Kleros has ruled on still counts as open until someone settles it
+      try {
+        const open = all.filter((ch) => ch.state === 2);
+        const rulings = await Promise.all(
+          open.map((ch) =>
+            client.readContract({
+              address: info.disputeResolver,
+              abi: RESOLVER_ABI,
+              functionName: "disputes",
+              args: [ch.localDisputeID],
+            }),
+          ),
+        );
+        ruledCases = rulings.filter(([, isRuled, ruling]) => isRuled && Number(ruling) <= 2).length;
+      } catch {
+        // unknown: the plain wording stays
+      }
     } catch {
       // unknown
     }
@@ -82,6 +108,7 @@ export async function loadEvent(
     ...info,
     challengeCount,
     casesSent,
+    ruledCases,
     eventName: info.name,
     clock: null,
     lumaUrl: LUMA_URL.test(info.url) ? info.url : undefined,

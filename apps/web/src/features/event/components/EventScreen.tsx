@@ -38,6 +38,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
     event.phase === 1 || event.phase === 2 ? event.openCases : 0,
     event.phase === 1 ? event.waitingChallenges : 0,
     event.capacity,
+    event.phase === 1 || event.phase === 2 ? (event.ruledCases ?? 0) : 0,
   );
 
   // the fragment is set before the page has height; land on it once the section exists
@@ -90,6 +91,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         now={controller.now}
         phase={event.phase}
         openCases={event.openCases}
+        ruledCases={event.ruledCases}
         challengeCount={event.challengeCount}
         casesSent={event.casesSent}
         onDeposit={backToCard}

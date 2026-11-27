@@ -45,3 +45,33 @@ describe("revert decoding through nested error data", () => {
     expect(revertName({ code: -32603, data: { originalError: { data: TOO_LATE } } })).toBe("TooLate");
   });
 });
+
+describe("LUMA_URL and lumaLinkProblem", () => {
+  it("accepts only public Luma event pages", async () => {
+    const { LUMA_URL } = await import("../src/text");
+    for (const ok of ["https://luma.com/abc123", "https://lu.ma/abc123", "https://luma.com/event/evt-AbC12", "https://www.luma.com/my-dinner/"])
+      expect(LUMA_URL.test(ok), ok).toBe(true);
+    for (const bad of [
+      "https://luma.com/abc123?tk=xyz",
+      "https://luma.com/event/manage/evt-abc",
+      "https://luma.com/home",
+      "https://luma.com/calendar/manage/cal-x",
+      "https://luma.com/create",
+      "https://luma.com/user/someone",
+      "https://luma.com/",
+    ])
+      expect(LUMA_URL.test(bad), bad).toBe(false);
+  });
+
+  it("names what is wrong with a pasted link", async () => {
+    const { lumaLinkProblem } = await import("../src/text");
+    expect(lumaLinkProblem("https://luma.com/abc123")).toBeNull();
+    expect(lumaLinkProblem("https://luma.com/event/evt-x1")).toBeNull();
+    expect(lumaLinkProblem("https://luma.com/abc123?tk=xyz")?.kind).toBe("token");
+    expect(lumaLinkProblem("https://luma.com/abc123?utm_source=x")?.kind).toBe("query");
+    expect(lumaLinkProblem("https://luma.com/event/manage/evt-abc")?.kind).toBe("manage");
+    expect(lumaLinkProblem("https://luma.com/calendar/manage/cal-x")?.kind).toBe("manage");
+    expect(lumaLinkProblem("https://luma.com/home")?.kind).toBe("other");
+    expect(lumaLinkProblem("not a link")?.kind).toBe("other");
+  });
+});

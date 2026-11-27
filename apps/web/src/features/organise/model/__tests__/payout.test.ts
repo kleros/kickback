@@ -61,5 +61,10 @@ describe("unpaidLede", () => {
     );
     expect(unpaidLede([], 4, 16n, fmt)).toBe("Each attendee's share is 16 wei. Every attendee has been paid.");
     expect(unpaidLede([], 4, 16n, fmt, 1)).toContain("one could not be delivered");
+    // a Kleros case still holds a share: paid so far, not done
+    expect(unpaidLede([], 4, 16n, fmt, 0, 1)).toBe(
+      "Each attendee's share is 16 wei so far. Every attendee has been paid so far; a share is held for the open Kleros case and is split among the attendees unless Kleros rules that guest came.",
+    );
+    expect(unpaidLede([], 4, 16n, fmt, 0, 2)).toContain("each of the 2 open Kleros cases");
   });
 });

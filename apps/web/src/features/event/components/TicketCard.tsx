@@ -265,7 +265,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
         ) : (
           view.foot && <span>{view.foot}</span>
         )}
-        {done && lumaUrl && (
+        {done && !view.ended && lumaUrl && (
           <>
             {(view.foot || manualCopy) && (
               <span className="tk-sep" aria-hidden>

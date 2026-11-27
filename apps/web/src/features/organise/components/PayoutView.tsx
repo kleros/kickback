@@ -87,11 +87,25 @@ export function PayoutScreen() {
   const missed = info.phase === 0 && now > info.claimDeadline;
   const toSend = data.unpaid.slice(0, BATCH_SIZE).map((u) => u.wallet);
   const share = projected.share ?? 0n;
-  const counting = pending + info.openCases;
-  const cases = (n: number) => `${n} open Kleros ${n === 1 ? "case" : "cases"}`;
+  // a case Kleros has ruled on still holds its share until someone settles it (a ruling above 2 cannot be settled)
+  const ruledCases = disputed.filter((c) => c.isRuled === true && (c.ruling ?? 99) <= 2);
+  const ruledCount = Math.min(ruledCases.length, info.openCases);
+  const deciding = info.openCases - ruledCount;
+  const counting = pending + deciding;
+  // a ruling other than "came" (1) splits the held share among the attendees once it is settled
+  const ruledWho = (r: number | undefined) => (r === 1 ? "it goes to the guest" : "it is split among the attendees");
   const heldNote =
     info.openCases > 0
-      ? `${info.openCases === 1 ? "a share is held for the open Kleros case (it goes" : `${info.openCases} shares are held for the ${info.openCases} open Kleros cases (each goes`} to the guest if they win, or is split among the attendees if they lose), so this can still rise`
+      ? [
+          deciding > 0 &&
+            `${deciding === 1 ? `a share is held for ${info.openCases === 1 ? "the open Kleros case" : "the case still with Kleros"} (it goes` : `${deciding} shares are held for the ${deciding} cases still with Kleros (each goes`} to the guest if they win, or is split among the attendees if they lose)`,
+          ruledCount > 0 &&
+            (ruledCount === 1
+              ? `a share is held for 1 ruled case until it is settled (then ${ruledWho(ruledCases[0]?.ruling)})`
+              : `a share is held for each of the ${ruledCount} ruled cases until it is settled`),
+        ]
+          .filter(Boolean)
+          .join("; ") + (deciding > 0 ? ", so this can still rise" : "")
       : undefined;
   const fmt = (units: bigint) => assetText(units, info);
   const releasedBy = record.data?.released?.by;
@@ -251,8 +265,15 @@ export function PayoutScreen() {
                 label: "Attendees",
                 value: String(attendeesAfter),
                 note:
-                  info.phase === 1 && counting > 0
-                    ? `plus ${counting} ${counting === 1 ? "challenging guest" : "challenging guests"} counted in the split`
+                  info.phase === 1 && (counting > 0 || ruledCount > 0)
+                    ? [
+                        counting > 0 &&
+                          `plus ${counting} ${counting === 1 ? "challenging guest" : "challenging guests"} counted in the split`,
+                        ruledCount > 0 &&
+                          `${counting > 0 ? "and " : "plus "}${ruledCount} ${ruledCount === 1 ? "ruling" : "rulings"} waiting to be settled${counting > 0 ? "" : ", counted in the split"}`,
+                      ]
+                        .filter(Boolean)
+                        .join(" ")
                     : undefined,
               },
               {
@@ -298,6 +319,9 @@ export function PayoutScreen() {
                       caseUrl(DEFAULT_CHAIN_ID, c.arbitratorDisputeID))
                     : undefined;
                 const canMatch = c.state === 1 && now <= c.matchEndsAt && info.phase === 1;
+                const tooLateText = event.isOwner
+                  ? "Your time to answer this challenge ended, so this guest will be added when payouts are released. Nothing was sent."
+                  : "The organiser's time to answer this challenge ended, so this guest will be added when payouts are released. Nothing was sent.";
                 // addAttendees is refused once the challenge window is over, though a late challenge can still be
                 // sent to Kleros until its own answer window ends
                 const canAddThem = canMatch && now <= info.challengeEndsAt;
@@ -351,6 +375,14 @@ export function PayoutScreen() {
                 const splitText = split
                   ? ` The share held for them (${fmt(split.each * (split.attendees + split.openCases))}) was then split among the ${attendees(Number(split.attendees))}${split.openCases > 0n ? ` and the ${Number(split.openCases)} ${split.openCases === 1n ? "case" : "cases"} still with Kleros` : ""}: ${fmt(split.each)} each.`
                   : "";
+                // settling a lost case after the release splits its held share: say so before it is sent (the
+                // contract takes this case out of openCases first, then splits)
+                const restOpen = Math.max(info.openCases - 1, 0);
+                const splitWays = info.attendeeCount + restOpen;
+                const willSplitText =
+                  info.phase === 2 && ruled && c.ruling !== 1 && splitWays > 0
+                    ? ` The share held for them (${fmt(info.payoutShare)}) is then split among the ${attendees(info.attendeeCount)}${restOpen > 0 ? ` and the ${restOpen} ${restOpen === 1 ? "case" : "cases"} still with Kleros` : ""}: ${fmt(info.payoutShare / BigInt(splitWays))} each.`
+                    : "";
                 const name = luma.nameOf(c.wallet);
                 // what a settled challenger who joined the list gets: future before the release, then by what is paid
                 const paidSoFar = data.sharePaid.get(c.wallet.toLowerCase()) ?? 0n;
@@ -412,8 +444,8 @@ export function PayoutScreen() {
                                 ? c.ruling === 1
                                   ? `Kleros jurors ruled this guest came. Settle the ruling: they join the list, get back ${ethText(leftOver)} (what is left of the two fees after the Kleros cost) and get ${shareText}.`
                                   : c.ruling === 2
-                                    ? `Kleros jurors ruled this guest did not come. Settle the ruling: they stay off the list and ${who} ${matcherIsMe ? "get" : "gets"} back ${ethText(leftOver)}.`
-                                    : `Kleros jurors did not rule either way. Settle the ruling: the guest stays off the list, and the ${ethText(leftOver)} left of the two fees is split in half: ${ethText(half)} to the guest and ${ethText(leftOver - half)} to ${who}.`
+                                    ? `Kleros jurors ruled this guest did not come. Settle the ruling: they stay off the list and ${who} ${matcherIsMe ? "get" : "gets"} back ${ethText(leftOver)}.${willSplitText}`
+                                    : `Kleros jurors did not rule either way. Settle the ruling: the guest stays off the list, and the ${ethText(leftOver)} left of the two fees is split in half: ${ethText(half)} to the guest and ${ethText(leftOver - half)} to ${who}.${willSplitText}`
                                 : appeal
                                   ? appealText
                                   : "Kleros jurors are deciding. Send your evidence (Luma check-in, photos) on the case page. Once they rule, settle it here."
@@ -484,11 +516,19 @@ export function PayoutScreen() {
                                   c.wallet.toLowerCase(),
                                   "Send to Kleros",
                                   async () => {
+                                    // the answer time may have ended since the page was read: say so before any upload
+                                    const block = await client!.getBlock();
+                                    if (block.timestamp > BigInt(c.matchEndsAt)) throw new Error(tooLateText);
                                     // the jurors must be able to read the case: pin its text before it opens
                                     await publishCase(client!, info.contract, c.wallet);
                                     return tx.matchChallenge(info.contract, c.wallet, c.deposit);
                                   },
                                   `Sent. ${name ? `${name}'s` : "The"} case is now with Kleros.`,
+                                  undefined,
+                                  {
+                                    TooLate: tooLateText,
+                                    WrongChallengeState: "This challenge was already answered. Nothing was sent.",
+                                  },
                                 )
                               }
                             >
@@ -531,7 +571,16 @@ export function PayoutScreen() {
                         )}
                       </div>
                     )}
-                    {target === c.wallet.toLowerCase() && <Messages event={event} />}
+                    {target === c.wallet.toLowerCase() && (
+                      // once the row can no longer be answered, "try again" advice is gone with its button
+                      <Messages
+                        event={
+                          c.state === 1 && !canMatch && event.error && /try again/i.test(event.error.text)
+                            ? { ...event, error: null }
+                            : event
+                        }
+                      />
+                    )}
                   </GlassCard>
                 );
               })
@@ -541,8 +590,10 @@ export function PayoutScreen() {
             <GlassCard className="og-card">
               <h3 className="og-h2">Release payouts</h3>
               <p className="og-lede">
-                Splits all the deposits among the attendees. A share is held for each open Kleros case until it is
-                decided. Anyone can release payouts once the challenge window is over.
+                Splits all the deposits among the attendees. A share is held for each Kleros case until it is decided or
+                settled.
+                {ruledCount > 0 ? " Settle ruled cases first so their result counts in the split." : ""} Anyone can
+                release payouts once the challenge window is over.
               </p>
               <div className="og-actions">
                 <GradientButton isDisabled={!!releaseReason || !canActAsAnyone} onPress={() => setConfirm("release")}>
@@ -584,7 +635,14 @@ export function PayoutScreen() {
                 </p>
               )}
               <p className="og-lede" data-testid="payout-lede">
-                {unpaidLede(data.unpaid, info.attendeeCount, info.payoutShare, fmt, data.refused.length)}
+                {unpaidLede(
+                  data.unpaid,
+                  info.attendeeCount,
+                  info.payoutShare,
+                  fmt,
+                  data.refused.length,
+                  info.openCases,
+                )}
               </p>
               {data.unpaid.length > 0 ? (
                 <div className="og-actions">
@@ -615,7 +673,7 @@ export function PayoutScreen() {
                     (data.refused.length === 1
                       ? " One attendee's wallet refused its payment. It can still be claimed on the guest page."
                       : ` ${data.refused.length} attendees' wallets refused their payments. These can still be claimed on the guest page.`)}
-                  {info.openCases > 0 && " A share is held for each open Kleros case until it is decided."}
+                  {info.openCases > 0 && " A share is held for each Kleros case until it is decided or settled."}
                 </p>
               )}
               {target === "tab" && <Messages event={event.done === RELEASED ? { ...event, done: null } : event} />}
@@ -628,9 +686,13 @@ export function PayoutScreen() {
           isOpen
           title="Release payouts"
           intro={
-            info.openCases > 0
-              ? `This splits the deposits among the attendees and holds one share for each of the ${cases(info.openCases)}. If a guest wins their case, they join the attendees and get that share; if they lose, it is split among the attendees. It cannot be undone.`
-              : "This splits all the deposits among the attendees. It cannot be undone."
+            info.openCases === 1
+              ? ruledCount === 1
+                ? `This splits the deposits among the attendees and holds one share for the Kleros case that has been ruled but not settled yet. Once it is settled, ${ruledWho(ruledCases[0]?.ruling)}. It cannot be undone.`
+                : "This splits the deposits among the attendees and holds one share for the open Kleros case. If the guest wins, they join the attendees and get that share; if they lose, it is split among the attendees. It cannot be undone."
+              : info.openCases > 1
+                ? `This splits the deposits among the attendees and holds one share for each of the ${info.openCases} Kleros cases${ruledCount > 0 ? ` (${ruledCount} ruled, waiting to be settled)` : ""}. If a guest wins their case, they join the attendees and get that share; if they lose, it is split among the attendees. It cannot be undone.`
+                : "This splits all the deposits among the attendees. It cannot be undone."
           }
           words={[TYPED_WORDS.pay]}
           figures={[
@@ -640,8 +702,11 @@ export function PayoutScreen() {
             ...(info.openCases > 0
               ? [
                   {
-                    label: "Held for open Kleros cases",
-                    value: `${info.openCases} (${assetText(share, info)} each)`,
+                    label: info.openCases === 1 ? "Held for the open Kleros case" : "Held for open Kleros cases",
+                    value:
+                      info.openCases === 1
+                        ? `1 (${assetText(share, info)})`
+                        : `${info.openCases} (${assetText(share, info)} each)`,
                   },
                 ]
               : []),

@@ -34,12 +34,20 @@ export function unpaidLede(
   share: bigint,
   fmt: (units: bigint) => string,
   refused = 0,
+  /** Kleros cases still open: a lost case's held share is split among the attendees later. */
+  openCases = 0,
 ) {
   const n = unpaid.length;
+  const held =
+    openCases === 1
+      ? "a share is held for the open Kleros case and is split among the attendees unless Kleros rules that guest came"
+      : `a share is held for each of the ${openCases} open Kleros cases, and each is split among the attendees unless Kleros rules that guest came`;
   if (n === 0)
     return refused > 0
-      ? `Each attendee's share is ${fmt(share)}. Every share has been sent; ${refused === 1 ? "one could" : `${refused} could`} not be delivered and can be claimed on the guest page.`
-      : `Each attendee's share is ${fmt(share)}. Every attendee has been paid.`;
+      ? `Each attendee's share is ${fmt(share)}${openCases > 0 ? " so far" : ""}. Every share has been sent; ${refused === 1 ? "one could" : `${refused} could`} not be delivered and can be claimed on the guest page.${openCases > 0 ? ` Also, ${held}.` : ""}`
+      : openCases > 0
+        ? `Each attendee's share is ${fmt(share)} so far. Every attendee has been paid so far; ${held}.`
+        : `Each attendee's share is ${fmt(share)}. Every attendee has been paid.`;
   const partly = unpaid.filter((u) => u.partlyPaid);
   const send = `They can claim it on the guest page, or you can send what each is owed now (you pay the network fee). The Guests tab shows each payment.`;
   if (partly.length > 0) {

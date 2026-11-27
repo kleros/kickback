@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
-import { eventConfig, LUMA_URL, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
+import { eventConfig, LUMA_URL, lumaLinkProblem, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address, type Hash } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
@@ -30,13 +30,18 @@ import { tx } from "../operations/tx";
 /** "2026-11-24T18:00" in the browser's zone, for a datetime-local input. */
 const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
-/** A Luma link as it is stored: lower-case scheme and host, no #fragment; anything unparsable is left as typed. */
+/**
+ * A Luma link as it is stored: lower-case scheme and host, no ?query (an invite token must never go on chain) and
+ * no #fragment; anything unparsable is left as typed.
+ */
 function normaliseLuma(raw: string): string {
   const t = raw.trim();
   try {
     const u = new URL(t);
     if (u.protocol !== "https:") return t;
     u.hash = "";
+    u.search = "";
+    u.host = u.host.toLowerCase();
     return u.toString();
   } catch {
     return t;
@@ -183,9 +188,26 @@ export function CreateScreen() {
   const deposit = form.deposit.trim().replace(",", ".");
   const [minDays, maxDays] = [MIN_SETTLEMENT_WINDOW / 86_400, MAX_SETTLEMENT_WINDOW / 86_400];
 
+  // the reasons follow the order of the fields on the form: name, Luma link, deposit, dates, days, capacity
   const build = () => {
-    if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
+    // the name alone, by the same rules as the final check (every other value here is a valid placeholder)
+    const t = Math.floor(Date.now() / 1000);
+    eventConfig({
+      name: form.name,
+      url: "",
+      depositAmount: 1n,
+      eventStart: t + 60,
+      eventEnd: t + 120,
+      claimDeadline: t + 120 + MIN_SETTLEMENT_WINDOW,
+      capacity: 0,
+    });
+    // the link is stored on-chain for good: check and store the cleaned one (lower-case host, no query or #fragment)
+    const lumaProblem = lumaLinkProblem(form.url);
+    if (lumaProblem?.kind === "manage" || lumaProblem?.kind === "other") throw new Error(lumaProblem.text);
+    const url = normaliseLuma(form.url);
+    if (!LUMA_URL.test(url)) throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
     if (!/^\d+(\.\d+)?$/.test(deposit)) throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
+    if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
     // parseUnits would round extra decimals silently, and the deposit cannot change once the event exists
     const places = (deposit.split(".")[1] ?? "").length;
     if (places > asset.decimals)
@@ -194,29 +216,34 @@ export function CreateScreen() {
           ? `Enter the deposit as a whole number: ${asset.symbol} has no decimal places.`
           : `Enter the deposit with at most ${asset.decimals} decimal places: that is the most ${asset.symbol} allows.`,
       );
+    const start = zonedUnix(form.start, form.zone);
+    const end = zonedUnix(form.end, form.zone);
+    if (!Number.isFinite(start) || !(start > 0)) throw new Error("Enter a start date and time.");
+    if (!Number.isFinite(end) || !(end > 0)) throw new Error("Enter an end date and time.");
+    if (!(end > start)) throw new Error("The event must end after it starts.");
+    if (!(end > Date.now() / 1000)) throw new Error("The event's end time has already passed.");
     const days = Number(form.deadlineDays);
     if (!Number.isInteger(days) || days < minDays || days > maxDays)
       throw new Error(`Enter a whole number of days from ${minDays} to ${maxDays}.`);
-    // the link is stored on-chain for good: check and store the cleaned one (lower-case host, no #fragment)
-    const url = normaliseLuma(form.url);
-    if (!LUMA_URL.test(url)) throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
     const capText = form.capacity.trim();
     if (capText && !/^\d+$/.test(capText))
       throw new Error("Enter the capacity as a whole number, such as 100, or leave it empty for no limit.");
     const capacity = capText ? Number(capText) : 0;
     if (capText && capacity === 0) throw new Error("Enter a capacity of at least 1, or leave it empty for no limit.");
-    const end = zonedUnix(form.end, form.zone);
     return eventConfig({
       name: form.name,
       url,
       token: form.asset === "ETH" ? undefined : (tokenAddress as Address),
       depositAmount: parseUnits(deposit, asset.decimals),
-      eventStart: zonedUnix(form.start, form.zone),
+      eventStart: start,
       eventEnd: end,
       claimDeadline: end + days * 86_400,
       capacity,
     });
   };
+  // an invite token or another query is dropped before the link goes on chain: say so, with the link stored
+  const lumaCheck = form.url.trim() ? lumaLinkProblem(form.url) : null;
+  const lumaNote = lumaCheck?.kind === "token" || lumaCheck?.kind === "query" ? lumaCheck.text : null;
   let check: string | null = null;
   try {
     build();
@@ -304,6 +331,11 @@ export function CreateScreen() {
               placeholder="https://luma.com/…"
               onChange={set("url")}
             />
+            {lumaNote && (
+              <span className="og-note" data-testid="luma-link-note">
+                {lumaNote} The link stored will be {normaliseLuma(form.url)}
+              </span>
+            )}
           </Field>
           <Field label="Deposit in">
             <select className="og-input" value={form.asset} onChange={set("asset")}>

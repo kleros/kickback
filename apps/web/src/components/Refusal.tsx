@@ -9,6 +9,8 @@ import { paths } from "@/config/paths";
 
 export const REFUSAL_BODY: Record<RefusalReason, string> = {
   "not-address": "This link does not contain a complete event address.",
+  "bad-checksum":
+    "This address has all its characters, but its capital letters are wrong, so it may have been changed.",
   "no-contract": "There is no event at this address.",
   "not-kickback": "This address is a contract, but not a Kickback event.",
   "look-alike": "This contract looks like a Kickback event, but this site did not create it.",

@@ -13,6 +13,8 @@ export interface ShareExample {
    * guest joining the list or the case going to Kleros, where a share is held.
    */
   pending: number;
+  /** Of the `held` cases, those Kleros has ruled on that nobody has settled yet (their share is still held). */
+  ruled: number;
   /** The no-shows' deposits, in wei. */
   pool: bigint;
   /** What each attendee gets back, deposit included: the contract's share. */
@@ -41,6 +43,8 @@ export function shareExample(
   waiting = 0,
   /** The event's capacity (0 = no limit): the illustration never shows more deposits than there are spots. */
   capacity = 0,
+  /** Open cases Kleros has ruled on but nobody has settled yet. */
+  ruledCases = 0,
 ): ShareExample {
   const fromList = listed !== undefined && listed >= 1 && listed <= stakerCount;
   const held = fromList ? Math.max(0, Math.min(openCases, stakerCount - listed)) : 0;
@@ -64,6 +68,7 @@ export function shareExample(
     noShows,
     held,
     pending,
+    ruled: Math.max(0, Math.min(ruledCases, held)),
     pool: amount * BigInt(noShows),
     back: share,
     bonus: share - amount,

@@ -466,6 +466,15 @@
   fill: color-mix(in oklab, var(--kb-blue) 14%, transparent);
   stroke-width: 2;
 }
+/* a guest whose challenge is still open: neither ticked nor pooled */
+.how-fig .held {
+  fill: color-mix(in oklab, var(--kb-blue) 6%, transparent);
+}
+.how-fig text.q {
+  fill: var(--kb-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
 .how-fig .muted {
   fill: var(--kb-sunken);
   stroke: var(--kb-text-3);

@@ -238,6 +238,8 @@
 }
 .og-fig dd .og-note {
   display: block;
+  /* the box sits flush right under its figure, not at the left of the row */
+  margin-left: auto;
   margin-top: 2px;
   font-weight: 400;
   letter-spacing: normal;
@@ -536,6 +538,12 @@
   width: 20px;
   height: 20px;
   accent-color: var(--kb-blue);
+}
+/* on a phone the selection bar sticks to the bottom: a tick scrolled or tabbed to lands above it, not under it */
+@media (max-width: 767px) {
+  .og-tick input {
+    scroll-margin-bottom: 180px;
+  }
 }
 .og-tick:has(input:disabled) {
   opacity: 0.45;

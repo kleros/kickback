@@ -19,6 +19,7 @@ import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, Locked, TxLink 
 import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
+import { forgetCheckin, readCheckin, writeCheckin } from "../model/lumaBook";
 import { matchLuma } from "../model/lumaMatch";
 import { projectedShare } from "../model/payout";
 import { gate } from "../model/shared";
@@ -38,7 +39,7 @@ export function AttendanceScreen() {
   const event = useOrganiserEvent();
   const luma = useLumaBook(event.address, event.isOwner);
   const record = useEventRecord(event.address);
-  const [csv, setCsv] = useState<{ name: string; text: string } | null>(null);
+  const [csv, setCsv] = useState<{ name: string; text: string; at?: number } | null>(null);
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [confirm, setConfirm] = useState<"close" | "save" | null>(null);
@@ -46,14 +47,35 @@ export function AttendanceScreen() {
   const data = event.overview.data;
   const booked = useMemo(() => data?.booked ?? [], [data]);
   const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked) : null), [csv, booked]);
-  // the loaded export holds guest names: drop it on Disconnect or an account switch
+  // the loaded check-in export and its ticks are kept per event in this browser, like the Guests tab's export:
+  // shown only while the organiser's wallet is connected, hidden (not deleted) for any other wallet or none
   const accountKey = event.account?.toLowerCase();
+  const isOwner = event.isOwner;
+  const contract = event.address;
   useEffect(() => {
-    setCsv(null);
-    setPicked(null);
     setErr(null);
     setConfirm(null);
-  }, [accountKey]);
+    const load = () => {
+      const saved = isOwner ? readCheckin(contract) : null;
+      setCsv(saved ? { name: saved.name, text: saved.text, at: saved.at } : null);
+      setPicked(saved?.picked ? new Set(saved.picked) : null);
+    };
+    load();
+    // a forget on another tab (or "Forget this export" on the Guests tab) clears it here too
+    window.addEventListener("storage", load);
+    window.addEventListener("kb-luma", load);
+    return () => {
+      window.removeEventListener("storage", load);
+      window.removeEventListener("kb-luma", load);
+    };
+  }, [accountKey, isOwner, contract]);
+  /** Saves the organiser's ticks with the loaded export (null: back to the export's own check-ins). */
+  const savePicked = (next: Set<string> | null) => {
+    if (!event.isOwner || !csv) return;
+    const saved = readCheckin(event.address);
+    if (!saved) return;
+    writeCheckin(event.address, { ...saved, picked: next ? [...next] : undefined });
+  };
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   // the same chain clock as the header pill and the other tabs (the overview read can be 15 s old)
@@ -121,6 +143,9 @@ export function AttendanceScreen() {
       </div>
     );
   const listClosedTx = record.data?.listClosed?.tx;
+  // the transactions that put guests on the list besides the close: each save, and each add after closing
+  const saveTxs = record.data?.attendanceTxs.filter((a) => a.how === "saved") ?? [];
+  const lateTxs = record.data?.attendanceTxs.filter((a) => a.how === "late") ?? [];
   if (info.phase === 2) {
     // the final record, read only: who came, who did not, and how each challenge ended
     const came = booked.filter((w) => already.has(w.toLowerCase()));
@@ -159,13 +184,25 @@ export function AttendanceScreen() {
             },
           ]}
         />
-        {(listClosedTx || releasedTx) && (
+        {(listClosedTx || releasedTx || saveTxs.length > 0 || lateTxs.length > 0) && (
           <p className="og-note flex flex-wrap gap-x-4" data-testid="attendance-txs">
+            {saveTxs.map((a, i) => (
+              <span key={a.tx}>
+                Attendance saved{saveTxs.length > 1 ? ` (${i + 1})` : ""}:{" "}
+                <TxLink tx={a.tx} testId="attendance-saved-tx" />
+              </span>
+            ))}
             {listClosedTx && (
               <span>
                 Attendance list closed: <TxLink tx={listClosedTx} testId="list-closed-tx" />
               </span>
             )}
+            {lateTxs.map((a, i) => (
+              <span key={a.tx}>
+                Added after closing{lateTxs.length > 1 ? ` (${i + 1})` : ""}:{" "}
+                <TxLink tx={a.tx} testId="attendance-late-tx" />
+              </span>
+            ))}
             {releasedTx && (
               <span>
                 Payouts released: <TxLink tx={releasedTx} />
@@ -247,13 +284,18 @@ export function AttendanceScreen() {
     if (on) next.add(w.toLowerCase());
     else next.delete(w.toLowerCase());
     setPicked(next);
+    savePicked(next);
   };
   const send = (close: boolean) => {
     const sent = first;
     setConfirm(null);
     // ticks stay as they are: only the wallets just sent leave them, once the send is confirmed
     const forget = () =>
-      setPicked((prev) => prev && new Set([...prev].filter((w) => !sent.some((a) => a.toLowerCase() === w))));
+      setPicked((prev) => {
+        const next = prev && new Set([...prev].filter((w) => !sent.some((a) => a.toLowerCase() === w)));
+        savePicked(next);
+        return next;
+      });
     if (listed) {
       event.run(
         `Add ${sent.length}`,
@@ -293,6 +335,8 @@ export function AttendanceScreen() {
   const projected = projectedShare(info, data.challenges, toAdd);
   const counted = projected.waiting + info.openCases;
   const challengeOf = new Map(data.challenges.map((c) => [c.wallet.toLowerCase(), c]));
+  // nothing loaded and the list not closed: nobody has been called a no-show yet
+  const undecided = !listed && !csv;
   // the contract refuses an empty list: say what to do, and the way out when nobody came
   const emptyGate = gate(
     !listed && canAdd && total === 0
@@ -313,9 +357,25 @@ export function AttendanceScreen() {
               : `The list is closed. Until ${when(info.challengeEndsAt)}, you can still add guests left off by mistake.`
             : `Load the Luma export: everyone who checked in is ticked. Review the ticks, then confirm the list by ${when(info.claimDeadline)}. Once it is confirmed, guests cannot be removed, and guests left off have ${spanText(info.challengePeriod)} to challenge.`}
         </p>
-        {listed && listClosedTx && (
-          <p className="og-note">
-            Attendance list closed: <TxLink tx={listClosedTx} testId="list-closed-tx" />
+        {(saveTxs.length > 0 || (listed && listClosedTx) || lateTxs.length > 0) && (
+          <p className="og-note flex flex-wrap gap-x-4" data-testid="attendance-txs">
+            {saveTxs.map((a, i) => (
+              <span key={a.tx}>
+                Attendance saved{saveTxs.length > 1 ? ` (${i + 1})` : ""}:{" "}
+                <TxLink tx={a.tx} testId="attendance-saved-tx" />
+              </span>
+            ))}
+            {listed && listClosedTx && (
+              <span>
+                Attendance list closed: <TxLink tx={listClosedTx} testId="list-closed-tx" />
+              </span>
+            )}
+            {lateTxs.map((a, i) => (
+              <span key={a.tx}>
+                Added after closing{lateTxs.length > 1 ? ` (${i + 1})` : ""}:{" "}
+                <TxLink tx={a.tx} testId="attendance-late-tx" />
+              </span>
+            ))}
           </p>
         )}
       </div>
@@ -335,12 +395,30 @@ export function AttendanceScreen() {
               return;
             }
             setErr(null);
-            setCsv({ name, text });
+            const at = Date.now();
+            setCsv({ name, text, at });
             setPicked(null);
+            // kept in this browser for this event (a new file clears the ticks saved with the last one)
+            writeCheckin(event.address, { name, text, at });
             luma.add(rows);
           }}
           testId="checkin-csv"
         />
+      )}
+      {!listed && event.isOwner && csv && (
+        <p className="og-note" data-testid="checkin-loaded">
+          {csv.at ? `Loaded ${when(Math.floor(csv.at / 1000))}. ` : ""}
+          <Button
+            className="kb-link kb-tap"
+            onPress={() => {
+              forgetCheckin(event.address);
+              setCsv(null);
+              setPicked(null);
+            }}
+          >
+            Forget this list
+          </Button>
+        </p>
       )}
       {!listed && event.isOwner && <ErrorLine error={err} />}
       {event.isOwner && plan && plan.skipped.length > 0 && (
@@ -373,7 +451,7 @@ export function AttendanceScreen() {
         rows={[
           { label: "Deposits", value: String(booked.length) },
           { label: "On the list", value: String(total) },
-          { label: "No-shows", value: String(noShows) },
+          { label: undecided ? "Not ticked" : "No-shows", value: String(noShows) },
           ...(challenging > 0 ? [{ label: "Challenging", value: String(challenging) }] : []),
           {
             label: "Each attendee gets",
@@ -453,7 +531,13 @@ export function AttendanceScreen() {
         })}
       </div>
       {picked && (
-        <Button className="kb-link self-start" onPress={() => setPicked(null)}>
+        <Button
+          className="kb-link self-start"
+          onPress={() => {
+            setPicked(null);
+            savePicked(null);
+          }}
+        >
           Reset ticks
         </Button>
       )}
@@ -467,7 +551,7 @@ export function AttendanceScreen() {
       )}
       {!(listed && toAdd.length === 0) && (
         <GlassCard className="og-selbar og-thumb">
-          <span className="og-note">{`${total} came · ${noShows} ${noShows === 1 ? "no-show" : "no-shows"}${challenging > 0 ? ` · ${challenging} challenging` : ""}`}</span>
+          <span className="og-note">{`${undecided ? `${total} ticked · ${noShows} not ticked` : `${total} came · ${noShows} ${noShows === 1 ? "no-show" : "no-shows"}`}${challenging > 0 ? ` · ${challenging} challenging` : ""}`}</span>
           <div className="og-actions">
             {listed ? (
               <GradientButton isDisabled={!canAdd || !toAdd.length} onPress={() => setConfirm("save")}>

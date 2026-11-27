@@ -12,7 +12,8 @@ export interface LumaPerson {
 export type LumaBook = Record<string, LumaPerson>;
 export type CheckedBook = Record<string, number>;
 
-const key = (contract: string, kind: "names" | "checked" | "export") => `kb:luma:${kind}:${contract.toLowerCase()}`;
+const key = (contract: string, kind: "names" | "checked" | "export" | "checkin") =>
+  `kb:luma:${kind}:${contract.toLowerCase()}`;
 
 function read<T>(k: string): T | null {
   try {
@@ -76,10 +77,37 @@ export function writeExport(contract: string, file: SavedExport) {
   write(key(contract, "export"), file);
 }
 
-/** Forgets the saved export and the names it gave; the door checks stay, so nobody is approved twice. */
+/** The last Luma check-in export loaded on the Attendance tab, and the organiser's ticks on it. */
+export interface SavedCheckin {
+  name: string;
+  text: string;
+  /** Date.now() when it was loaded. */
+  at: number;
+  /** The wallets ticked as came (lower case), once the organiser changed a tick. */
+  picked?: string[];
+}
+
+export const readCheckin = (contract: string): SavedCheckin | null => read<SavedCheckin>(key(contract, "checkin"));
+
+export function writeCheckin(contract: string, value: SavedCheckin) {
+  write(key(contract, "checkin"), value);
+}
+
+/** Forgets the saved check-in export and its ticks (names already added to the guest list stay). */
+export function forgetCheckin(contract: string) {
+  try {
+    window.localStorage.removeItem(key(contract, "checkin"));
+  } catch {
+    // storage blocked: nothing was kept
+  }
+  window.dispatchEvent(new Event("kb-luma"));
+}
+
+/** Forgets the saved exports and the names they gave; the door checks stay, so nobody is approved twice. */
 export function forgetLuma(contract: string) {
   try {
     window.localStorage.removeItem(key(contract, "export"));
+    window.localStorage.removeItem(key(contract, "checkin"));
     window.localStorage.removeItem(key(contract, "names"));
   } catch {
     // storage blocked: nothing was kept

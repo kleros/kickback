@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 
 import { errorText, revertName } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -71,6 +71,21 @@ export function useOrganiserEventSource(address: Address) {
     // only a change of tab clears
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
+  // the guests already there when the organiser opened this tab, per wallet: kept in memory across a wallet switch
+  // and back (the tab's content unmounts while another wallet is connected), new on another tab or a reload
+  const seen = useRef<{ path: string; byAccount: Map<string, Set<string>> }>({ path: "", byAccount: new Map() });
+  const seenAtOpen = (wallets: readonly string[]): Set<string> | null => {
+    if (!isOwner || !account) return null;
+    const s = seen.current;
+    if (s.path !== pathname) {
+      s.path = pathname;
+      s.byAccount.clear();
+    }
+    const key = account.toLowerCase();
+    let set = s.byAccount.get(key);
+    if (!set) s.byAccount.set(key, (set = new Set(wallets.map((w) => w.toLowerCase()))));
+    return set;
+  };
   const mine = (sender?: Address) => !!sender && !!account && isAddressEqual(sender, account);
   const busy = useSendBusy();
   const send = useSend({
@@ -136,6 +151,8 @@ export function useOrganiserEventSource(address: Address) {
     error: error && error.origin === pathname && mine(error.account) ? { text: error.text, at: error.at } : null,
     /** The last send's confirmation, on the tab that sent it and for the wallet that sent it. */
     done: done && done.origin === pathname && mine(done.account) ? done.text : null,
+    /** The guests' wallets as they were when this wallet opened the tab (null unless it is the organiser's). */
+    seenAtOpen,
     clearMessages: () => (setError(null), setDone(null)),
   };
 }

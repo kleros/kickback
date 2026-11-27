@@ -65,7 +65,14 @@ export function OverviewScreen({ court }: { court: string }) {
   const payText =
     data.unpaid.length > 0 || data.refused.length > 0
       ? " " +
-        unpaidLede(data.unpaid, info.attendeeCount, info.payoutShare, (u) => assetText(u, info), data.refused.length)
+        unpaidLede(
+          data.unpaid,
+          info.attendeeCount,
+          info.payoutShare,
+          (u) => assetText(u, info),
+          data.refused.length,
+          info.openCases,
+        )
       : "";
   // nothing to answer yet: say when to come back instead
   const step: NextStep = refunding
@@ -130,7 +137,10 @@ export function OverviewScreen({ court }: { court: string }) {
                 : phase === "Payouts released" && data.unpaid.length === 0 && data.refused.length === 0
                   ? {
                       title: "All done",
-                      detail: "Every attendee has been paid their share.",
+                      detail:
+                        info.openCases > 0
+                          ? "Every attendee has been paid their share so far."
+                          : "Every attendee has been paid their share.",
                       tab: null,
                       action: null,
                       done: true,
@@ -144,6 +154,7 @@ export function OverviewScreen({ court }: { court: string }) {
                           info.payoutShare,
                           (u) => assetText(u, info),
                           data.refused.length,
+                          info.openCases,
                         ),
                       }
                     : NEXT_STEP[phase];
@@ -165,6 +176,10 @@ export function OverviewScreen({ court }: { court: string }) {
               : null;
 
   const cancelled = info.phase === 3;
+  const hasDeposits = info.stakerCount > 0;
+  const cancelNote = hasDeposits
+    ? "Every guest who still has a deposit can then withdraw it in full on the guest page. This cannot be undone."
+    : "No guest has a deposit, so nothing needs to be returned. This cannot be undone.";
   const canCancel = event.isOwner && event.onChain && info.phase === 0 && now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
@@ -233,7 +248,13 @@ export function OverviewScreen({ court }: { court: string }) {
             : { label: "Deposits", value: <NumberPop value={String(info.stakerCount)} still /> },
           ...(refunding && record.data ? [{ label: "Deposits made", value: String(deposited) }] : []),
           {
-            label: "Confirmed attendees",
+            // only a closed list is confirmed: before that the names are saved, and more can still be added
+            label:
+              info.phase === 0
+                ? phase === "Past the deadline"
+                  ? "On the list (never closed)"
+                  : "On the list"
+                : "Confirmed attendees",
             value:
               info.phase === 3 || (info.phase === 0 && info.attendeeCount === 0) ? (
                 "—"
@@ -292,9 +313,7 @@ export function OverviewScreen({ court }: { court: string }) {
       {canCancel && (
         <section className="og-danger flex flex-col gap-2" data-testid="danger-zone">
           <h2 className="og-h2">Cancel the event</h2>
-          <p className="og-note">
-            Every guest who deposited can then withdraw their full deposit. This cannot be undone.
-          </p>
+          <p className="og-note">{cancelNote}</p>
           <div>
             <GradientButton className="is-quiet" isDisabled={event.busy} onPress={() => setCancel(true)}>
               Cancel the event
@@ -307,7 +326,7 @@ export function OverviewScreen({ court }: { court: string }) {
         <ConfirmDialog
           isOpen
           title="Cancel the event"
-          intro="Every guest who deposited can then withdraw their full deposit. This cannot be undone."
+          intro={cancelNote}
           words={[TYPED_WORDS.cancel]}
           figures={[{ label: "Guests with deposits", value: String(info.stakerCount) }]}
           action="Cancel the event"
@@ -319,7 +338,9 @@ export function OverviewScreen({ court }: { court: string }) {
             event.run(
               "Cancel",
               () => tx.cancel(info.contract),
-              "The event is cancelled. Guests can now withdraw their deposits.",
+              hasDeposits
+                ? "The event is cancelled. Guests can now withdraw their deposits."
+                : "The event is cancelled. No guest has a deposit to withdraw.",
             );
           }}
         />

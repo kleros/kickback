@@ -34,7 +34,7 @@ export function WalletEvents({
   if (!address)
     body = (
       <>
-        <p className="og-lede">Connect the wallet you organise your events with to see them here.</p>
+        <p className="og-lede">Connect the wallet you created your events with to see them here.</p>
         <div className="og-actions">
           <ConnectWallet text="Connect wallet" />
         </div>

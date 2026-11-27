@@ -68,6 +68,23 @@ export interface WalletRecord {
   challenge?: ChallengeRecord;
   /** Kleros fees this wallet paid to send someone's challenge to Kleros (matchChallenge). */
   klerosFees: { tx: Hash; block: bigint; staker: Address; amount: bigint; caseId: bigint }[];
+  /** Put on the list (AttendeeAdded), and how: see `AttendanceHow`. */
+  added?: { tx: Hash; block: bigint; how: AttendanceHow };
+}
+
+/**
+ * How a guest got on the list: `saved` (posted before the list was closed), `closed` (in the closing
+ * transaction), `late` (added by the organiser after closing, in the challenge window) or `challenge` (the answer
+ * to their challenge, or a Kleros ruling: already told as the challenge's answer or settlement).
+ */
+export type AttendanceHow = "saved" | "closed" | "late" | "challenge";
+
+/** One transaction that put guests on the list (not a challenge's answer). */
+export interface AttendanceTx {
+  tx: Hash;
+  block: bigint;
+  how: Exclude<AttendanceHow, "challenge">;
+  wallets: Address[];
 }
 
 /** Every transaction that moved or settled the event's money, read from its own logs. */
@@ -78,12 +95,15 @@ export interface EventRecord {
   /** `by`: the wallet that released (anyone can), when its transaction could be read. */
   released?: { tx: Hash; block: bigint; share: bigint; by?: Address };
   cancelled?: { tx: Hash; block: bigint };
+  /** Each transaction that put guests on the list, in chain order (saved, closed or added after closing). */
+  attendanceTxs: AttendanceTx[];
 }
 
 export type RecordLog = {
   eventName: string;
   args: {
     staker?: Address;
+    attendee?: Address;
     account?: Address;
     to?: Address;
     amount?: bigint;
@@ -112,7 +132,7 @@ const CHALLENGE_STEPS = new Set(["Challenged", "ChallengeMatched", "ChallengeRes
  * `txs` (optional) names each transaction's sender and function, so claims, sends and answers are told apart.
  */
 export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string, TxInfo>): EventRecord {
-  const record: EventRecord = { wallets: new Map() };
+  const record: EventRecord = { wallets: new Map(), attendanceTxs: [] };
   const walletOf = (address: Address) => {
     const key = address.toLowerCase();
     let row = record.wallets.get(key);
@@ -123,10 +143,14 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
   // which steps each transaction holds, and the last money log of each account in it
   const names = new Map<string, Set<string>>();
   const last = new Map<string, number>();
+  // the guests whose challenge a transaction settled: their AttendeeAdded is that challenge's answer
+  const resolvedIn = new Set<string>();
   live.forEach((log, i) => {
     const tx = log.transactionHash!.toLowerCase();
     if (!names.has(tx)) names.set(tx, new Set());
     names.get(tx)!.add(log.eventName);
+    if (log.eventName === "ChallengeResolved" && log.args.staker)
+      resolvedIn.add(`${tx}:${log.args.staker.toLowerCase()}`);
     if ((log.eventName === "Paid" || log.eventName === "PaymentFailed") && log.args.account)
       last.set(`${tx}:${log.args.account.toLowerCase()}`, i);
   });
@@ -225,6 +249,23 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
           };
         break;
       }
+      case "AttendeeAdded": {
+        if (!args.attendee) break;
+        const how: AttendanceHow =
+          resolvedIn.has(`${tx}:${args.attendee.toLowerCase()}`) || names.get(tx)?.has("PayoutsReleased")
+            ? "challenge"
+            : names.get(tx)?.has("ListClosed")
+              ? "closed"
+              : record.listClosed
+                ? "late"
+                : "saved";
+        walletOf(args.attendee).added = { ...at, how };
+        if (how === "challenge") break;
+        const prev = record.attendanceTxs.find((a) => a.tx.toLowerCase() === tx);
+        if (prev) prev.wallets.push(args.attendee);
+        else record.attendanceTxs.push({ ...at, how, wallets: [args.attendee] });
+        break;
+      }
       case "ListClosed":
         record.listClosed = at;
         break;
@@ -246,6 +287,7 @@ export const RECORD_COLUMNS = [
   ["status", "Status"],
   ["deposit", "Deposit"],
   ["depositTx", "Deposit transaction"],
+  ["listedTx", "Put on the list transaction"],
   ["paid", "Paid out"],
   ["paymentTxs", "Payment transactions"],
   ["challengeFee", "Challenge fee paid"],

@@ -231,5 +231,40 @@ export function lumaDecision(approval: unknown): LumaDecision {
   return "pending";
 }
 
-/** A Luma event page link, as the guest page accepts it for "Back to Luma" and the share link. */
-export const LUMA_URL = /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/[A-Za-z0-9._~\-/?=&]+$/;
+/**
+ * A public Luma event page link, as the guest page accepts it for "Back to Luma" and the share link: a single
+ * slug (luma.com/abc123) or /event/evt-…, with no query (a ?tk= invite token must never go on chain) and not one
+ * of Luma's own pages (home, create, calendar, discover, user, sign-in, settings, the management pages).
+ */
+export const LUMA_URL =
+  /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/(?:event\/evt-[A-Za-z0-9]+|(?!(?:home|create|calendar|discover|user|u|signin|login|settings|event|explore|pricing|manage)(?:$|\/))[A-Za-z0-9_-]+)\/?$/;
+
+/**
+ * What is wrong with a pasted Luma link, in plain words, or null when it is a public event page. Run it on the
+ * link as typed: a management page is refused, and an invite token or other query is reported (the caller strips it).
+ */
+export function lumaLinkProblem(raw: string): { kind: "manage" | "token" | "query" | "other"; text: string } | null {
+  const t = raw.trim();
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    return { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
+  }
+  if (/^\/(?:event|calendar|home)\/manage(?:\/|$)/i.test(u.pathname) || /\/manage(?:\/|$)/i.test(u.pathname))
+    return {
+      kind: "manage",
+      text: "This is your Luma management page. Paste the public link of the event page (Share, then Copy link), such as https://luma.com/abc123.",
+    };
+  const clean = `${u.protocol}//${u.host.toLowerCase()}${u.pathname}`;
+  if (!LUMA_URL.test(clean))
+    return { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
+  if (u.searchParams.has("tk"))
+    return {
+      kind: "token",
+      text: "This link contained a private invite token (?tk=…). It would be stored on the blockchain for anyone to see, so it has been removed.",
+    };
+  if (u.search)
+    return { kind: "query", text: "The part of the link after “?” has been removed: guests only need the event page." };
+  return null;
+}

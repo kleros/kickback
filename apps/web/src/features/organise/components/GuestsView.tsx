@@ -17,6 +17,7 @@ import { ConfirmDialog } from "./parts";
 import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
+import { guestStatus } from "../model/guestStatus";
 import { recordCsv, type EventRecord, type RecordCsvRow, type WalletRecord } from "../model/record";
 import { assetText, shortHex } from "../model/view";
 import type { GuestRow, OrganiserState } from "../operations/read";
@@ -24,43 +25,6 @@ import { tx } from "../operations/tx";
 
 /** Seconds before the start when turning guests away stops: about one block, so a send still lands in time. */
 const TURN_AWAY_SLACK = 15;
-
-const STATUS = ["No deposit", "Deposited", "Turned away", "Refunded"] as const;
-const TONE = ["end", "ok", "warn", "end"] as const;
-
-/**
- * A guest's status as the table shows it, with its dot's tone: one place, so the text and the colour agree.
- * `refundable`: the event is cancelled or its deadline was missed, so every deposit can be withdrawn.
- */
-export function guestStatus(
-  row: GuestRow,
-  phase: number,
-  refundable: boolean,
-  /** After the release: the contract's sharePaid for this wallet, the share, and whether a pushed payment was refused. */
-  pay?: { sharePaid?: bigint; payoutShare: bigint; refused?: boolean },
-): { text: string; tone: "ok" | "warn" | "end" } {
-  if (row.status !== 1) return { text: STATUS[row.status] ?? "Unknown", tone: TONE[row.status] ?? "end" };
-  if (refundable) return { text: "Can withdraw deposit", tone: "warn" };
-  if (phase === 0) return { text: row.attended ? "On the list" : "Deposited", tone: "ok" };
-  if (row.attended && phase === 2 && pay) {
-    const paid = pay.sharePaid ?? 0n;
-    if (pay.refused) return { text: "Came · payment refused, claimable", tone: "warn" };
-    if (paid >= pay.payoutShare) return { text: "Came · paid", tone: "ok" };
-    if (paid > 0n) return { text: "Came · partly paid", tone: "warn" };
-    return { text: "Came · not paid yet", tone: "warn" };
-  }
-  if (row.attended) return { text: "Came", tone: "ok" };
-  if (row.challenge?.state === 1) return { text: "Challenged", tone: "warn" };
-  if (row.challenge?.state === 2) return { text: "With Kleros", tone: "warn" };
-  // after the release a guest off the list has had their deposit shared among the attendees
-  if (phase === 2) {
-    const c = row.challenge;
-    const why =
-      c?.state === 3 ? (c.ruling === 0 ? " (Kleros did not rule either way)" : " (challenge lost at Kleros)") : "";
-    return { text: `Did not come${why} · deposit shared`, tone: "end" };
-  }
-  return { text: "Not on the list", tone: "end" };
-}
 
 /** Numbers the payments of one kind only when there are several: "Payout", or "Payout 1", "Payout 2". */
 const numbered = (label: string, list: readonly { tx: string }[]) =>
@@ -111,6 +75,13 @@ function txLinks(rec: WalletRecord | undefined) {
       rec.payments.filter((p) => p.kind === "challenge"),
     ),
   );
+  // put on the list by the organiser (not as a challenge's answer, which is linked above)
+  const added = rec.added;
+  if (added && added.how !== "challenge" && !links.some((l) => l.tx === added.tx))
+    links.push({
+      label: added.how === "saved" ? "Attendance saved" : added.how === "late" ? "Added to the list" : "Listed",
+      tx: added.tx,
+    });
   // the settlement and the held-share split, unless a payment above already links the same transaction
   if (c?.resolved && !links.some((l) => l.tx === c.resolved!.tx)) links.push({ label: "Settled", tx: c.resolved.tx });
   if (c?.heldSplit && !links.some((l) => l.tx === c.heldSplit!.tx))
@@ -132,7 +103,6 @@ export function GuestsScreen() {
   const [search, setSearch] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState(false);
-  const firstSeen = useRef<Set<string> | null>(null);
   const data = event.overview.data;
   const guests = useMemo(() => data?.guests ?? [], [data]);
   const booked = useMemo(() => guests.filter((g) => g.status === 1).map((g) => g.wallet), [guests]);
@@ -163,7 +133,8 @@ export function GuestsScreen() {
   }, [sig, refetchRecord]);
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
-  if (firstSeen.current === null) firstSeen.current = new Set(guests.map((g) => g.wallet.toLowerCase()));
+  // the guests already there when the organiser opened this tab: kept across a wallet switch and back
+  const firstSeen = event.isOwner ? event.seenAtOpen(guests.map((g) => g.wallet)) : null;
   // the contract turns guests away only before the start (v2)
   // the chain's clock, re-read every block, so the controls go the moment the event starts
   const now = event.now ?? data.now;
@@ -195,6 +166,7 @@ export function GuestsScreen() {
           sharePaid: data.sharePaid.get(wallet.toLowerCase()),
           payoutShare: info.payoutShare,
           refused: refusedSet.has(wallet.toLowerCase()),
+          openCases: info.openCases,
         }
       : undefined;
   const statusOfRow = (g: GuestRow) => guestStatus(g, info.phase, closed !== undefined, payOf(g.wallet));
@@ -232,6 +204,7 @@ export function GuestsScreen() {
               sharePaid: d.sharePaid.get(g.wallet.toLowerCase()),
               payoutShare: info.payoutShare,
               refused: refusedSet.has(g.wallet.toLowerCase()),
+              openCases: info.openCases,
             }
           : undefined,
       );
@@ -249,17 +222,19 @@ export function GuestsScreen() {
         : wallet && isGuest.has(wallet.toLowerCase())
           ? "the guest"
           : wallet;
-    const paymentCell = (p: WalletRecord["payments"][number], account: string) => {
+    const paymentCell = (p: WalletRecord["payments"][number], account: string, rec?: WalletRecord) => {
       const how =
-        p.via === "claimed"
-          ? `claimed by ${who(account)}`
-          : p.via === "sent"
-            ? `sent by ${who(p.sender) ?? "someone"}`
-            : p.kind === "challenge"
-              ? "paid back by the contract"
-              : p.kind === "refund"
-                ? "refunded by the contract"
-                : "paid by the contract";
+        p.kind === "refund" && rec?.rejected && p.tx.toLowerCase() === rec.rejected.tx.toLowerCase()
+          ? "refunded when the organiser turned them away"
+          : p.via === "claimed"
+            ? `claimed by ${who(account)}`
+            : p.via === "sent"
+              ? `sent by ${who(p.sender) ?? "someone"}`
+              : p.kind === "challenge"
+                ? "paid back by the contract"
+                : p.kind === "refund"
+                  ? "refunded by the contract"
+                  : "paid by the contract";
       return `${exact(p.amount, p.eth)} to ${p.to}, ${how}: ${txUrl(p.tx)}`;
     };
     const money = (rec: WalletRecord | undefined, wallet: string) => {
@@ -267,9 +242,9 @@ export function GuestsScreen() {
       const back = rec?.payments.filter((p) => p.kind === "challenge") ?? [];
       return {
         paid: asset.length ? exact(sum(asset)) : "",
-        paymentTxs: asset.map((p) => paymentCell(p, wallet)).join(" | "),
+        paymentTxs: asset.map((p) => paymentCell(p, wallet, rec)).join(" | "),
         challengeBack: back.length ? `${formatUnits(sum(back), 18)} ETH` : "",
-        challengeTxs: back.map((p) => paymentCell(p, wallet)).join(" | "),
+        challengeTxs: back.map((p) => paymentCell(p, wallet, rec)).join(" | "),
       };
     };
     const failedNotes = (rec: WalletRecord | undefined) =>
@@ -288,18 +263,26 @@ export function GuestsScreen() {
             : "Turned away · refund claimable"
           : base;
       const answer = c?.answer;
+      // the guest row's own on-chain challenge: its answer time, and a Kleros ruling not settled yet
+      const live = g.challenge;
+      const lapsed = live?.state === 1 && now > live.matchEndsAt;
+      const ruledLive = live?.state === 2 && live.isRuled === true && (live.ruling ?? 99) <= 2;
+      const added = rec?.added && rec.added.how !== "challenge" ? rec.added : undefined;
       return {
         name: luma.nameOf(g.wallet),
         wallet: g.wallet,
         status,
         deposit: exact(info.depositAmount),
         depositTx: rec?.deposit ? txUrl(rec.deposit.tx) : undefined,
+        listedTx: added ? txUrl(added.tx) : undefined,
         ...money(rec, g.wallet),
         challengeFee: c ? `${formatUnits(c.fee, 18)} ETH` : undefined,
         challengeTx: c ? txUrl(c.tx) : undefined,
         answer: !answer
           ? c
-            ? "Not answered yet"
+            ? lapsed
+              ? "Not answered in time (added when payouts are released)"
+              : "Not answered yet"
             : undefined
           : answer.kind === "added"
             ? "Added by the organiser"
@@ -316,12 +299,15 @@ export function GuestsScreen() {
               ? "Did not come"
               : "Did not rule either way (fees split)"
           : answer?.kind === "kleros"
-            ? "Not ruled yet"
+            ? ruledLive
+              ? `${live.ruling === 1 ? "Came" : live.ruling === 2 ? "Did not come" : "Did not rule either way"} (ruled, not settled yet)`
+              : "Not ruled yet"
             : undefined,
         settledTx: c?.resolved ? txUrl(c.resolved.tx) : undefined,
         // the case's own match transaction, under the same header as on the matcher's row
         klerosTxs: answer?.kind === "kleros" ? txUrl(answer.tx) : undefined,
         notes: [
+          ...(added?.how === "late" ? [`Added to the list after it was closed: ${txUrl(added.tx)}`] : []),
           ...failedNotes(rec),
           ...(c?.heldSplit
             ? [
@@ -370,14 +356,32 @@ export function GuestsScreen() {
             : getAddress(w);
     const raised = !!r.released && info.payoutShare !== r.released.share;
     const splits = [...r.wallets.entries()].filter(([, rec]) => rec.challenge?.heldSplit);
+    const listedNames = (wallets: readonly string[]) => wallets.map((w) => luma.nameOf(w) || getAddress(w)).join(", ");
+    const attendanceStep = (a: EventRecord["attendanceTxs"][number]) => ({
+      label: a.how === "saved" ? "Attendance saved" : "Added to the list after it was closed",
+      detail:
+        a.how === "saved"
+          ? `By the organiser; ${guestsText(a.wallets.length)}`
+          : `By the organiser; ${listedNames(a.wallets)}`,
+      tx: txUrl(a.tx),
+    });
     const steps = [
       r?.created && { label: "Event created", tx: txUrl(r.created.tx) },
-      r?.listClosed && { label: "Attendance list closed", detail: "By the organiser", tx: txUrl(r.listClosed.tx) },
+      ...r.attendanceTxs.filter((a) => a.how === "saved").map(attendanceStep),
+      r?.listClosed && {
+        label: "Attendance list closed",
+        detail: (() => {
+          const n = r.attendanceTxs.find((a) => a.how === "closed")?.wallets.length;
+          return n ? `By the organiser; ${guestsText(n)} added in the same transaction` : "By the organiser";
+        })(),
+        tx: txUrl(r.listClosed.tx),
+      },
+      ...r.attendanceTxs.filter((a) => a.how === "late").map(attendanceStep),
       r?.released && {
         label: "Payouts released",
         detail: [
           raised ? `Share at release: ${exact(r.released.share)}` : `Each attendee's share: ${exact(r.released.share)}`,
-          r.released.by && `Released by ${releasedBy(r.released.by)}`,
+          r.released.by && `released by ${releasedBy(r.released.by)}`,
         ]
           .filter(Boolean)
           .join("; "),
@@ -406,8 +410,21 @@ export function GuestsScreen() {
     a.click();
     URL.revokeObjectURL(a.href);
   };
-  const isNew = (wallet: string) => !firstSeen.current?.has(wallet.toLowerCase());
+  const isNew = (wallet: string) => !!firstSeen && !firstSeen.has(wallet.toLowerCase());
   const q = search.trim().toLowerCase();
+  // names and emails match without their accents: "diaz" finds "Díaz"
+  const fold = (t: string) =>
+    t
+      .normalize("NFD")
+      .replace(/\p{M}/gu, "")
+      .toLowerCase()
+      .replace(/ß/g, "ss")
+      .replace(/ø/g, "o")
+      .replace(/ł/g, "l")
+      .replace(/æ/g, "ae")
+      .replace(/œ/g, "oe")
+      .replace(/đ/g, "d");
+  const fq = fold(search.trim());
   const hex = q.startsWith("0x") ? q.slice(2) : q;
   // a wallet match needs 0x and at least one more hex character, or 4 hex characters on their own: a name such
   // as "CC" must not match every wallet with "cc" in it
@@ -418,10 +435,11 @@ export function GuestsScreen() {
     const w = g.wallet.toLowerCase();
     return (
       (walletQuery && (q.startsWith("0x") ? w.startsWith(q) : w.slice(2).includes(hex))) ||
-      !!person?.name.toLowerCase().includes(q) ||
-      !!person?.email.toLowerCase().includes(q)
+      !!(person && fold(person.name).includes(fq)) ||
+      !!(person && fold(person.email).includes(fq))
     );
   });
+  const lead = guests.length > 0 ? "Newest first. " : "";
   const fresh = guests.filter((g) => isNew(g.wallet)).length;
   const turnedAway = guests.filter((g) => g.status === 2).length;
   const refunded = guests.filter((g) => g.status === 3).length;
@@ -475,18 +493,24 @@ export function GuestsScreen() {
           <h2 className="og-h2">All deposits</h2>
           <p className="og-lede">
             {open
-              ? `Newest first. Until the event starts, you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
+              ? `${lead}Until the event starts, you can turn anyone away: they get their ${assetText(info.depositAmount, info)} back in full and cannot deposit again.`
               : live
-                ? "Newest first. Guests can only be turned away before the event starts, so let in every walk-in who has deposited."
-                : info.phase === 3
-                  ? info.stakerCount > 0
-                    ? "Newest first. The event was cancelled, so every guest who still has a deposit can withdraw it in full on the guest page."
-                    : "Newest first. The event was cancelled and every deposit has been returned."
+                ? `${lead}Guests can only be turned away before the event starts, so let in every walk-in who has deposited.`
+                : closed === "cancelled"
+                  ? guests.length === 0
+                    ? "The event was cancelled before anyone deposited."
+                    : info.stakerCount > 0
+                      ? `${lead}The event was cancelled, so every guest who still has a deposit can withdraw it in full on the guest page.`
+                      : `${lead}The event was cancelled and every deposit has been returned.`
                   : closed === "missed"
-                    ? info.stakerCount > 0
-                      ? "Newest first. Attendance was not confirmed in time, so every guest who still has a deposit can withdraw it in full on the guest page."
-                      : "Newest first. Attendance was not confirmed in time, and every deposit has been returned."
-                    : "Newest first. Guests could only be turned away before the event started."}
+                    ? guests.length === 0
+                      ? "Nobody deposited before the event ended."
+                      : info.stakerCount > 0
+                        ? `${lead}Attendance was not confirmed in time, so every guest who still has a deposit can withdraw it in full on the guest page.`
+                        : `${lead}Attendance was not confirmed in time, and every deposit has been returned.`
+                    : guests.length === 0
+                      ? "Nobody deposited before the event ended."
+                      : `${lead}Guests could only be turned away before the event started.`}
           </p>
         </div>
         {guests.length > 0 && event.isOwner && !guests.some((g) => luma.nameOf(g.wallet)) && (
@@ -531,8 +555,14 @@ export function GuestsScreen() {
         )}
         {guests.length === 0 ? (
           <GlassCard className="og-card" data-testid="guests-empty">
-            <h3 className="og-h2">No deposits yet</h3>
-            <p className="og-lede">Guests appear here as soon as they deposit on the guest page.</p>
+            {ended ? (
+              <h3 className="og-h2">No one deposited</h3>
+            ) : (
+              <>
+                <h3 className="og-h2">No deposits yet</h3>
+                <p className="og-lede">Guests appear here as soon as they deposit on the guest page.</p>
+              </>
+            )}
           </GlassCard>
         ) : (
           <div className="og-table is-guests" role="table" aria-label="Guests">

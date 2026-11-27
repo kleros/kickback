@@ -120,6 +120,8 @@ export interface DepositInput {
   /** 0 = no limit. */
   capacity?: number;
   stakerCount?: number;
+  /** Kleros cases not settled yet: after the release, a lost case's held share raises every attendee's share. */
+  openCases?: number;
   guest?: GuestState;
   /** True while the connected wallet's booking has not been read yet (loading, or the read failed). */
   guestUnknown?: boolean;
@@ -414,14 +416,15 @@ export function depositState(input: DepositInput): DepositView {
     },
     { text: "Left off the list? You can challenge." },
   ];
+  // once the event has ended, Luma approval is over: the card keeps the proof and says what comes next
   const done = (tx: Hash, when?: number): DepositView => ({
     key: when === undefined ? "done" : "already",
     label: "Deposit sent",
     lines: awaitingList ? awaitingLines : [],
     receipt: receipt(tx, when),
-    action: "copy",
-    button: "Copy deposit link",
-    foot: awaitingList ? null : "Paste it in Luma for approval.",
+    ...(awaitingList
+      ? { action: "none" as const, button: "Waiting for the list", status: true, disabled: true, foot: null }
+      : { action: "copy" as const, button: "Copy deposit link", foot: "Paste it in Luma for approval." }),
     ended: awaitingList || undefined,
     full: (!!input.capacity && input.stakerCount !== undefined && input.stakerCount >= input.capacity) || undefined,
   });
@@ -654,14 +657,29 @@ export function depositState(input: DepositInput): DepositView {
     return { text: "Transactions", link: first, link2: deposit && pay ? pay : undefined };
   };
 
+  const openCases = input.openCases ?? 0;
+  const payoutProof = [proofLine("Payout") ?? paidLine("Payout transaction")[0]].filter((l): l is StatusLine => !!l);
+  // a Kleros case still holds a share: unless Kleros rules that guest came, part of it comes to the attendees
+  if (guest && input.phase === 2 && guest.attended && openCases > 0)
+    return readOnly(
+      "paid-out",
+      "Paid so far",
+      [
+        {
+          text:
+            openCases === 1 ? "A share is held for a Kleros case." : `Shares are held for ${openCases} Kleros cases.`,
+        },
+        ...payoutProof,
+      ],
+      guest.sharePaid,
+      undefined,
+      openCases === 1 ? "Waiting for a Kleros case" : "Waiting for Kleros cases",
+    );
   if (guest && input.phase === 2 && guest.attended)
     return readOnly(
       "paid-out",
       "Paid out",
-      [
-        { text: `Sent to ${me}. All done.` },
-        ...[proofLine("Payout") ?? paidLine("Payout transaction")[0]].filter((l): l is StatusLine => !!l),
-      ],
+      [{ text: `Sent to ${me}. All done.` }, ...payoutProof],
       guest.sharePaid,
       undefined,
       "Nothing left to do",
@@ -680,7 +698,11 @@ export function depositState(input: DepositInput): DepositView {
   const appealOpen = (c: NonNullable<typeof challenge>) => !!c.appeal && c.appeal.end > 0;
   // in the appeal window the jurors have voted: say how, and what is left to do, in two lines
   const rulingText = (r: number) =>
-    r === 1 ? "Jurors ruled you came." : r === 2 ? "Jurors ruled you did not come." : "Jurors did not rule either way.";
+    r === 1
+      ? "Kleros jurors ruled you came."
+      : r === 2
+        ? "Kleros jurors ruled you did not come."
+        : "Kleros jurors did not rule either way.";
   const disputedLines = (c: NonNullable<typeof challenge>): StatusLine[] => {
     const a = c.appeal;
     // the jurors have ruled and the ruling is final; it only has to be recorded on Kleros
@@ -706,14 +728,16 @@ export function depositState(input: DepositInput): DepositView {
             : { text: "Appeals have closed. The ruling becomes final soon." }
         : now <= mine
           ? { text: `Appeal by ${timeText(mine)}: ${ethText(a.costAttended)} ETH.`, tone: "warn" }
-          : { text: "Appeals have closed. The ruling becomes final soon." };
+          : now <= a.end
+            ? { text: `Your time to appeal has ended. Final after ${timeText(a.end)}.` }
+            : { text: "Appeals have closed. The ruling becomes final soon." };
     return [{ text: ruling, tone: "pri", link: caseLink(c) }, next];
   };
   const disputedFoot = (c: NonNullable<typeof challenge>) =>
     c.appeal?.final
       ? "Waiting for the ruling to be recorded"
       : appealOpen(c)
-        ? (input.chainNow ?? 0) <= c.appeal!.end
+        ? (input.chainNow ?? 0) <= appealDeadline(c.appeal!, 1)
           ? "Appeal period"
           : "Waiting for the final ruling"
         : "Waiting for jurors";
@@ -724,10 +748,13 @@ export function depositState(input: DepositInput): DepositView {
       return readOnly(
         "disputed",
         "Kleros has ruled",
-        [{ text: "Kleros jurors ruled you were not there.", tone: "pri", link: caseLink(c) }],
+        [
+          { text: "Kleros jurors ruled you did not come.", tone: "pri", link: caseLink(c) },
+          { text: "The organiser still has to settle it." },
+        ],
         amount,
         undefined,
-        "Nothing left to do",
+        "Waiting for the ruling to be settled",
       );
     const error = errorFor("resolve");
     return switchOr({
@@ -739,7 +766,7 @@ export function depositState(input: DepositInput): DepositView {
         ? [error]
         : [
             {
-              text: c.ruling === 1 ? "Kleros jurors ruled you attended." : "Kleros jurors did not rule either way.",
+              text: c.ruling === 1 ? "Kleros jurors ruled you came." : "Kleros jurors did not rule either way.",
               tone: "pri",
             },
             {
@@ -772,9 +799,7 @@ export function depositState(input: DepositInput): DepositView {
   };
   const ruled = challenge?.state === 3 && !guest?.attended;
   const refusedToRule = ruled && challenge?.ruling === 0;
-  const ruledText = refusedToRule
-    ? "Kleros jurors did not rule either way."
-    : "Kleros jurors ruled you were not there.";
+  const ruledText = refusedToRule ? "Kleros jurors did not rule either way." : "Kleros jurors ruled you did not come.";
 
   if (guest?.status === 1 && input.phase === 2 && !guest.attended && challenge?.state === 2)
     return ruledCase(challenge) ?? withKleros(challenge);

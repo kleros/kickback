@@ -53,7 +53,7 @@ describe("foldRecord: what each payment was for", () => {
         // the organiser sends C's challenge to Kleros
         log("ChallengeMatched", 8, { staker: C, matcher: ORG, arbitratorDisputeID: 1001n }),
         // A is not answered: the release accepts the challenge and returns the fee
-        log("AttendeeAdded", 9, { staker: A }),
+        log("AttendeeAdded", 9, { attendee: A }),
         log("ChallengeResolved", 9, { staker: A, attended: true, ruling: 1n }),
         log("Paid", 9, { account: A, to: A, amount: 15n, eth: true }),
         log("PayoutsReleased", 9, { share: 15n }),
@@ -96,7 +96,7 @@ describe("foldRecord: what each payment was for", () => {
         log("Rejected", 3, { staker: B }),
         log("Paid", 3, { account: B, to: B, amount: 10n, eth: true }),
         log("Challenged", 4, { staker: A, deposit: 15n }),
-        log("AttendeeAdded", 5, { staker: A }),
+        log("AttendeeAdded", 5, { attendee: A }),
         log("ChallengeResolved", 5, { staker: A, attended: true, ruling: 1n }),
         log("Paid", 5, { account: A, to: A, amount: 15n, eth: true }),
       ],
@@ -126,6 +126,38 @@ describe("foldRecord: what each payment was for", () => {
   });
 });
 
+describe("foldRecord: who was put on the list, and how", () => {
+  const C = "0x00000000000000000000000000000000000000cC" as const;
+  const D = "0x00000000000000000000000000000000000000dD" as const;
+  it("records a save, the close and an add after closing, apart from a challenge's answer", () => {
+    const r = foldRecord([
+      log("Deposited", 1, { staker: A, amount: 10n }),
+      log("Deposited", 2, { staker: B, amount: 10n }),
+      log("Deposited", 3, { staker: C, amount: 10n }),
+      log("Deposited", 4, { staker: D, amount: 10n }),
+      // Save 1 for now
+      log("AttendeeAdded", 5, { attendee: A }),
+      // Confirm and close
+      log("AttendeeAdded", 6, { attendee: B }),
+      log("ListClosed", 6),
+      // D challenges; one addAttendees adds C (no challenge) and answers D
+      log("Challenged", 7, { staker: D, deposit: 15n }),
+      log("AttendeeAdded", 8, { attendee: C }),
+      log("AttendeeAdded", 8, { attendee: D }),
+      log("ChallengeResolved", 8, { staker: D, attended: true, ruling: 1n }),
+    ]);
+    expect(r.wallets.get(A.toLowerCase())?.added?.how).toBe("saved");
+    expect(r.wallets.get(B.toLowerCase())?.added?.how).toBe("closed");
+    expect(r.wallets.get(C.toLowerCase())?.added?.how).toBe("late");
+    expect(r.wallets.get(D.toLowerCase())?.added?.how).toBe("challenge");
+    expect(r.attendanceTxs.map((a) => [a.how, a.block, a.wallets])).toEqual([
+      ["saved", 5n, [A]],
+      ["closed", 6n, [B]],
+      ["late", 8n, [C]],
+    ]);
+  });
+});
+
 describe("recordCsv", () => {
   it("quotes cells that need it, keeps formulas inert and lists the event-wide steps last", () => {
     const csv = recordCsv(
@@ -134,10 +166,10 @@ describe("recordCsv", () => {
     );
     const lines = csv.trim().split("\n");
     expect(lines[0]).toBe(
-      "Name,Wallet,Status,Deposit,Deposit transaction,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Kleros fee paid,Sent to Kleros transactions,Challenge money back,Challenge money transactions,Notes,Event transaction",
+      "Name,Wallet,Status,Deposit,Deposit transaction,Put on the list transaction,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Kleros fee paid,Sent to Kleros transactions,Challenge money back,Challenge money transactions,Notes,Event transaction",
     );
-    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,0.02 ETH,t1 | t2,,,,,,,,,,,,`);
-    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,,,t3");
+    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,,0.02 ETH,t1 | t2,,,,,,,,,,,,`);
+    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,,,,t3");
     // a wallet that sent a case to Kleros: its fee and transaction under their own headers, not the challenge's
     const matcher = recordCsv([{ wallet: B, klerosFee: "0.03 ETH", klerosTxs: "t4" }], [])
       .trim()

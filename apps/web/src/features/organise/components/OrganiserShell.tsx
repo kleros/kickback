@@ -72,6 +72,14 @@ export function ShellView({
                 </Link>
                 .
               </p>
+            ) : refused === "bad-checksum" ? (
+              <p>
+                Open the event from{" "}
+                <Link href={paths.organise.getHref()} className="kb-link">
+                  Manage your events
+                </Link>{" "}
+                or from its Luma page.
+              </p>
             ) : refused === "not-address" ? (
               <p>
                 Check that you copied the whole link, or open{" "}

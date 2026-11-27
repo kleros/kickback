@@ -222,6 +222,7 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     challengeDeposit: event.challengeDeposit,
     capacity: event.capacity,
     stakerCount: event.stakerCount,
+    openCases: event.openCases,
     guest: money.query.data,
     guestUnknown: connected && money.query.data === undefined,
     allowance: money.query.data?.allowance,

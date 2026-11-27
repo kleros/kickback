@@ -244,15 +244,35 @@ describe("challenge window while the chain's time loads", () => {
         },
       });
     const lost = appeal(2, now + 600, now + 1200);
-    expect(lost.lines[0]?.text).toBe("Jurors ruled you did not come.");
+    expect(lost.lines[0]?.text).toBe("Kleros jurors ruled you did not come.");
     expect(lost.lines[1]?.text).toContain("Appeal by");
     expect(lost.button).toBe("Appeal period");
     const won = appeal(1, now + 600, now + 1200);
-    expect(won.lines[0]?.text).toBe("Jurors ruled you came.");
+    expect(won.lines[0]?.text).toBe("Kleros jurors ruled you came.");
     expect(won.lines[1]?.text).toContain("The organiser can appeal until");
     const over = appeal(1, now - 600, now - 60);
     expect(over.lines[1]?.text).toBe("Appeals have closed. The ruling becomes final soon.");
     expect(over.button).toBe("Waiting for the final ruling");
+    // the guest lost and their half of the window is over: the line and the foot agree
+    const late = appeal(2, now - 60, now + 600);
+    expect(late.lines[1]?.text).toMatch(/^Your time to appeal has ended\. Final after /);
+    expect(late.button).toBe("Waiting for the final ruling");
+  });
+
+  it("after the end, a deposit with a known transaction waits for the list instead of offering the Luma link", () => {
+    const b = baseInput();
+    const guest = { ...galleryInput("claim").guest!, status: 1, attended: false, claimable: 0n, phase: 0 };
+    const view = depositState({
+      ...b,
+      phase: 0,
+      chainNow: b.eventEnd + 60,
+      guest,
+      history: {},
+      sent: { data: "0xd0e30db0", value: b.amount.toString(), outcome: "mined", hash: FIXTURE.tx, at: FIXTURE.nowMs },
+    });
+    expect(view.action).toBe("none");
+    expect(view.button).toBe("Waiting for the list");
+    expect(view.receipt).toBeDefined();
   });
 });
 
@@ -430,7 +450,7 @@ describe("depositState: round 2 fixes", () => {
     const view = depositState(galleryInput("execute"));
     expect(view.key).toBe("execute");
     expect(view.action).toBe("execute");
-    expect(text(view)).toContain("Jurors ruled you came.");
+    expect(text(view)).toContain("Kleros jurors ruled you came.");
     expect(text(view)).not.toContain("deciding");
     const plain = depositState({ ...galleryInput("execute"), canExecute: false });
     expect(plain.key).toBe("disputed");

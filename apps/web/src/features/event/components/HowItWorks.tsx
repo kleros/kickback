@@ -206,6 +206,10 @@ function SplitPanel({
   return <SplitFigure example={example} />;
 }
 
+/** "a", "a and b", "a, b and c". */
+const listText = (items: readonly string[]) =>
+  items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+
 function SplitFigure({ example }: { example: ShareExample }) {
   const { unit, text } = useAsset();
   const axis = useAxisId();
@@ -221,16 +225,33 @@ function SplitFigure({ example }: { example: ShareExample }) {
   // a guest with Kleros, or with a challenge still waiting for an answer: neither ticked nor pooled, each takes a share
   const shownHeld = example.deposits <= 10 ? example.held + example.pending : 0;
   const ways = example.attend + example.pending + example.held;
-  const heldNote = example.held
-    ? ` One share is held for ${example.held === 1 ? "the open Kleros case" : `each of the ${example.held} open Kleros cases`} until ${example.held === 1 ? "it is" : "they are"} decided.`
-    : "";
+  // a case Kleros has ruled on still holds its share until someone settles it
+  const ruled = example.ruled;
+  const deciding = example.held - ruled;
+  const caseWord = (n: number) => (n === 1 ? "case" : "cases");
+  const heldParts = [
+    deciding > 0 &&
+      `One share is held for ${deciding === 1 ? (example.held === 1 ? "the open Kleros case" : "the case still with Kleros jurors") : `each of the ${deciding} cases still with Kleros jurors`} until ${deciding === 1 ? "it is" : "they are"} decided.`,
+    ruled > 0 &&
+      `Kleros has ruled on ${ruled === 1 ? "1 case" : `${ruled} cases`}; ${ruled === 1 ? "its share is" : "their shares are"} released once someone settles ${ruled === 1 ? "it" : "them"}.`,
+  ].filter((x): x is string => !!x);
+  const heldNote = heldParts.length ? ` ${heldParts.join(" ")}` : "";
   // before the release: what still takes a share besides the guests on the list
   const counted = [
     example.pending > 0 &&
       `${example.pending} ${example.pending === 1 ? "challenge" : "challenges"} still waiting for the organiser's answer`,
-    example.held > 0 && `${example.held} ${example.held === 1 ? "case" : "cases"} with Kleros`,
+    deciding > 0 && `${deciding} ${caseWord(deciding)} with Kleros`,
+    ruled > 0 && `${ruled} ruled ${caseWord(ruled)} waiting to be settled`,
   ].filter((x): x is string => !!x);
-  const countedNote = `${example.pending > 0 ? " Each waiting challenge counts as a share: the guest either joins the list or goes to Kleros, where a share is held." : ""}${example.held > 0 ? ` A share is held for ${example.held === 1 ? "the case" : "each case"} with Kleros until ${example.held === 1 ? "it is" : "they are"} decided.` : ""}`;
+  const countedNote = `${example.pending > 0 ? " Each waiting challenge counts as a share: the guest either joins the list or goes to Kleros, where a share is held." : ""}${deciding > 0 ? ` A share is held for ${deciding === 1 ? "the case" : "each case"} with Kleros until ${deciding === 1 ? "it is" : "they are"} decided.` : ""}${ruled > 0 ? ` Kleros has ruled on ${ruled === 1 ? "1 case" : `${ruled} cases`}; ${ruled === 1 ? "its result counts" : "their results count"} once someone settles ${ruled === 1 ? "it" : "them"}.` : ""}`;
+  // the circles neither ticked nor pooled: challenges waiting for an answer and cases with Kleros
+  const inWait = example.pending + example.held;
+  const waitLabel =
+    example.held === 0
+      ? "waiting for an answer"
+      : example.pending === 0
+        ? "with Kleros"
+        : `${example.pending} waiting, ${example.held} with Kleros`;
   // the event is over once the list exists: what happened is told in the past tense
   const past = example.basis === "paid" || example.basis === "list";
   const paid = example.basis === "paid";
@@ -267,7 +288,7 @@ function SplitFigure({ example }: { example: ShareExample }) {
       `This event's result: ${depositsText} and ${example.attend} ${example.attend === 1 ? "attendee" : "attendees"}.${heldNote}`
     ) : example.basis === "list" ? (
       counted.length ? (
-        `Based on this event's ${depositsText}, the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far and ${counted.join(" and ")}.${countedNote}`
+        `Based on this event's ${depositsText}, the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far${counted.length > 1 ? ", " : " and "}${listText(counted)}.${countedNote}`
       ) : (
         `Based on this event's ${depositsText} and the ${example.attend} ${example.attend === 1 ? "guest" : "guests"} on the list so far.`
       )
@@ -295,16 +316,18 @@ function SplitFigure({ example }: { example: ShareExample }) {
     : ways === 1
       ? "goes to the one attendee"
       : `is split ${ways} ways`;
-  const countedAria = counted.length ? ` Still counted: ${counted.join(" and ")}.` : "";
+  const countedAria = counted.length ? ` Still counted: ${listText(counted)}.` : "";
   const ariaLabel = none
-    ? `${depositsText}: everyone ${past ? "attended" : "attends"}, so each attendee gets their deposit back.`
+    ? inWait > 0
+      ? `${depositsText}: ${example.attend} on the list.${paid ? heldNote : countedAria}`
+      : `${depositsText}: everyone ${past ? "attended" : "attends"}, so each attendee gets their deposit back.`
     : past
       ? `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attended" : "guests attended"} and ${example.noShows} did not. The ${noShowsPossessive} ${pool} ${unit} ${split}.${paid ? heldNote : countedAria}`
       : `${depositsText}: ${example.attend} ${example.attend === 1 ? "guest attends" : "guests attend"} and ${example.noShows} ${example.noShows === 1 ? "does" : "do"} not. The ${noShowsPossessive} ${pool} ${unit} ${split}.`;
 
   return (
     <Panel title="What happens to no-shows' deposits?" testId="how-split">
-      <svg className="how-fig" viewBox="0 0 408 112" role="img" aria-label={ariaLabel}>
+      <svg className="how-fig" viewBox={none ? "0 0 408 40" : "0 0 408 112"} role="img" aria-label={ariaLabel}>
         <Axis id={axis} />
         {attendX.map((x, i) => (
           <g key={`a${i}`} className="pop" style={d(i * 50)}>
@@ -313,7 +336,12 @@ function SplitFigure({ example }: { example: ShareExample }) {
           </g>
         ))}
         {heldX.map((x, i) => (
-          <circle key={`h${i}`} cx={x} cy={20} r={Math.min(13, gap / 2 - 3)} className="coin" stroke={stroke} />
+          <g key={`h${i}`} className="pop" style={d((attendX.length + i) * 50)}>
+            <circle cx={x} cy={20} r={Math.min(13, gap / 2 - 3)} className="coin held" stroke={stroke} />
+            <text x={x} y={24.5} textAnchor="middle" className="q">
+              ?
+            </text>
+          </g>
         ))}
         {noX.map((x, i) => (
           <g key={`n${i}`}>
@@ -352,7 +380,7 @@ function SplitFigure({ example }: { example: ShareExample }) {
           </>
         )}
       </svg>
-      <div className="how-caps two">
+      <div className={`how-caps ${inWait > 0 ? "three" : "two"}`}>
         <span>
           <b>
             {example.attend} {example.attend === 1 ? "attendee" : "attendees"}
@@ -360,6 +388,14 @@ function SplitFigure({ example }: { example: ShareExample }) {
           +{bonus} {unit}
           {example.attend === 1 ? "" : " each"}
         </span>
+        {inWait > 0 && (
+          <span data-testid="how-held">
+            <b>
+              {inWait} {inWait === 1 ? "challenge" : "challenges"}
+            </b>
+            {waitLabel}
+          </span>
+        )}
         <span>
           <b>
             {example.noShows} {example.noShows === 1 ? "no-show" : "no-shows"}
@@ -379,6 +415,8 @@ function SplitFigure({ example }: { example: ShareExample }) {
 }
 
 function ListPanel({
+  refundOnly,
+  ruledCases,
   court,
   challengeFee,
   matchPeriod,
@@ -390,6 +428,10 @@ function ListPanel({
   casesSent,
   clock,
 }: {
+  /** Cancelled, or attendance never confirmed in time: there is no list to challenge. */
+  refundOnly: RefundOnly;
+  /** Open cases Kleros has ruled on that nobody has settled yet; undefined when unknown. */
+  ruledCases?: number;
   court: string;
   challengeFee?: bigint;
   matchPeriod: number;
@@ -409,19 +451,34 @@ function ListPanel({
 }) {
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
-  const cancelled = phase === 3;
+  const noList = refundOnly !== null;
   // the challenge window is over: what happened is told in the past tense
-  const over = !cancelled && challengeEndsAt > 0 && now !== undefined && now > challengeEndsAt;
+  const over = !noList && challengeEndsAt > 0 && now !== undefined && now > challengeEndsAt;
+  const ruled = Math.max(0, Math.min(ruledCases ?? 0, openCases));
+  const deciding = openCases - ruled;
   // what the jurors did, told only from what happened: no challenge, no case, a case still open, or all decided
-  const jurors: readonly [string, string] = !over
-    ? ["Jurors decide", "on the evidence"]
-    : challengeCount === 0
-      ? ["No challenges", "no one challenged the list"]
-      : casesSent === 0
-        ? ["No court cases", "no challenge went to Kleros"]
-        : openCases > 0
-          ? ["Jurors decide", "each case sent to them"]
-          : ["Jurors", "decided each case sent to them"];
+  const jurors: readonly [string, string] = noList
+    ? ["No court cases", "nothing went to Kleros"]
+    : !over
+      ? ["Jurors decide", "on the evidence"]
+      : challengeCount === 0
+        ? ["No challenges", "no one challenged the list"]
+        : casesSent === 0
+          ? ["No court cases", "no challenge went to Kleros"]
+          : deciding > 0
+            ? ["Jurors decide", "each case sent to them"]
+            : ruled > 0
+              ? ["Jurors ruled", "on each case sent to them"]
+              : ["Jurors", "decided each case sent to them"];
+  const casesText = (n: number) => (n === 1 ? "One case is" : `${n} cases are`);
+  const openText = [
+    deciding > 0 &&
+      ` ${casesText(deciding)} still with Kleros jurors${phase === 2 ? `; a share is held until ${deciding === 1 ? "it is" : "they are"} decided` : ""}.`,
+    ruled > 0 &&
+      ` Kleros has ruled on ${ruled === 1 ? "1 case" : `${ruled} cases`}; ${phase === 2 ? `${ruled === 1 ? "its share is" : "their shares are"} released` : `${ruled === 1 ? "the result counts" : "the results count"}`} once someone settles ${ruled === 1 ? "it" : "them"}.`,
+  ]
+    .filter((x): x is string => !!x)
+    .join("");
   return (
     <Panel title="Left off the list?">
       <svg
@@ -446,24 +503,24 @@ function ListPanel({
           <b>Not on the list</b>but you were there
         </span>
         <span>
-          <b>{over ? "Challenges" : "Challenge it"}</b>in {court}
+          <b>{noList ? "No challenges" : over ? "Challenges" : "Challenge it"}</b>in {court}
         </span>
         <span>
           <b>{jurors[0]}</b>
           {jurors[1]}
         </span>
       </div>
-      {cancelled ? (
+      {noList ? (
         <p className="how-note" data-testid="challenge-fee">
-          The organiser cancelled this event, so there is no list to challenge.
+          {refundOnly === "cancelled"
+            ? "The organiser cancelled this event, so there is no list to challenge."
+            : "Attendance was not confirmed in time, so there is no list to challenge."}
         </p>
       ) : over ? (
         <p className="how-note" data-testid="challenge-fee">
           Challenges closed on {deadlineText(challengeEndsAt, clock)}.
           {challengeCount === 0 ? " No one challenged the list." : ""}
-          {openCases > 0
-            ? ` ${openCases === 1 ? "One case is" : `${openCases} cases are`} still with Kleros jurors${phase === 2 ? `; a share is held until ${openCases === 1 ? "it is" : "they are"} decided` : ""}.`
-            : ""}
+          {openText}
         </p>
       ) : (
         <p className="how-note" data-testid="challenge-fee">
@@ -540,10 +597,14 @@ function TimelinePanel({
         <circle cx="153" cy="34" r="6" className="card pop" style={d(450)} />
         <circle cx="255" cy="34" r="6" className="card pop" style={d(700)} />
         <circle cx="357" cy="34" r="6" fill="var(--kb-ok)" className="pop" style={d(950)} />
-        <path d="M153 14h102M153 10v8M255 10v8" className="ink" />
-        <text x="204" y="9" textAnchor="middle" className="dim">
-          {spanText(challengePeriod)}
-        </text>
+        {!cancelled && !missed && (
+          <>
+            <path d="M153 14h102M153 10v8M255 10v8" className="ink" />
+            <text x="204" y="9" textAnchor="middle" className="dim">
+              {spanText(challengePeriod)}
+            </text>
+          </>
+        )}
       </svg>
       <div className="how-caps four">
         {cancelled ? (
@@ -646,6 +707,8 @@ export interface HowItWorksProps {
   phase: number;
   /** Kleros cases not settled yet. */
   openCases: number;
+  /** Of those, the cases Kleros has ruled on; undefined when unknown. */
+  ruledCases?: number;
   /** Challenges ever made; undefined when unknown. */
   challengeCount?: number;
   /** Challenges sent to Kleros; undefined when unknown. */
@@ -672,6 +735,7 @@ export function HowItWorks({
   now,
   phase,
   openCases,
+  ruledCases,
   challengeCount,
   casesSent,
   onDeposit,
@@ -689,6 +753,8 @@ export function HowItWorks({
           <BackPanel amount={amount} refundOnly={refundOnly} />
           <SplitPanel example={example} refundOnly={refundOnly} amount={amount} />
           <ListPanel
+            refundOnly={refundOnly}
+            ruledCases={ruledCases}
             court={court}
             challengeFee={challengeFee}
             matchPeriod={matchPeriod}
