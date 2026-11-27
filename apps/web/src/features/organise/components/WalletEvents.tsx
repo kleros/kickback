@@ -34,7 +34,7 @@ export function WalletEvents({
   if (!address)
     body = (
       <>
-        <p className="og-lede">Connect the wallet you created your events with to see them here.</p>
+        <p className="og-lede">Connect the wallet you organise your events with to see them here.</p>
         <div className="og-actions">
           <ConnectWallet text="Connect wallet" />
         </div>
@@ -55,7 +55,7 @@ export function WalletEvents({
   // query disabled (no protocol on this chain): nothing to list
   else if (!mine.data) return null;
   else if (!events.length)
-    body = <p className="og-note">This wallet has not created any events on {DEFAULT_CHAIN.name}.</p>;
+    body = <p className="og-note">This wallet does not organise any events on {DEFAULT_CHAIN.name}.</p>;
   else if (renderEvents) body = renderEvents(events);
   else
     body = (
@@ -63,7 +63,7 @@ export function WalletEvents({
         {events.map((row) => (
           <li key={row.contract} className="og-event-row">
             <span title={row.name || row.contract}>{row.name || shortenAddress(row.contract)}</span>
-            <Link className="kb-link" href={paths.organiseEvent.getHref(row.contract)}>
+            <Link className="kb-link kb-tap" href={paths.organiseEvent.getHref(row.contract)}>
               Open
             </Link>
           </li>

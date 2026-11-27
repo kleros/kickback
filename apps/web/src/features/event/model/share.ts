@@ -39,14 +39,21 @@ export function shareExample(
   listed?: number,
   openCases = 0,
   waiting = 0,
+  /** The event's capacity (0 = no limit): the illustration never shows more deposits than there are spots. */
+  capacity = 0,
 ): ShareExample {
   const fromList = listed !== undefined && listed >= 1 && listed <= stakerCount;
   const held = fromList ? Math.max(0, Math.min(openCases, stakerCount - listed)) : 0;
   // after the release no challenge waits (the release needs none waiting)
   const pending = fromList && back === undefined ? Math.max(0, Math.min(waiting, stakerCount - listed - held)) : 0;
   const real = fromList || stakerCount >= 2;
-  const deposits = real ? stakerCount : 10;
-  const noShows = fromList ? deposits - listed - pending - held : Math.max(1, Math.round(deposits / 5));
+  const deposits = real ? stakerCount : capacity > 0 ? Math.min(10, capacity) : 10;
+  // a one-spot illustration has nobody to stay home: its one guest attends and gets the deposit back
+  const noShows = fromList
+    ? deposits - listed - pending - held
+    : !real && deposits === 1
+      ? 0
+      : Math.max(1, Math.round(deposits / 5));
   const attend = Math.max(1, deposits - noShows - pending - held);
   // the release: depositAmount * stakerCount / (attendees + open cases), rounded down
   const share = back ?? (amount * BigInt(deposits)) / BigInt(attend + pending + held);

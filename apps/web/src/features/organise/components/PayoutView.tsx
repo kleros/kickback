@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { BATCH_SIZE } from "@kickback/core";
-import { zeroAddress } from "viem";
+import { getAddress, zeroAddress } from "viem";
 import { usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -21,6 +21,7 @@ import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { projectedShare, unpaidLede } from "../model/payout";
+import type { Payment } from "../model/record";
 import { assetText, ethText, shortHex, TYPED_WORDS, when } from "../model/view";
 import { tx } from "../operations/tx";
 
@@ -31,6 +32,12 @@ const attendees = (n: number) => `${n} ${n === 1 ? "attendee" : "attendees"}`;
 const left = (from: number, to: number) => {
   const m = Math.max(0, Math.floor((to - from) / 60));
   return m >= 60 ? (m % 60 ? `${Math.floor(m / 60)} h ${m % 60} min left` : `${m / 60} h left`) : `${m} min left`;
+};
+
+/** Note parts joined with "; ", the first one capitalised; undefined when there are none. */
+const noteText = (parts: readonly (string | false | 0 | undefined | null)[]) => {
+  const n = parts.filter(Boolean).join("; ");
+  return n ? n[0]!.toUpperCase() + n.slice(1) : undefined;
 };
 
 export function PayoutScreen() {
@@ -84,10 +91,11 @@ export function PayoutScreen() {
   const cases = (n: number) => `${n} open Kleros ${n === 1 ? "case" : "cases"}`;
   const heldNote =
     info.openCases > 0
-      ? `${info.openCases === 1 ? "A share is" : `${info.openCases} shares are`} held for open Kleros cases; ${info.openCases === 1 ? "it goes" : "each goes"} to the guest if they win, or is split among the attendees if they lose, so this can still rise`
+      ? `${info.openCases === 1 ? "a share is held for the open Kleros case (it goes" : `${info.openCases} shares are held for the ${info.openCases} open Kleros cases (each goes`} to the guest if they win, or is split among the attendees if they lose), so this can still rise`
       : undefined;
   const fmt = (units: bigint) => assetText(units, info);
   const releasedBy = record.data?.released?.by;
+  const releasedByName = releasedBy ? luma.nameOf(releasedBy) : undefined;
   const isGuestWallet = (w: string) => data.guests.some((g) => g.wallet.toLowerCase() === w.toLowerCase());
   const anyRefunded = data.guests.some((g) => g.status === 3);
   const allBack = data.booked.length === 0;
@@ -100,6 +108,27 @@ export function PayoutScreen() {
   const recOf = (wallet: string) => record.data?.wallets.get(wallet.toLowerCase());
   const refundBatch = data.booked.slice(0, BATCH_SIZE);
   const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
+  // the refunds of a cancelled or missed event, oldest first (turn-away refunds belong to the Guests tab)
+  const refunds = record.data
+    ? [...record.data.wallets.entries()]
+        .filter(([, r]) => !r.rejected)
+        .flatMap(([key, r]) =>
+          r.payments.filter((p) => p.kind === "refund").map((p) => ({ wallet: getAddress(key), p })),
+        )
+        .sort((a, b) => Number(a.p.block - b.p.block))
+    : [];
+  const refundVia = (p: Payment) =>
+    p.via === "claimed"
+      ? "withdrawn by the guest"
+      : p.via === "sent" && p.sender
+        ? p.sender.toLowerCase() === me
+          ? "sent by you"
+          : p.sender.toLowerCase() === info.owner.toLowerCase()
+            ? "sent by the organiser"
+            : `sent by ${shortHex(p.sender)}`
+        : p.via === "sent"
+          ? "sent"
+          : undefined;
 
   return (
     <div className="flex flex-col gap-5" data-testid="payout">
@@ -130,13 +159,52 @@ export function PayoutScreen() {
                   : `Attendance was not confirmed by ${when(info.claimDeadline)}. No guest has a deposit to get back.`
                 : `Attendance was not confirmed by ${when(info.claimDeadline)}, so every guest gets their full deposit back. They can withdraw it on the guest page, or you can send the refunds now.`}
           </p>
-          {allBack ? (
-            anyRefunded && (
-              <p className="og-note" data-testid="refunds-owed">
-                A wallet that refused its refund can still withdraw it on the guest page.
+          {data.refundRefused.length > 0 && (
+            <div className="flex flex-col gap-1" data-testid="refunds-refused">
+              <p className="og-note">
+                {data.refundRefused.length === 1
+                  ? "One guest's wallet refused its refund. It can still be withdrawn on the guest page."
+                  : `${data.refundRefused.length} guests' wallets refused their refunds. These can still be withdrawn on the guest page.`}
               </p>
-            )
-          ) : (
+              <ul className="og-note flex flex-col gap-1">
+                {data.refundRefused.map((w) => (
+                  <li key={w} title={w}>
+                    {luma.nameOf(w) ?? "—"} · <span className="og-mono">{shortHex(w)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {anyRefunded && (
+            <section className="flex flex-col gap-2" data-testid="refunds-list">
+              <h4 className="og-h2">Refunds</h4>
+              {record.isError && !record.data ? (
+                <p className="og-err" role="alert">
+                  The refund transactions could not be read. Reload the page to try again.
+                </p>
+              ) : !record.data ? (
+                <p className="og-note" aria-live="polite">
+                  Loading the record…
+                </p>
+              ) : refunds.length === 0 ? (
+                <p className="og-note">No refund transaction found yet.</p>
+              ) : (
+                <ul className="og-note flex flex-col gap-1">
+                  {refunds.map(({ wallet, p }) => (
+                    <li key={`${p.tx}-${wallet}`} title={wallet} data-testid="refund-row">
+                      {luma.nameOf(wallet) ?? "—"} · <span className="og-mono">{shortHex(wallet)}</span> ·{" "}
+                      {fmt(p.amount)}
+                      {refundVia(p) ? ` · ${refundVia(p)}` : ""} · <TxLink tx={p.tx} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="og-note">
+                Each refund is also listed per guest on the Guests tab and in its downloadable record.
+              </p>
+            </section>
+          )}
+          {allBack ? null : (
             <>
               <p className="og-note" data-testid="refunds-owed">
                 {`${guests(data.booked.length)} ${data.booked.length === 1 ? "has" : "have"} not withdrawn their deposit yet.`}
@@ -190,14 +258,11 @@ export function PayoutScreen() {
               {
                 label: "Each gets",
                 value: assetText(share, info),
-                note:
-                  [
-                    info.phase === 1 && shares !== attendeesAfter && `Split ${shares} ways`,
-                    heldNote,
-                    info.phase === 1 && info.openCases === 0 && "Can change until payouts are released",
-                  ]
-                    .filter(Boolean)
-                    .join("; ") || undefined,
+                note: noteText([
+                  info.phase === 1 && shares !== attendeesAfter && `split ${shares} ways`,
+                  heldNote,
+                  info.phase === 1 && info.openCases === 0 && "can change until payouts are released",
+                ]),
               },
               {
                 label: "Challenges",
@@ -287,6 +352,18 @@ export function PayoutScreen() {
                   ? ` The share held for them (${fmt(split.each * (split.attendees + split.openCases))}) was then split among the ${attendees(Number(split.attendees))}${split.openCases > 0n ? ` and the ${Number(split.openCases)} ${split.openCases === 1n ? "case" : "cases"} still with Kleros` : ""}: ${fmt(split.each)} each.`
                   : "";
                 const name = luma.nameOf(c.wallet);
+                // what a settled challenger who joined the list gets: future before the release, then by what is paid
+                const paidSoFar = data.sharePaid.get(c.wallet.toLowerCase()) ?? 0n;
+                const shareClause =
+                  info.phase !== 2
+                    ? `will get ${shareText}`
+                    : paidSoFar >= info.payoutShare
+                      ? share > info.depositAmount
+                        ? "were paid a full share like every attendee (their deposit plus part of the no-shows' deposits)"
+                        : "got their deposit back"
+                      : paidSoFar > 0n
+                        ? "were paid part of their share and can claim the rest"
+                        : `can claim ${shareText}`;
                 const came = data.guests.find((g) => g.wallet.toLowerCase() === c.wallet.toLowerCase())?.attended;
                 const status =
                   c.state === 1
@@ -341,9 +418,9 @@ export function PayoutScreen() {
                                   ? appealText
                                   : "Kleros jurors are deciding. Send your evidence (Luma check-in, photos) on the case page. Once they rule, settle it here."
                               : !wentToKleros
-                                ? `${steps?.answer?.kind === "added" ? "This guest was added to the list." : steps?.answer?.kind === "unanswered" ? "This guest's challenge was not answered in time, so they were added to the list." : "This guest was added to the list."} Their Kleros fee was returned, and they get ${shareText}.`
+                                ? `${steps?.answer?.kind === "added" ? "This guest was added to the list." : steps?.answer?.kind === "unanswered" ? "This guest's challenge was not answered in time, so they were added to the list." : "This guest was added to the list."} Their Kleros fee was returned, and they ${shareClause}.`
                                 : came
-                                  ? `Kleros jurors ruled this guest came. They were added to the list, got back what was left of the two fees (${ethText(leftOver)}), and get ${shareText}.`
+                                  ? `Kleros jurors ruled this guest came. They were added to the list, got back what was left of the two fees (${ethText(leftOver)}), and ${shareClause}.`
                                   : c.ruling === 0
                                     ? `Kleros jurors did not rule either way, so the guest stays off the list. What was left of the two fees (${ethText(leftOver)}) was split: ${ethText(half)} went to the guest and ${ethText(leftOver - half)} to ${who}.${splitText}`
                                     : `Kleros jurors ruled this guest did not come, so they stay off the list. What was left of the two fees (${ethText(leftOver)}) went back to ${who}.${splitText}`}
@@ -488,7 +565,14 @@ export function PayoutScreen() {
                         "the organiser"
                       ) : isGuestWallet(releasedBy) ? (
                         <>
-                          the guest <Addr address={releasedBy} />
+                          the guest{" "}
+                          {releasedByName ? (
+                            <>
+                              {releasedByName} (<Addr address={releasedBy} />)
+                            </>
+                          ) : (
+                            <Addr address={releasedBy} />
+                          )}
                         </>
                       ) : (
                         <Addr address={releasedBy} />

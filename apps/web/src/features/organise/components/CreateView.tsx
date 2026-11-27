@@ -30,6 +30,19 @@ import { tx } from "../operations/tx";
 /** "2026-11-24T18:00" in the browser's zone, for a datetime-local input. */
 const local = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
+/** A Luma link as it is stored: lower-case scheme and host, no #fragment; anything unparsable is left as typed. */
+function normaliseLuma(raw: string): string {
+  const t = raw.trim();
+  try {
+    const u = new URL(t);
+    if (u.protocol !== "https:") return t;
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return t;
+  }
+}
+
 function initialForm(now = new Date()) {
   const start = new Date(now.getTime() + 7 * 86_400_000);
   start.setHours(18, 0, 0, 0);
@@ -184,18 +197,24 @@ export function CreateScreen() {
     const days = Number(form.deadlineDays);
     if (!Number.isInteger(days) || days < minDays || days > maxDays)
       throw new Error(`Enter a whole number of days from ${minDays} to ${maxDays}.`);
-    if (!LUMA_URL.test(form.url.trim()))
-      throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
+    // the link is stored on-chain for good: check and store the cleaned one (lower-case host, no #fragment)
+    const url = normaliseLuma(form.url);
+    if (!LUMA_URL.test(url)) throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
+    const capText = form.capacity.trim();
+    if (capText && !/^\d+$/.test(capText))
+      throw new Error("Enter the capacity as a whole number, such as 100, or leave it empty for no limit.");
+    const capacity = capText ? Number(capText) : 0;
+    if (capText && capacity === 0) throw new Error("Enter a capacity of at least 1, or leave it empty for no limit.");
     const end = zonedUnix(form.end, form.zone);
     return eventConfig({
       name: form.name,
-      url: form.url,
+      url,
       token: form.asset === "ETH" ? undefined : (tokenAddress as Address),
       depositAmount: parseUnits(deposit, asset.decimals),
       eventStart: zonedUnix(form.start, form.zone),
       eventEnd: end,
       claimDeadline: end + days * 86_400,
-      capacity: Number(form.capacity) || 0,
+      capacity,
     });
   };
   let check: string | null = null;
@@ -275,7 +294,7 @@ export function CreateScreen() {
       <GlassCard as="section" className="og-card">
         <div className="og-form" data-testid="create-form">
           <Field label="Event name" full hint="Shown to guests, and to Kleros jurors if there is a dispute.">
-            <input className="og-input" value={form.name} maxLength={120} onChange={set("name")} />
+            <input className="og-input" value={form.name} onChange={set("name")} />
           </Field>
           <Field label="Luma event page" full hint="Required. Guests register there; Kickback only holds the deposits.">
             <input
@@ -363,9 +382,10 @@ export function CreateScreen() {
           <Field label="Capacity" hint="Leave empty for no limit.">
             <input
               className="og-input"
-              type="number"
-              min={0}
-              step={1}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              autoComplete="off"
               value={form.capacity}
               onChange={set("capacity")}
             />

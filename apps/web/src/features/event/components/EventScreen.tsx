@@ -37,6 +37,7 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
     listed,
     event.phase === 1 || event.phase === 2 ? event.openCases : 0,
     event.phase === 1 ? event.waitingChallenges : 0,
+    event.capacity,
   );
 
   // the fragment is set before the page has height; land on it once the section exists

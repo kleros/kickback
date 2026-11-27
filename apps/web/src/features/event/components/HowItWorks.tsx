@@ -115,7 +115,10 @@ function Coin({
   );
 }
 
-function BackPanel({ amount }: { amount: string }) {
+/** A cancelled event, or a missed deadline to confirm who came: every guest gets exactly their deposit back. */
+type RefundOnly = "cancelled" | "missed" | null;
+
+function BackPanel({ amount, refundOnly }: { amount: string; refundOnly: RefundOnly }) {
   const { unit } = useAsset();
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
@@ -125,7 +128,11 @@ function BackPanel({ amount }: { amount: string }) {
         className="how-fig"
         viewBox="0 0 408 96"
         role="img"
-        aria-label={`A ${amount} ${unit} deposit goes in and comes back with a share added.`}
+        aria-label={
+          refundOnly
+            ? `A ${amount} ${unit} deposit comes back in full.`
+            : `A ${amount} ${unit} deposit goes in and comes back with a share added.`
+        }
       >
         <Axis id={axis} />
         <Coin x={52} y={48} r={28} label={amount} stroke={stroke} delay={0} />
@@ -137,28 +144,69 @@ function BackPanel({ amount }: { amount: string }) {
         </g>
         <path d="M246 48h70" className="flow" stroke={stroke} pathLength={1} style={d(700)} />
         <Coin x={356} y={48} r={28} label={amount} stroke={stroke} delay={1000} />
-        <g className="pop" style={d(1250)}>
-          <circle cx="380" cy="24" r="11" fill={stroke} />
-          <path d="M380 18.5v11M374.5 24h11" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
-        </g>
+        {!refundOnly && (
+          <g className="pop" style={d(1250)}>
+            <circle cx="380" cy="24" r="11" fill={stroke} />
+            <path d="M380 18.5v11M374.5 24h11" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+          </g>
+        )}
       </svg>
       <div className="how-caps three">
         <span>
           <b>Deposit</b>
           {amount} {unit}
         </span>
-        <span>
-          <b>Attend</b>checked in
-        </span>
-        <span>
-          <b>Back, plus a share</b>of <span className="nowrap">no-shows&apos;</span> deposits
-        </span>
+        {refundOnly === "cancelled" ? (
+          <span>
+            <b>Cancelled</b>no check-in needed
+          </span>
+        ) : refundOnly === "missed" ? (
+          <span>
+            <b>Attendance</b>not confirmed in time
+          </span>
+        ) : (
+          <span>
+            <b>Attend</b>checked in
+          </span>
+        )}
+        {refundOnly ? (
+          <span>
+            <b>Back in full</b>no share of other deposits
+          </span>
+        ) : (
+          <span>
+            <b>Back, plus a share</b>of <span className="nowrap">no-shows&apos;</span> deposits
+          </span>
+        )}
       </div>
     </Panel>
   );
 }
 
-function SplitPanel({ example }: { example: ShareExample }) {
+function SplitPanel({
+  example,
+  refundOnly,
+  amount: deposit,
+}: {
+  example: ShareExample;
+  refundOnly: RefundOnly;
+  amount: string;
+}) {
+  const { unit } = useAsset();
+  if (refundOnly)
+    return (
+      <Panel title="What happens to no-shows' deposits?" testId="how-split">
+        <p className="how-note" data-testid="how-refund-only">
+          {refundOnly === "cancelled"
+            ? `The organiser cancelled this event, so no deposits are shared: every guest gets back exactly ${deposit} ${unit}.`
+            : `Attendance was not confirmed by the deadline, so no deposits are shared: every guest can withdraw exactly ${deposit} ${unit}.`}
+        </p>
+      </Panel>
+    );
+  return <SplitFigure example={example} />;
+}
+
+function SplitFigure({ example }: { example: ShareExample }) {
   const { unit, text } = useAsset();
   const axis = useAxisId();
   const stroke = `url(#${axis})`;
@@ -230,9 +278,14 @@ function SplitPanel({ example }: { example: ShareExample }) {
           {example.noShows} {example.noShows === 1 ? "no-show" : "no-shows"}.
         </span>
       </>
+    ) : none ? (
+      <>An example with {depositsText}, where everyone attends.</>
     ) : (
       <>
-        An example with 10 deposits and <span className="nowrap">2 no-shows.</span>
+        An example with {depositsText} and{" "}
+        <span className="nowrap">
+          {example.noShows} {example.noShows === 1 ? "no-show" : "no-shows"}.
+        </span>
       </>
     );
   const split = paid
@@ -451,6 +504,8 @@ function TimelinePanel({
   const missed = phase === 0 && now !== undefined && now > claimDeadline;
   // paid out: the strip tells what happened
   const done = phase === 2;
+  const ended = done || cancelled || (now !== undefined && now >= eventEnd);
+  const windowOver = challengeEndsAt > 0 && now !== undefined && now > challengeEndsAt;
   // once the list is posted, the rows follow what happened: posted, then the challenge window
   const rows: readonly (readonly [string, number])[] = cancelled
     ? []
@@ -470,7 +525,13 @@ function TimelinePanel({
         className="how-fig"
         viewBox="0 0 408 48"
         role="img"
-        aria-label={`Deposits close when the event ends; who came is confirmed by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`}
+        aria-label={
+          cancelled
+            ? "The organiser cancelled this event; every guest gets their full deposit back."
+            : missed
+              ? "Deposits closed when the event ended; who came was not confirmed in time, so every guest can withdraw their full deposit."
+              : `Deposits close when the event ends; who came is confirmed by the deadline; ${spanText(challengePeriod)} for challenges; then payouts.`
+        }
       >
         <Axis id={axis} />
         <path d="M51 34h306" className="ln" />
@@ -485,21 +546,56 @@ function TimelinePanel({
         </text>
       </svg>
       <div className="how-caps four">
-        <span>
-          <b>{done ? "Ended" : "Ends"}</b>
-          {done ? "deposits closed" : "deposits close"}
-        </span>
-        <span>
-          <b>Attendance</b>confirmed by the organiser
-        </span>
-        <span>
-          <b>Challenges</b>
-          {done ? "closed" : spanText(challengePeriod)}
-        </span>
-        <span>
-          <b>Payouts</b>
-          {done ? "released" : "claimed by attendees or sent by the organiser"}
-        </span>
+        {cancelled ? (
+          <>
+            <span>
+              <b>Cancelled</b>by the organiser
+            </span>
+            <span>
+              <b>Attendance</b>no list
+            </span>
+            <span>
+              <b>Challenges</b>none
+            </span>
+            <span>
+              <b>Refunds</b>withdrawn by guests or sent by the organiser
+            </span>
+          </>
+        ) : (
+          <>
+            <span>
+              <b>{ended ? "Ended" : "Ends"}</b>
+              {ended ? "deposits closed" : "deposits close"}
+            </span>
+            {missed ? (
+              <>
+                <span>
+                  <b>Attendance</b>not confirmed in time
+                </span>
+                <span>
+                  <b>Challenges</b>none
+                </span>
+                <span>
+                  <b>Refunds</b>withdrawn by guests or sent by the organiser
+                </span>
+              </>
+            ) : (
+              <>
+                <span>
+                  <b>Attendance</b>confirmed by the organiser
+                </span>
+                <span>
+                  <b>Challenges</b>
+                  {done || windowOver ? "closed" : spanText(challengePeriod)}
+                </span>
+                <span>
+                  <b>Payouts</b>
+                  {done ? "released" : "claimed by attendees or sent by the organiser"}
+                </span>
+              </>
+            )}
+          </>
+        )}
       </div>
       {rows.length > 0 && (
         <div className="how-caps" style={{ marginTop: 16 }}>
@@ -581,6 +677,8 @@ export function HowItWorks({
   onDeposit,
   depositOpen,
 }: HowItWorksProps) {
+  const refundOnly: RefundOnly =
+    phase === 3 ? "cancelled" : phase === 0 && now !== undefined && now > claimDeadline ? "missed" : null;
   return (
     <Asset.Provider value={{ unit, decimals }}>
       <section id={HOW_IT_WORKS_ID} className="kb-how" aria-labelledby="how-title">
@@ -588,8 +686,8 @@ export function HowItWorks({
           How it works
         </h2>
         <div className="how-grid">
-          <BackPanel amount={amount} />
-          <SplitPanel example={example} />
+          <BackPanel amount={amount} refundOnly={refundOnly} />
+          <SplitPanel example={example} refundOnly={refundOnly} amount={amount} />
           <ListPanel
             court={court}
             challengeFee={challengeFee}

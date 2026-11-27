@@ -88,6 +88,14 @@ function Line({ line, onRecheck }: { line: StatusLine; onRecheck: () => void }) 
           )}
         </>
       )}
+      {line.link2 && (
+        <>
+          {" · "}
+          <Link className="kb-link" href={line.link2.href} target="_blank" rel="noopener noreferrer">
+            {line.link2.label}
+          </Link>
+        </>
+      )}
       {line.action && (
         <>
           {" · "}

@@ -50,6 +50,23 @@ export function OverviewScreen({ court }: { court: string }) {
     ? [...record.data.wallets.values()].filter((w) => w.deposit).length
     : data.guests.length;
   const lead = phase === "Cancelled" ? "" : "The deadline to confirm who came has passed. ";
+  const disputedCount = data.challenges.filter((c) => c.state === 2).length;
+  // the Payout tab's own test for a ruling it can settle (a ruling above 2 reverts)
+  const readyToSettle = data.challenges.filter(
+    (c) => c.state === 2 && c.isRuled === true && (c.ruling ?? 99) <= 2,
+  ).length;
+  const cases = info.openCases;
+  const casesText =
+    readyToSettle === 0
+      ? `${cases === 1 ? "A share is held for the open Kleros case" : `A share is held for each of the ${cases} open Kleros cases`}. Settle ${cases === 1 ? "it" : "each one"} on the Payout tab once the jurors rule.`
+      : readyToSettle >= cases
+        ? `${cases === 1 ? "The Kleros case has been ruled and is" : `All ${cases} Kleros cases have been ruled and are`} ready to settle on the Payout tab.`
+        : `${readyToSettle === 1 ? "1 ruling is" : `${readyToSettle} rulings are`} ready to settle on the Payout tab; ${cases - readyToSettle === 1 ? "1 case is" : `${cases - readyToSettle} cases are`} still waiting for the jurors.`;
+  const payText =
+    data.unpaid.length > 0 || data.refused.length > 0
+      ? " " +
+        unpaidLede(data.unpaid, info.attendeeCount, info.payoutShare, (u) => assetText(u, info), data.refused.length)
+      : "";
   // nothing to answer yet: say when to come back instead
   const step: NextStep = refunding
     ? owed > 0
@@ -96,34 +113,40 @@ export function OverviewScreen({ court }: { court: string }) {
                 tab: null,
                 action: null,
               }
-            : phase === "Payouts released" && info.openCases > 0
+            : phase === "Challenge window" && waiting.length === 0
               ? {
-                  title: "Settle the Kleros cases",
-                  detail:
-                    "A share is held for each open case. Settle each ruling on the Payout tab once the jurors decide.",
+                  title: "Kleros is deciding",
+                  detail: `${disputedCount === 1 ? "1 case is" : `${disputedCount} cases are`} with Kleros jurors. Send evidence (Luma check-in, photos) on each case page. Guests left off the list can still challenge until ${when(info.challengeEndsAt)}; if one does, answer it within 1 day. After that, release payouts on the Payout tab: a share is held for each case still with Kleros.`,
                   tab: "payout",
                   action: "Open Payout",
                 }
-              : phase === "Payouts released" && data.unpaid.length === 0 && data.refused.length === 0
+              : phase === "Payouts released" && info.openCases > 0
                 ? {
-                    title: "All done",
-                    detail: "Every attendee has been paid their share.",
-                    tab: null,
-                    action: null,
-                    done: true,
+                    title: readyToSettle > 0 ? "Settle the Kleros cases" : "Wait for the Kleros rulings",
+                    detail: casesText + payText,
+                    tab: "payout",
+                    action: "Open Payout",
                   }
-                : phase === "Payouts released"
+                : phase === "Payouts released" && data.unpaid.length === 0 && data.refused.length === 0
                   ? {
-                      ...NEXT_STEP[phase],
-                      detail: unpaidLede(
-                        data.unpaid,
-                        info.attendeeCount,
-                        info.payoutShare,
-                        (u) => assetText(u, info),
-                        data.refused.length,
-                      ),
+                      title: "All done",
+                      detail: "Every attendee has been paid their share.",
+                      tab: null,
+                      action: null,
+                      done: true,
                     }
-                  : NEXT_STEP[phase];
+                  : phase === "Payouts released"
+                    ? {
+                        ...NEXT_STEP[phase],
+                        detail: unpaidLede(
+                          data.unpaid,
+                          info.attendeeCount,
+                          info.payoutShare,
+                          (u) => assetText(u, info),
+                          data.refused.length,
+                        ),
+                      }
+                    : NEXT_STEP[phase];
   const booking = phase === "Deposits open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
@@ -197,7 +220,7 @@ export function OverviewScreen({ court }: { court: string }) {
             <Link href={paths.organise.getHref()} className="kb-link">
               Manage your events
             </Link>{" "}
-            and connect the wallet you created the event with.
+            and connect this event&apos;s organiser wallet.
           </p>
         )}
       </GlassCard>
@@ -255,11 +278,13 @@ export function OverviewScreen({ court }: { court: string }) {
                       </>
                     ),
                   }
-                : {
-                    label:
-                      phase === "Past the deadline" ? "Deadline to confirm who came (missed)" : "Confirm who came by",
-                    value: when(info.claimDeadline),
-                  },
+                : phase === "Ended"
+                  ? { label: "Attendance", value: "Nothing to confirm (no deposits)" }
+                  : {
+                      label:
+                        phase === "Past the deadline" ? "Deadline to confirm who came (missed)" : "Confirm who came by",
+                      value: when(info.claimDeadline),
+                    },
             { label: "Disputes", value: court },
           ]}
         />

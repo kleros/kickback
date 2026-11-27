@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
 
 import { attendanceFromCsv, batches, BATCH_SIZE } from "@kickback/core";
@@ -10,6 +11,8 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 
 import { spanText } from "@/utils/time";
+
+import { paths } from "@/config/paths";
 
 import { Messages } from "./Messages";
 import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, Locked, TxLink } from "./parts";
@@ -53,6 +56,8 @@ export function AttendanceScreen() {
   }, [accountKey]);
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
+  // the same chain clock as the header pill and the other tabs (the overview read can be 15 s old)
+  const now = event.now ?? data.now;
   const already = new Set(data.attendees.map((a) => a.toLowerCase()));
   // a guest in a Kleros case cannot be added (the contract refuses it): the jurors decide
   const inCase = new Set(data.guests.filter((g) => g.challenge?.state === 2).map((g) => g.wallet.toLowerCase()));
@@ -64,16 +69,23 @@ export function AttendanceScreen() {
     (w) => !already.has(w.toLowerCase()) && chosen.has(w.toLowerCase()) && !inCase.has(w.toLowerCase()),
   );
   const listed = info.phase === 1;
-  const inWindow = info.phase === 0 && data.now >= info.eventEnd && data.now <= info.claimDeadline;
-  const canAdd =
-    event.isOwner && event.onChain && !event.busy && (inWindow || (listed && data.now <= info.challengeEndsAt));
+  const inWindow = info.phase === 0 && now >= info.eventEnd && now <= info.claimDeadline;
+  const canAdd = event.isOwner && event.onChain && !event.busy && (inWindow || (listed && now <= info.challengeEndsAt));
   const total = booked.filter(isOn).length;
-  const noShows = booked.length - total;
+  // a guest whose challenge is waiting or with Kleros is neither on the list nor a no-show yet
+  const isChallenging = (c: { wallet: Address; state: number }) => (c.state === 1 || c.state === 2) && !isOn(c.wallet);
+  const challenging = data.challenges.filter(isChallenging).length;
+  const noShows = booked.length - total - challenging;
   // one transaction per batch, before and after the list is closed; the dialog says what one press sends
   const parts = batches(toAdd, BATCH_SIZE);
   const first = parts[0] ?? [];
   const batched = parts.length > 1;
   const afterSend = total - (toAdd.length - first.length);
+  const sentSet = new Set(first.map((w) => w.toLowerCase()));
+  const challengingAfter = data.challenges.filter(
+    (c) =>
+      (c.state === 1 || c.state === 2) && !already.has(c.wallet.toLowerCase()) && !sentSet.has(c.wallet.toLowerCase()),
+  ).length;
   const final = confirm === "close" && !batched;
   const isBooked = new Set(booked.map((w) => w.toLowerCase()));
   const unscanned = new Set(
@@ -89,7 +101,7 @@ export function AttendanceScreen() {
       .map((s) => s.wallet!.toLowerCase()),
   ).size;
 
-  if (info.phase === 0 && data.now < info.eventEnd)
+  if (info.phase === 0 && now < info.eventEnd)
     return (
       <GlassCard className="og-card" data-testid="attendance-early">
         <h2 className="og-h2">Attendance opens when the event ends</h2>
@@ -97,7 +109,16 @@ export function AttendanceScreen() {
           Deposits stay open until {when(info.eventEnd)}. Then load your check-in list here and confirm who came by{" "}
           {when(info.claimDeadline)}.
         </p>
+        <Messages event={event} />
       </GlassCard>
+    );
+  if (info.phase === 0 && now <= info.claimDeadline && info.stakerCount === 0)
+    return (
+      <div className="flex flex-col gap-5" data-testid="attendance-empty">
+        <h2 className="kb-h1">Attendance</h2>
+        <p className="og-lede">No guest had a deposit when the event ended, so there is nothing to confirm.</p>
+        <Messages event={event} />
+      </div>
     );
   const listClosedTx = record.data?.listClosed?.tx;
   if (info.phase === 2) {
@@ -107,12 +128,22 @@ export function AttendanceScreen() {
     const open = info.openCases;
     const noShowCount = booked.length - info.attendeeCount - open;
     const releasedTx = record.data?.released?.tx;
+    // "got" only once every attendee has their share in their wallet
+    const allPaid = data.unpaid.length === 0 && data.refused.length === 0;
+    const n = info.attendeeCount;
+    const who = `${n} ${n === 1 ? "attendee" : "attendees"}`;
     return (
       <div className="flex flex-col gap-5" data-testid="attendance-final">
         <div className="flex flex-col gap-1">
           <h2 className="kb-h1">Attendance</h2>
           <p className="og-lede">
-            {`Payouts were released to ${info.attendeeCount} ${info.attendeeCount === 1 ? "attendee" : "attendees"}.`}
+            {allPaid && open === 0
+              ? n === 1
+                ? "Payouts are released and the attendee has been paid."
+                : `Payouts are released and all ${who} have been paid.`
+              : n === 1
+                ? "Payouts are released: 1 attendee gets the deposits."
+                : `Payouts are released: ${who} share the deposits.`}
           </p>
         </div>
         <Figures
@@ -123,7 +154,7 @@ export function AttendanceScreen() {
             ...(open > 0 ? [{ label: "With Kleros", value: String(open) }] : []),
             {
               // a lost case's held share is split among the attendees: the share can still rise
-              label: open > 0 ? "Each attendee gets so far" : "Each attendee got",
+              label: open > 0 ? "Each attendee gets so far" : allPaid ? "Each attendee got" : "Each attendee's share",
               value: assetText(info.payoutShare, info),
             },
           ]}
@@ -182,17 +213,34 @@ export function AttendanceScreen() {
       </div>
     );
   }
-  if (info.phase === 3 || (info.phase === 0 && data.now > info.claimDeadline))
+  if (info.phase === 3 || (info.phase === 0 && now > info.claimDeadline)) {
+    const left = data.booked.length;
+    const deposited = record.data
+      ? [...record.data.wallets.values()].filter((w) => w.deposit).length
+      : data.guests.length;
+    const lead = info.phase === 3 ? "The event was cancelled" : "The deadline to confirm who came has passed";
     return (
-      <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-5" data-testid="attendance-refunds">
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
-          {info.phase === 3
-            ? "The event was cancelled."
-            : "The deadline to confirm who came has passed: guests can withdraw their deposits."}
+          {left > 0
+            ? `${lead}: ${left === 1 ? "1 guest has" : `${left} guests have`} not withdrawn their deposit yet. They can withdraw it on the guest page, or you can send the refunds on the Payout tab.`
+            : deposited > 0
+              ? `${lead}, and every deposit has been returned.`
+              : `${lead}. No guest had deposited, so there is nothing to return.`}
         </p>
+        {left > 0 && (
+          <Link
+            href={paths.organiseEvent.getHref(event.address, undefined, "payout")}
+            className="kb-link kb-tap self-start"
+          >
+            Send the refunds on the Payout tab
+          </Link>
+        )}
+        <Messages event={event} />
       </div>
     );
+  }
 
   const toggle = (w: Address, on: boolean) => {
     const next = new Set(chosen);
@@ -214,6 +262,10 @@ export function AttendanceScreen() {
           ? `${guests(sent.length)} added to the list. Send the next batch.`
           : `${guests(sent.length)} added to the list.`,
         forget,
+        {
+          TooLate: "The time to add guests ended before your list was sent. Nothing was recorded.",
+          NotListed: "The list changed before your send. Nothing was recorded.",
+        },
       );
       return;
     }
@@ -228,6 +280,12 @@ export function AttendanceScreen() {
           ? `${guests(sent.length)} saved. Send the next batch.`
           : `${guests(sent.length)} saved. Close the list when it is complete.`,
       forget,
+      {
+        TooLate: "The deadline to confirm who came passed before your list was sent. Nothing was recorded.",
+        TooEarly: "The event has not ended yet, so attendance cannot be sent. Nothing was recorded.",
+        NotOpen:
+          "The event is no longer open for attendance (it was cancelled or the list was already closed). Nothing was recorded.",
+      },
     );
   };
 
@@ -235,7 +293,6 @@ export function AttendanceScreen() {
   const projected = projectedShare(info, data.challenges, toAdd);
   const counted = projected.waiting + info.openCases;
   const challengeOf = new Map(data.challenges.map((c) => [c.wallet.toLowerCase(), c]));
-  const now = event.now ?? data.now;
   // the contract refuses an empty list: say what to do, and the way out when nobody came
   const emptyGate = gate(
     !listed && canAdd && total === 0
@@ -249,7 +306,7 @@ export function AttendanceScreen() {
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
           {listed
-            ? data.now > info.challengeEndsAt
+            ? now > info.challengeEndsAt
               ? data.challenges.some((c) => c.state === 1 || c.state === 2)
                 ? `The time to add guests ended on ${when(info.challengeEndsAt)}. Guests who challenged can still be added, by a Kleros ruling or when payouts are released. See the Payout tab.`
                 : `The list is final: the time to add guests ended on ${when(info.challengeEndsAt)}. Release payouts on the Payout tab.`
@@ -317,6 +374,7 @@ export function AttendanceScreen() {
           { label: "Deposits", value: String(booked.length) },
           { label: "On the list", value: String(total) },
           { label: "No-shows", value: String(noShows) },
+          ...(challenging > 0 ? [{ label: "Challenging", value: String(challenging) }] : []),
           {
             label: "Each attendee gets",
             value: projected.share === null ? "—" : assetText(projected.share, info),
@@ -409,7 +467,7 @@ export function AttendanceScreen() {
       )}
       {!(listed && toAdd.length === 0) && (
         <GlassCard className="og-selbar og-thumb">
-          <span className="og-note">{`${total} came · ${noShows} ${noShows === 1 ? "no-show" : "no-shows"}`}</span>
+          <span className="og-note">{`${total} came · ${noShows} ${noShows === 1 ? "no-show" : "no-shows"}${challenging > 0 ? ` · ${challenging} challenging` : ""}`}</span>
           <div className="og-actions">
             {listed ? (
               <GradientButton isDisabled={!canAdd || !toAdd.length} onPress={() => setConfirm("save")}>
@@ -443,7 +501,7 @@ export function AttendanceScreen() {
           </div>
         </GlassCard>
       )}
-      {confirm && (
+      {confirm && canAdd && (
         <ConfirmDialog
           isOpen
           title={
@@ -468,7 +526,8 @@ export function AttendanceScreen() {
           figures={[
             { label: "Adding now", value: String(first.length) },
             { label: "On the list after", value: String(afterSend) },
-            { label: "No-shows", value: String(booked.length - afterSend) },
+            { label: "No-shows", value: String(booked.length - afterSend - challengingAfter) },
+            ...(challengingAfter > 0 ? [{ label: "Challenging", value: String(challengingAfter) }] : []),
           ]}
           action={final ? "Confirm and close" : listed ? `Add ${first.length}` : `Save ${first.length}`}
           busy={event.busy}

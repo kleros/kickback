@@ -10,14 +10,18 @@ export type Phase =
   | "Payouts ready"
   | "Payouts released"
   | "Cancelled"
-  | "Past the deadline";
+  | "Past the deadline"
+  | "Ended";
 
 /**
  * The event's step in plain words, from the contract's phase and the chain's time. `stillWaiting` counts the
  * challenges still inside their answer time: releasing payouts waits for them.
  */
 export function phaseOf(
-  event: Pick<EventInfo, "phase" | "eventStart" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount">,
+  event: Pick<
+    EventInfo,
+    "phase" | "eventStart" | "eventEnd" | "claimDeadline" | "challengeEndsAt" | "attendeeCount" | "stakerCount"
+  >,
   now: number,
   stillWaiting = 0,
 ): Phase {
@@ -30,6 +34,9 @@ export function phaseOf(
         ? "Challenges pending"
         : "Payouts ready";
   if (now > event.claimDeadline) return "Past the deadline";
+  // nobody holds a deposit once it ended (none made, or all turned away): nothing to confirm. After the deadline
+  // a refund also lowers stakerCount, so an empty event there stays "Past the deadline" (Overview tells which)
+  if (now >= event.eventEnd && event.stakerCount === 0) return "Ended";
   if (now < event.eventStart) return "Deposits open";
   if (now < event.eventEnd) return "Live now";
   return event.attendeeCount > 0 ? "List not closed" : "Attendance due";
@@ -40,6 +47,7 @@ export const isFull = (e: Pick<EventInfo, "capacity" | "stakerCount">) => e.capa
 
 /** The phase as the pill says it: an open event that is full says so. */
 export function phaseLabel(phase: Phase, event: Pick<EventInfo, "capacity" | "stakerCount">): string {
+  if (phase === "Ended") return "Ended · no deposits";
   return (phase === "Deposits open" || phase === "Live now") && isFull(event) ? `${phase} · full` : phase;
 }
 
@@ -113,6 +121,13 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     title: "Event cancelled",
     detail:
       "Every guest can withdraw their full deposit on the guest page, or you can send the refunds on the Payout tab.",
+    tab: null,
+    action: null,
+    done: true,
+  },
+  Ended: {
+    title: "Event ended",
+    detail: "No guest had a deposit when the event ended, so there is nothing to confirm or pay out.",
     tab: null,
     action: null,
     done: true,

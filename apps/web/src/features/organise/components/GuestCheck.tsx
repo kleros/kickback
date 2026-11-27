@@ -18,6 +18,7 @@ import { usePublicClient } from "wagmi";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
 import { organiserKey } from "../hooks/useOrganiserEvent";
+import type { WalletRecord } from "../model/record";
 import { when } from "../model/view";
 import type { GuestRow } from "../operations/read";
 
@@ -56,6 +57,9 @@ export function GuestCheck({
   closed,
   ended,
   statusOf,
+  recordOf,
+  owner,
+  me,
 }: {
   contract: Address;
   guests: readonly GuestRow[];
@@ -68,6 +72,11 @@ export function GuestCheck({
   ended?: boolean;
   /** The wallet's status as the guest list shows it ("Came", "Not on the list", "With Kleros"). */
   statusOf?: (wallet: string) => string | undefined;
+  /** The wallet's transactions, from the event's record, to say how its refund left the event. */
+  recordOf?: (wallet: string) => WalletRecord | undefined;
+  /** The event's organiser and the connected wallet, to name who sent a refund. */
+  owner?: Address;
+  me?: Address;
   /** When this browser recorded the wallet as approved on Luma. */
   approvedAt: (wallet: string) => number | undefined;
   check: (wallet: string) => number | undefined;
@@ -92,6 +101,26 @@ export function GuestCheck({
       input.current?.focus({ preventScroll: true });
     }
   }, []);
+
+  // true however the refund left (a claim, someone's send, a refused push kept owed), better when the record knows
+  const refundText = (wallet: string) => {
+    const rec = recordOf?.(wallet);
+    const refunds = rec?.payments.filter((p) => p.kind === "refund") ?? [];
+    const lastFailed = rec?.failed.filter((f) => f.kind === "refund").at(-1);
+    const last = refunds.at(-1);
+    if (lastFailed && (!last || last.block < lastFailed.block))
+      return "Their refund could not be sent to their wallet, so they can withdraw it on the guest page.";
+    if (!last) return "Their full deposit was refunded.";
+    if (last.via === "claimed") return "They withdrew their full deposit.";
+    if (last.via === "sent" && last.sender) {
+      if (me && isAddressEqual(last.sender, me) && owner && isAddressEqual(last.sender, owner))
+        return "You sent their full deposit back.";
+      if (owner && isAddressEqual(last.sender, owner)) return "The organiser sent their full deposit back.";
+      if (isAddressEqual(last.sender, wallet as Address)) return "They withdrew their full deposit.";
+      return `${last.sender.slice(0, 6)}…${last.sender.slice(-4)} sent their full deposit back.`;
+    }
+    return "Their full deposit was refunded.";
+  };
 
   /**
    * `live` is the wallet's status read from the contract at check time; `cached` is the refreshed list. A status
@@ -119,7 +148,7 @@ export function GuestCheck({
       return {
         tone: "err",
         title: ended ? "Refunded" : "Refunded: do not approve",
-        text: "This wallet withdrew its deposit.",
+        text: refundText(wallet),
         wallet,
       };
     const before = approvedAt(wallet);

@@ -203,10 +203,16 @@ export interface DepositInput {
   guests?: number;
   /** The connected wallet is the event's organiser (owner). */
   organiser?: boolean;
+  /** Challenges still waiting for the organiser's answer (the contract's waitingChallenges). */
+  waitingChallenges?: number;
+  /** Guests on the attendance list so far. */
+  attendeeCount?: number;
   /** The organiser page of this event. */
   organiserHref?: string;
   /** The event's HeldShareSplit amounts added together: what each attendee got on top of the released share. */
   heldSplit?: bigint;
+  /** How many held shares were split (HeldShareSplit logs with a non-zero amount). */
+  heldSplitCount?: number;
   /** The arbitrator takes executeRuling from anyone (Kleros Court, or the local mock). */
   canExecute?: boolean;
   /** The chain's block explorer, when it has one. */
@@ -229,6 +235,8 @@ export interface StatusLine {
   text: string;
   tone?: Tone;
   link?: { label: string; href: string };
+  /** A second link after the first ("Deposit · Refund transaction"). */
+  link2?: { label: string; href: string };
   /** An inline action the card wires up. */
   action?: { label: string; id: "recheck" };
 }
@@ -270,8 +278,35 @@ export interface DepositView {
   status?: boolean;
   /** Done/already only: the event has ended, so the "tell friends" share row is hidden. */
   ended?: boolean;
+  /** Done/already only: every spot is taken, so the invite row is hidden. */
+  full?: boolean;
   /** Copy views without a receipt: the text the copy button copies. */
   copy?: string;
+}
+
+/** The first line of the organiser's own card on the guest page: what the event's step asks of them now. */
+function organiserLine(input: DepositInput): string {
+  const now = input.chainNow ?? 0;
+  if (input.phase === 3) return "You cancelled this event. Guests can withdraw their full deposits.";
+  if (input.phase === 2) return "Payouts are released. Track them on the organiser page.";
+  if (input.phase === 1) {
+    if (input.challengeEndsAt && now <= input.challengeEndsAt)
+      return (input.waitingChallenges ?? 0) > 0
+        ? "A challenge is waiting for your answer on the organiser page."
+        : input.timeText
+          ? `Challenges are open until ${input.timeText(input.challengeEndsAt)}.`
+          : "Challenges are open for now.";
+    return input.release?.blocked
+      ? "A challenge is still waiting for your answer on the organiser page."
+      : "Challenges have closed. Release payouts on the organiser page.";
+  }
+  if (now < input.eventEnd) return "You organise this event. Guests deposit here.";
+  if (input.claimDeadline !== undefined && now > input.claimDeadline)
+    return "Attendance was not confirmed in time. Guests can withdraw their full deposits.";
+  if (!input.stakerCount) return "The event ended with no deposits: there is nothing to confirm.";
+  return (input.attendeeCount ?? 0) > 0
+    ? "Deposits are closed. Close the list on the organiser page."
+    : "Deposits are closed. Confirm who came on the organiser page.";
 }
 
 export const DEFAULT_FOOT = "Then give Luma your deposit link.";
@@ -300,7 +335,12 @@ export const txHref = (explorer: string | undefined, hash: Hash) => (explorer ? 
 
 function guestsLine(guests: number | undefined, capacity: number | undefined): StatusLine {
   if (guests === undefined) return { text: "" };
-  if (guests === 0) return { text: "Be the first to deposit." };
+  if (guests === 0)
+    return {
+      text: capacity
+        ? `Be the first to deposit · ${capacity} ${capacity === 1 ? "spot" : "spots"} left.`
+        : "Be the first to deposit.",
+    };
   const spots = capacity ? Math.max(0, capacity - guests) : 0;
   const left = capacity ? ` · ${spots} ${spots === 1 ? "spot" : "spots"} left` : "";
   return { text: `${guests} ${guests === 1 ? "deposit" : "deposits"} so far${left}.` };
@@ -383,6 +423,7 @@ export function depositState(input: DepositInput): DepositView {
     button: "Copy deposit link",
     foot: awaitingList ? null : "Paste it in Luma for approval.",
     ended: awaitingList || undefined,
+    full: (!!input.capacity && input.stakerCount !== undefined && input.stakerCount >= input.capacity) || undefined,
   });
   const etherscan = (hash: Hash) => {
     const href = txHref(explorer, hash);
@@ -557,6 +598,7 @@ export function depositState(input: DepositInput): DepositView {
     if (input.phase === 2 && guest.attended) {
       // a share held for a Kleros case that was then split among the attendees raises every attendee's share
       const extra = input.heldSplit ?? 0n;
+      const splits = Math.max(1, input.heldSplitCount ?? 1);
       const splitOnly = extra > 0n && guest.sharePaid > 0n && guest.claimable > 0n && guest.claimable <= extra;
       return moneyAction(
         "claim",
@@ -565,13 +607,23 @@ export function depositState(input: DepositInput): DepositView {
         splitOnly
           ? [
               { text: "Thanks for coming. You already have your share." },
-              { text: "This extra is a Kleros case's held share, split among attendees." },
+              {
+                text:
+                  splits === 1
+                    ? "This extra is a Kleros case's held share, split among attendees."
+                    : `This extra is ${splits} Kleros cases' held shares, split among attendees.`,
+              },
               ...both,
             ]
           : extra > 0n && guest.sharePaid === 0n
             ? [
                 { text: "Thanks for coming. Here is your payout." },
-                { text: `It includes ${fmt(extra)} ${sym} from a split Kleros case share.` },
+                {
+                  text:
+                    splits === 1
+                      ? `It includes ${fmt(extra)} ${sym} from a split Kleros case share.`
+                      : `It includes ${fmt(extra)} ${sym} from ${splits} split Kleros case shares.`,
+                },
                 ...both,
               ]
             : [{ text: "Thanks for coming. Here is your payout." }, ...both],
@@ -592,12 +644,24 @@ export function depositState(input: DepositInput): DepositView {
 
   const paidLink = history?.paidTx ? txHref(explorer, history.paidTx) : undefined;
   const paidLine = (label: string): StatusLine[] => (paidLink ? [{ text: "", link: { label, href: paidLink } }] : []);
+  // a closed-out guest keeps the proof of both money movements: the deposit, then the refund or payout
+  const depositLink = history?.txHash ? txHref(explorer, history.txHash) : undefined;
+  const proofLine = (payLabel?: string): StatusLine | undefined => {
+    const deposit = depositLink ? { label: "Deposit", href: depositLink } : undefined;
+    const pay = payLabel && paidLink ? { label: payLabel, href: paidLink } : undefined;
+    const first = deposit ?? pay;
+    if (!first) return undefined;
+    return { text: "Transactions", link: first, link2: deposit && pay ? pay : undefined };
+  };
 
   if (guest && input.phase === 2 && guest.attended)
     return readOnly(
       "paid-out",
       "Paid out",
-      [{ text: `Sent to ${me}. All done.` }, ...paidLine("Payout transaction")],
+      [
+        { text: `Sent to ${me}. All done.` },
+        ...[proofLine("Payout") ?? paidLine("Payout transaction")[0]].filter((l): l is StatusLine => !!l),
+      ],
       guest.sharePaid,
       undefined,
       "Nothing left to do",
@@ -616,11 +680,7 @@ export function depositState(input: DepositInput): DepositView {
   const appealOpen = (c: NonNullable<typeof challenge>) => !!c.appeal && c.appeal.end > 0;
   // in the appeal window the jurors have voted: say how, and what is left to do, in two lines
   const rulingText = (r: number) =>
-    r === 1
-      ? "Jurors ruled you came."
-      : r === 2
-        ? "Jurors ruled you did not come."
-        : "Jurors did not rule either way.";
+    r === 1 ? "Jurors ruled you came." : r === 2 ? "Jurors ruled you did not come." : "Jurors did not rule either way.";
   const disputedLines = (c: NonNullable<typeof challenge>): StatusLine[] => {
     const a = c.appeal;
     // the jurors have ruled and the ruling is final; it only has to be recorded on Kleros
@@ -723,7 +783,10 @@ export function depositState(input: DepositInput): DepositView {
     return readOnly(
       "not-attended",
       "Not on the attendance list",
-      [{ text: ruled ? ruledText : "Your deposit went to the guests who came." }],
+      [
+        { text: ruled ? ruledText : "Your deposit went to the guests who came." },
+        ...[proofLine()].filter((l): l is StatusLine => !!l),
+      ],
       amount,
       undefined,
       "Nothing left to do",
@@ -819,7 +882,7 @@ export function depositState(input: DepositInput): DepositView {
       return readOnly(
         "not-attended",
         "Not on the attendance list",
-        [{ text: ruledText }],
+        [{ text: ruledText }, ...[proofLine()].filter((l): l is StatusLine => !!l)],
         amount,
         undefined,
         "Nothing left to do",
@@ -883,7 +946,7 @@ export function depositState(input: DepositInput): DepositView {
     return readOnly(
       "not-attended",
       "Not on the attendance list",
-      [{ text: "The challenge window has closed." }],
+      [{ text: "The challenge window has closed." }, ...[proofLine()].filter((l): l is StatusLine => !!l)],
       amount,
       undefined,
       "Nothing left to do",
@@ -902,7 +965,11 @@ export function depositState(input: DepositInput): DepositView {
               : "The organiser returned your deposit in full.",
         },
         // the proof of the refund, as the organiser's record has it; without it, the rule takes the line
-        ...(paidLink ? paidLine("Refund transaction") : [{ text: "This wallet cannot deposit again." }]),
+        ...(depositLink && paidLink
+          ? [proofLine("Refund")!]
+          : paidLink
+            ? paidLine("Refund transaction")
+            : [{ text: "This wallet cannot deposit again." }]),
       ],
       action: "none",
       button: "Deposit returned",
@@ -917,9 +984,15 @@ export function depositState(input: DepositInput): DepositView {
       [
         // only a cancelled event (phase 3) or a missed deadline (phase 0) returns a deposit this way
         { text: input.phase === 3 ? "The organiser cancelled the event." : "Attendance was not confirmed in time." },
-        paidLink
-          ? { text: "Your deposit was returned in full", link: { label: "Refund transaction", href: paidLink } }
-          : { text: "Your deposit was returned in full." },
+        depositLink && paidLink
+          ? {
+              text: "Returned in full",
+              link: { label: "Deposit", href: depositLink },
+              link2: { label: "Refund", href: paidLink },
+            }
+          : paidLink
+            ? { text: "Your deposit was returned in full", link: { label: "Refund transaction", href: paidLink } }
+            : { text: "Your deposit was returned in full." },
       ],
       amount,
       undefined,
@@ -1040,7 +1113,7 @@ export function depositState(input: DepositInput): DepositView {
       key: "organiser",
       label: "Your event",
       lines: [
-        { text: "You created this event. Guests deposit here." },
+        { text: organiserLine(input) },
         input.organiserHref
           ? { text: "", link: { label: "Manage it on the organiser page", href: input.organiserHref } }
           : { text: "Manage it on the organiser page." },
@@ -1251,6 +1324,8 @@ export function depositState(input: DepositInput): DepositView {
       ],
       shake: true,
       ...deposit,
+      // a final refusal leaves nothing to give Luma
+      foot: hit ? null : DEFAULT_FOOT,
       button: hit ? hit[1] : "Try again",
       disabled: hit ? true : input.busy,
     };

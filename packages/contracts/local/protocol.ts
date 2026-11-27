@@ -257,7 +257,15 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
   const u = String(form.url ?? "").trim();
   const bytes = (s: string) => new TextEncoder().encode(s).length;
   if (!n) throw new Error("Give the event a name.");
-  if (bytes(n) > MAX_NAME) throw new Error(`The name is too long (${MAX_NAME} characters at most; some symbols count as more than one).`);
+  if (bytes(n) > MAX_NAME) {
+    // the contract counts bytes: say exactly how many characters to remove from the end, whatever the script
+    const chars = Array.from(n);
+    let cut = 0;
+    while (bytes(chars.slice(0, chars.length - cut).join("")) > MAX_NAME) cut++;
+    throw new Error(
+      `The name is too long. Remove ${cut} character${cut === 1 ? "" : "s"} (accented letters and emoji take more room than plain letters).`,
+    );
+  }
   if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes or line breaks.');
   if (bytes(u) > MAX_URL) throw new Error("The event link is too long.");
   if (u && !/^https:\/\/\S+$/.test(u)) throw new Error("The event link must start with https://.");

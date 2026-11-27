@@ -24,14 +24,14 @@ export function HomeEvents() {
       <p className="home-empty">No featured events yet. Guests find each event on Luma.</p>
       {rows.length > 0 && (
         <>
-          <h3 className="home-eyebrow home-mine">Events you created</h3>
+          <h3 className="home-eyebrow home-mine">Events you organise</h3>
           <EventsList
             rows={rows}
             hrefOf={(row) => paths.organiseEvent.getHref(row.contract)}
             statusOf={organiserStatus}
           />
           {(mine.data?.length ?? 0) > rows.length && (
-            <Link href={paths.organise.getHref()} className="kb-link text-sm">
+            <Link href={paths.organise.getHref()} className="kb-link kb-tap text-sm">
               See all in Manage your events
             </Link>
           )}

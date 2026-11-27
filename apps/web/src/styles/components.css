@@ -425,6 +425,20 @@ body {
   text-decoration-color: currentColor;
 }
 
+/* a standalone text link on a touch screen: a 44 px tall hit box around its 20 px line, with no layout shift */
+@media (pointer: coarse) {
+  .kb-link.kb-tap,
+  .kb-wordmark {
+    position: relative;
+  }
+  .kb-link.kb-tap::after,
+  .kb-wordmark::after {
+    content: "";
+    position: absolute;
+    inset: -12px -6px;
+  }
+}
+
 /* ---------- disclosure: grid rows 0fr→1fr, body inert while closed ---------- */
 .kb-disc-trigger {
   display: flex;

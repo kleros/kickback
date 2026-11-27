@@ -1,7 +1,7 @@
 import { parseEther } from "viem";
 import { describe, expect, it } from "vitest";
 
-import { depositState } from "../depositState";
+import { depositState, type DepositInput } from "../depositState";
 import { baseInput, FIXTURE, galleryInput } from "../fixtures";
 
 describe("depositState", () => {
@@ -173,8 +173,13 @@ describe("challenge window while the chain's time loads", () => {
     const view = depositState(galleryInput("refunded"));
     expect(view.key).toBe("refunded");
     expect(view.lines).toHaveLength(2);
-    expect(view.lines[1]?.link?.label).toBe("Refund transaction");
+    // both money movements: the deposit, then the refund
+    expect(view.lines[1]?.link?.label).toBe("Deposit");
+    expect(view.lines[1]?.link2?.label).toBe("Refund");
     expect(view.foot).toBe("This wallet cannot deposit again.");
+    // without the deposit's transaction, the refund link alone
+    const noDeposit = depositState({ ...galleryInput("refunded"), history: { paidTx: FIXTURE.tx } });
+    expect(noDeposit.lines[1]?.link?.label).toBe("Refund transaction");
   });
 
   it("gives a wallet with no deposit the reason deposits are closed, first", () => {
@@ -273,11 +278,44 @@ describe("depositState: round 2 fixes", () => {
     expect(view.key).toBe("organiser");
     expect(view.action).toBe("none");
     expect(view.foot).toBeNull();
-    expect(text(view)).toContain("You created this event");
+    expect(view.lines[0]?.text).toBe("You organise this event. Guests deposit here.");
     expect(view.lines[1]?.link?.href).toBe("/organise/0xabc");
     // after the end too: no "No deposit from 0x…"
     const after = depositState({ ...baseInput(), organiser: true, chainNow: baseInput().eventEnd + 60 });
     expect(after.key).toBe("organiser");
+  });
+
+  it("the organiser's card follows the event's step", () => {
+    const b = baseInput();
+    const end = b.eventEnd;
+    const line = (over: Partial<DepositInput>) =>
+      depositState({ ...b, organiser: true, stakerCount: 3, claimDeadline: end + 7 * 86_400, ...over }).lines[0]?.text;
+    expect(line({ chainNow: end + 60 })).toBe("Deposits are closed. Confirm who came on the organiser page.");
+    expect(line({ chainNow: end + 60, attendeeCount: 2 })).toBe(
+      "Deposits are closed. Close the list on the organiser page.",
+    );
+    expect(line({ chainNow: end + 60, stakerCount: 0 })).toBe(
+      "The event ended with no deposits: there is nothing to confirm.",
+    );
+    expect(line({ chainNow: end + 8 * 86_400 })).toBe(
+      "Attendance was not confirmed in time. Guests can withdraw their full deposits.",
+    );
+    const listed = { phase: 1, challengeEndsAt: end + 86_400, chainNow: end + 3600 };
+    expect(line({ ...listed, waitingChallenges: 1 })).toBe(
+      "A challenge is waiting for your answer on the organiser page.",
+    );
+    expect(line({ ...listed, timeText: () => "Wed 4 Nov, 18:00" })).toBe("Challenges are open until Wed 4 Nov, 18:00.");
+    const after = { ...listed, chainNow: end + 2 * 86_400 };
+    expect(line({ ...after, release: { expired: [], blocked: true } })).toBe(
+      "A challenge is still waiting for your answer on the organiser page.",
+    );
+    expect(line({ ...after, release: { expired: [], blocked: false } })).toBe(
+      "Challenges have closed. Release payouts on the organiser page.",
+    );
+    expect(line({ phase: 2, chainNow: end + 3 * 86_400 })).toBe(
+      "Payouts are released. Track them on the organiser page.",
+    );
+    expect(line({ phase: 3 })).toBe("You cancelled this event. Guests can withdraw their full deposits.");
   });
 
   it("an organiser who deposited keeps the guest views for their own money", () => {
@@ -331,6 +369,61 @@ describe("depositState: round 2 fixes", () => {
       guest: guest({ attended: true, claimable: share + extra }),
     });
     expect(text(unclaimed)).toContain("It includes 0.002 ETH from a split Kleros case share.");
+    expect(
+      text({
+        ...depositState({
+          ...baseInput(),
+          phase: 2,
+          heldSplit: extra,
+          heldSplitCount: 2,
+          guest: guest({ attended: true, claimable: share + extra }),
+        }),
+      }),
+    ).toContain("It includes 0.002 ETH from 2 split Kleros case shares.");
+    expect(
+      text(
+        depositState({
+          ...baseInput(),
+          phase: 2,
+          heldSplit: extra,
+          heldSplitCount: 2,
+          guest: guest({ attended: true, sharePaid: share, claimable: extra }),
+        }),
+      ),
+    ).toContain("This extra is 2 Kleros cases' held shares, split among attendees.");
+  });
+
+  it("a closed-out guest keeps the deposit transaction", () => {
+    const b = baseInput();
+    const hist = { txHash: FIXTURE.tx, paidTx: FIXTURE.tx };
+    const withdrawn = depositState({ ...b, phase: 3, guest: guest({ status: 3 }), history: hist });
+    expect(withdrawn.lines).toHaveLength(2);
+    expect(withdrawn.lines[1]?.link?.label).toBe("Deposit");
+    expect(withdrawn.lines[1]?.link2?.label).toBe("Refund");
+    const paid = depositState({ ...galleryInput("paid-out"), history: hist });
+    expect(paid.lines[1]?.link?.label).toBe("Deposit");
+    expect(paid.lines[1]?.link2?.label).toBe("Payout");
+    const off = depositState({ ...b, phase: 2, guest: guest({ status: 1 }), history: { txHash: FIXTURE.tx } });
+    expect(off.key).toBe("not-attended");
+    expect(off.lines[1]?.link?.label).toBe("Deposit");
+  });
+
+  it("a final refusal leaves no Luma line under the button", () => {
+    const refusal = (errorName: string) =>
+      depositState({
+        ...baseInput(),
+        guest: guest({ status: 0 }),
+        send: { account: FIXTURE.wallet, status: "error", errorKind: "refused", errorName },
+      });
+    for (const name of ["TooLate", "EventFull", "WasRejected"]) expect(refusal(name).foot).toBeNull();
+    expect(refusal("SomethingElse").foot).toBe("Then give Luma your deposit link.");
+  });
+
+  it("hides the invite row once every spot is taken, and says how many spots an empty event has", () => {
+    expect(depositState({ ...galleryInput("already"), capacity: 2, stakerCount: 2 }).full).toBe(true);
+    expect(depositState({ ...galleryInput("already"), capacity: 3, stakerCount: 2 }).full).toBeUndefined();
+    const empty = depositState({ ...galleryInput("rest"), guests: 0, capacity: 1 });
+    expect(text(empty)).toContain("Be the first to deposit · 1 spot left.");
   });
 
   it("a final ruling not recorded yet is never 'jurors are deciding'", () => {

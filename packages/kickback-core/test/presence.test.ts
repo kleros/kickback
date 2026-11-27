@@ -78,6 +78,48 @@ describe("reading an event", () => {
   });
 });
 
+describe("events a wallet organises", () => {
+  const k = chainKit();
+
+  test("eventsOwnedBy follows a handover and ignores look-alike logs", async () => {
+    const ev = await deployLocalEvent({ walletClient: k.wallet(0), publicClient: k.client, name: "Kept" });
+    const now = (await k.client.getBlock()).timestamp;
+    const handed = await createEvent(
+      { walletClient: k.wallet(0), publicClient: k.client },
+      ev.factory,
+      localEventConfig(now, { name: "Handed over" }),
+    );
+    const hand = async (event: `0x${string}`, from: number, to: number) => {
+      await k.mined(
+        await k.wallet(from).writeContract({
+          address: event,
+          abi: presenceEventAbi,
+          functionName: "transferOwnership",
+          args: [k.addr(to)],
+        }),
+      );
+      await k.mined(
+        await k.wallet(to).writeContract({ address: event, abi: presenceEventAbi, functionName: "acceptOwnership" }),
+      );
+    };
+    await hand(handed.event, 0, 3);
+    // an event of another factory, handed to the same wallet: same log signature, not this factory's
+    const other = await deployLocalEvent({ walletClient: k.wallet(1), publicClient: k.client });
+    await hand(other.event, 1, 3);
+
+    const of3 = await core.eventsOwnedBy(k.client, ev.factory, k.addr(3));
+    expect(of3).toEqual([handed.event]);
+    const of0 = await core.eventsOwnedBy(k.client, ev.factory, k.addr(0));
+    expect(of0).toContain(ev.event);
+    expect(of0).not.toContain(handed.event);
+
+    // handed on again: it leaves the second wallet's list
+    await hand(handed.event, 3, 4);
+    expect(await core.eventsOwnedBy(k.client, ev.factory, k.addr(3))).toEqual([]);
+    expect(await core.eventsOwnedBy(k.client, ev.factory, k.addr(4))).toEqual([handed.event]);
+  });
+});
+
 describe("attendance from a check-in CSV", () => {
   const a = getAddress("0x00000000000000000000000000000000000000aa");
   const b = getAddress("0x00000000000000000000000000000000000000bb");

@@ -17,9 +17,9 @@ import { ConfirmDialog } from "./parts";
 import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import { recordCsv, type RecordCsvRow, type WalletRecord } from "../model/record";
+import { recordCsv, type EventRecord, type RecordCsvRow, type WalletRecord } from "../model/record";
 import { assetText, shortHex } from "../model/view";
-import type { GuestRow } from "../operations/read";
+import type { GuestRow, OrganiserState } from "../operations/read";
 import { tx } from "../operations/tx";
 
 /** Seconds before the start when turning guests away stops: about one block, so a send still lands in time. */
@@ -52,6 +52,13 @@ export function guestStatus(
   if (row.attended) return { text: "Came", tone: "ok" };
   if (row.challenge?.state === 1) return { text: "Challenged", tone: "warn" };
   if (row.challenge?.state === 2) return { text: "With Kleros", tone: "warn" };
+  // after the release a guest off the list has had their deposit shared among the attendees
+  if (phase === 2) {
+    const c = row.challenge;
+    const why =
+      c?.state === 3 ? (c.ruling === 0 ? " (Kleros did not rule either way)" : " (challenge lost at Kleros)") : "";
+    return { text: `Did not come${why} · deposit shared`, tone: "end" };
+  }
   return { text: "Not on the list", tone: "end" };
 }
 
@@ -64,7 +71,28 @@ function txLinks(rec: WalletRecord | undefined) {
   if (!rec) return [];
   const links: { label: string; tx: string }[] = [];
   if (rec.deposit) links.push({ label: "Deposit", tx: rec.deposit.tx });
-  if (rec.challenge) links.push({ label: "Challenge", tx: rec.challenge.tx });
+  const c = rec.challenge;
+  if (c) {
+    links.push({ label: "Challenge", tx: c.tx });
+    if (c.answer)
+      links.push({
+        label:
+          c.answer.kind === "kleros"
+            ? `Sent to Kleros (case ${c.answer.caseId})`
+            : c.answer.kind === "added"
+              ? "Added"
+              : c.answer.kind === "unanswered"
+                ? "Accepted (no answer in time)"
+                : "Accepted",
+        tx: c.answer.tx,
+      });
+  }
+  // a Kleros fee this wallet paid to send someone else's challenge to Kleros
+  links.push(
+    ...rec.klerosFees
+      .filter((f) => !links.some((l) => l.tx === f.tx))
+      .map((f) => ({ label: `Kleros fee (case ${f.caseId})`, tx: f.tx })),
+  );
   links.push(
     ...numbered(
       "Refund",
@@ -83,8 +111,14 @@ function txLinks(rec: WalletRecord | undefined) {
       rec.payments.filter((p) => p.kind === "challenge"),
     ),
   );
+  // the settlement and the held-share split, unless a payment above already links the same transaction
+  if (c?.resolved && !links.some((l) => l.tx === c.resolved!.tx)) links.push({ label: "Settled", tx: c.resolved.tx });
+  if (c?.heldSplit && !links.some((l) => l.tx === c.heldSplit!.tx))
+    links.push({ label: "Share split", tx: c.heldSplit.tx });
   return links;
 }
+
+const guestsText = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
 
 const sum = (list: readonly { amount: bigint }[]) => list.reduce((total, p) => total + p.amount, 0n);
 const sameWallet = (a: string | undefined, b: string | undefined) => !!a && !!b && a.toLowerCase() === b.toLowerCase();
@@ -96,6 +130,8 @@ export function GuestsScreen() {
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   const [search, setSearch] = useState("");
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
   const firstSeen = useRef<Set<string> | null>(null);
   const data = event.overview.data;
   const guests = useMemo(() => data?.guests ?? [], [data]);
@@ -107,6 +143,24 @@ export function GuestsScreen() {
     setSearch("");
     setConfirm(false);
   }, [accountKey]);
+  // the status (15 s poll) and the transactions (30 s poll) are two reads: when the status changes (a claim, a
+  // refund, a challenge), read the transactions again so no row says "paid" without its payout link for long
+  const sig = data
+    ? [
+        [...data.sharePaid].join(),
+        data.refused.join(),
+        data.event.phase,
+        data.event.stakerCount,
+        data.guests.map((g) => `${g.status}${g.attended ? 1 : 0}${g.challenge?.state ?? ""}`).join(),
+      ].join("|")
+    : "";
+  const lastSig = useRef<string | null>(null);
+  const refetchRecord = record.refetch;
+  useEffect(() => {
+    if (!sig) return;
+    if (lastSig.current !== null && lastSig.current !== sig) void refetchRecord();
+    lastSig.current = sig;
+  }, [sig, refetchRecord]);
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
   if (firstSeen.current === null) firstSeen.current = new Set(guests.map((g) => g.wallet.toLowerCase()));
@@ -144,8 +198,45 @@ export function GuestsScreen() {
         }
       : undefined;
   const statusOfRow = (g: GuestRow) => guestStatus(g, info.phase, closed !== undefined, payOf(g.wallet));
-  const download = () => {
-    const r = record.data;
+  // the record is built from a fresh read of both the status and the logs, in that order, so the logs are never
+  // older than the status they explain
+  const download = async () => {
+    setDownloading(true);
+    setDownloadError(false);
+    try {
+      const o = await event.overview.refetch();
+      const rr = await record.refetch();
+      if (o.isError || rr.isError || !o.data || !rr.data) {
+        setDownloadError(true);
+        return;
+      }
+      saveRecord(o.data, rr.data);
+    } finally {
+      setDownloading(false);
+    }
+  };
+  const saveRecord = (d: OrganiserState, r: EventRecord) => {
+    const info = d.event;
+    const guests = d.guests;
+    const now = Math.max(d.now, event.now ?? 0);
+    const closed = info.phase === 3 || (info.phase === 0 && now > info.claimDeadline);
+    const refusedSet = new Set(d.refused.map((w) => w.toLowerCase()));
+    const recOf = (wallet: string) => r.wallets.get(wallet.toLowerCase());
+    const statusOfRow = (g: GuestRow) =>
+      guestStatus(
+        g,
+        info.phase,
+        closed,
+        info.phase === 2
+          ? {
+              sharePaid: d.sharePaid.get(g.wallet.toLowerCase()),
+              payoutShare: info.payoutShare,
+              refused: refusedSet.has(g.wallet.toLowerCase()),
+            }
+          : undefined,
+      );
+    const splitAmong = (h: { attendees: bigint; openCases: bigint }) =>
+      `${h.attendees} ${h.attendees === 1n ? "attendee" : "attendees"}${h.openCases > 0n ? ` and ${h.openCases} open ${h.openCases === 1n ? "case" : "cases"}` : ""}`;
     // the record is exact: every amount in full, never the rounded text of the screen
     const exact = (units: bigint, eth = false) =>
       eth && info.symbol !== "ETH"
@@ -223,7 +314,7 @@ export function GuestsScreen() {
             ? "Came"
             : c.resolved.ruling === 2
               ? "Did not come"
-              : "Refused to rule (split)"
+              : "Did not rule either way (fees split)"
           : answer?.kind === "kleros"
             ? "Not ruled yet"
             : undefined,
@@ -234,14 +325,14 @@ export function GuestsScreen() {
           ...failedNotes(rec),
           ...(c?.heldSplit
             ? [
-                `Their held share was split among the attendees: ${exact(c.heldSplit.each)} each: ${txUrl(c.heldSplit.tx)}`,
+                `Their held share was split among the ${splitAmong(c.heldSplit)} (${exact(c.heldSplit.each)} each), transaction ${txUrl(c.heldSplit.tx)}`,
               ]
             : []),
         ].join(" | "),
       };
     });
     // everyone else the event paid or who paid a Kleros fee: the matcher (often the organiser), any other wallet
-    const others: RecordCsvRow[] = [...(r?.wallets.entries() ?? [])]
+    const others: RecordCsvRow[] = [...r.wallets.entries()]
       .filter(
         ([key, rec]) =>
           !isGuest.has(key) && (rec.payments.length > 0 || rec.klerosFees.length > 0 || rec.failed.length > 0),
@@ -250,7 +341,7 @@ export function GuestsScreen() {
         const organiser = sameWallet(key, info.owner);
         const n = rec.klerosFees.length;
         return {
-          wallet: key,
+          wallet: getAddress(key),
           status: n
             ? `Sent ${n} ${n === 1 ? "case" : "cases"} to Kleros${organiser ? " (organiser)" : ""}`
             : organiser
@@ -277,26 +368,35 @@ export function GuestsScreen() {
           : isGuest.has(w.toLowerCase())
             ? `the guest ${getAddress(w)}`
             : getAddress(w);
+    const raised = !!r.released && info.payoutShare !== r.released.share;
+    const splits = [...r.wallets.entries()].filter(([, rec]) => rec.challenge?.heldSplit);
     const steps = [
       r?.created && { label: "Event created", tx: txUrl(r.created.tx) },
       r?.listClosed && { label: "Attendance list closed", detail: "By the organiser", tx: txUrl(r.listClosed.tx) },
       r?.released && {
         label: "Payouts released",
         detail: [
-          `Each attendee's share: ${exact(r.released.share)}`,
+          raised ? `Share at release: ${exact(r.released.share)}` : `Each attendee's share: ${exact(r.released.share)}`,
           r.released.by && `Released by ${releasedBy(r.released.by)}`,
         ]
           .filter(Boolean)
           .join("; "),
         tx: txUrl(r.released.tx),
       },
-      ...[...(r?.wallets.entries() ?? [])]
-        .filter(([, rec]) => rec.challenge?.heldSplit)
-        .map(([key, rec]) => ({
-          label: "Lost case's share split among the attendees",
-          detail: `${key}: ${exact(rec.challenge!.heldSplit!.each)} each`,
-          tx: txUrl(rec.challenge!.heldSplit!.tx),
-        })),
+      ...splits.map(([key, rec]) => {
+        const h = rec.challenge!.heldSplit!;
+        const name = luma.nameOf(key);
+        return {
+          label: "Held share split",
+          detail: `${name ? `${name} ` : ""}${getAddress(key)}: split among the ${splitAmong(h)}, ${exact(h.each)} each`,
+          tx: txUrl(h.tx),
+        };
+      }),
+      raised && {
+        label: "Final share per attendee",
+        detail: `Each attendee's share after the held shares were split: ${exact(info.payoutShare)}`,
+        tx: splits.length ? txUrl(splits[splits.length - 1]![1].challenge!.heldSplit!.tx) : "",
+      },
       r?.cancelled && { label: "Event cancelled", detail: "By the organiser", tx: txUrl(r.cancelled.tx) },
     ].filter((step): step is { label: string; detail?: string; tx: string } => !!step);
     const blob = new Blob([recordCsv([...rows, ...others], steps)], { type: "text/csv" });
@@ -355,6 +455,9 @@ export function GuestsScreen() {
           check={luma.check}
           closed={closed}
           ended={ended}
+          recordOf={recOf}
+          owner={info.owner}
+          me={event.account}
           statusOf={(w) => {
             const g = guests.find((x) => x.wallet.toLowerCase() === w.toLowerCase());
             return g ? statusOfRow(g).text : undefined;
@@ -363,7 +466,7 @@ export function GuestsScreen() {
       </GlassCard>
       {event.isOwner && (
         <GlassCard className="og-card">
-          <LumaMatch booked={booked} onRows={luma.add} ended={ended} />
+          <LumaMatch contract={event.address} booked={booked} onRows={luma.add} ended={ended} />
         </GlassCard>
       )}
 
@@ -390,17 +493,30 @@ export function GuestsScreen() {
           <p className="og-note">Names appear once you load the Luma export above. They stay in this browser only.</p>
         )}
         <div className="og-actions">
-          <GradientButton className="is-quiet" isDisabled={!record.data} onPress={download}>
+          <GradientButton
+            className="is-quiet"
+            isDisabled={!record.data || downloading}
+            isPending={downloading}
+            onPress={() => void download()}
+          >
             Download the record (CSV)
           </GradientButton>
-          <span className="og-note">
-            {record.isError
-              ? "The transactions could not be read. Reload to try again."
-              : record.data
-                ? guests.length > 0
-                  ? "Every guest with their deposit and payout transactions."
-                  : "The event's transactions so far. Each guest's deposit and payout transactions are added as they happen."
-                : "Reading the transactions…"}
+          <span className="og-note" role={downloadError ? "alert" : undefined}>
+            {downloadError
+              ? "The transactions could not be read. Try again."
+              : record.isError
+                ? "The transactions could not be read. Reload to try again."
+                : record.data
+                  ? guests.length > 0
+                    ? info.phase === 2
+                      ? "Every guest with their deposit, refund, challenge and payout transactions."
+                      : closed
+                        ? "Every guest with their transactions so far. Each refund is added as it happens."
+                        : "Every guest with their transactions so far. Payouts are added once they are released."
+                    : closed
+                      ? "The event's transactions so far."
+                      : "The event's transactions so far. Each guest's deposit, refund and payout transactions are added as they happen."
+                  : "Reading the transactions…"}
           </span>
         </div>
         {guests.length > 0 && (
@@ -441,7 +557,9 @@ export function GuestsScreen() {
                   <div className="og-row-main">
                     <span className="og-cell-person">
                       {name ? (
-                        <span className="og-cell-name">{name}</span>
+                        <span className="og-cell-name" title={name}>
+                          {name}
+                        </span>
                       ) : (
                         <span className="og-cell-noname" title="Load the Luma export above to see names">
                           —
@@ -520,8 +638,8 @@ export function GuestsScreen() {
                 onPress={() => setConfirm(true)}
               >
                 {batched
-                  ? `Turn away ${first.length} of ${chosen.length} · refund now`
-                  : `Turn away ${chosen.length} · refund now`}
+                  ? `Turn away ${first.length} of ${guestsText(chosen.length)} · refund now`
+                  : `Turn away ${guestsText(chosen.length)} · refund now`}
               </GradientButton>
             </div>
           </GlassCard>
@@ -533,14 +651,14 @@ export function GuestsScreen() {
         <ConfirmDialog
           isOpen
           title={first.length === 1 ? "Turn a guest away" : `Turn ${first.length} guests away`}
-          intro={`Each wallet gets ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.${
+          intro={`${first.length === 1 ? "They get" : "Each guest gets"} ${assetText(info.depositAmount, info)} back now and cannot deposit for this event again.${
             batched
               ? ` This sends the first ${first.length} of ${chosen.length}. Send the rest after it is confirmed.`
               : ""
           }`}
           words={[]}
           figures={[
-            { label: "Wallets", value: String(first.length) },
+            { label: "Guests", value: String(first.length) },
             { label: "To refund", value: assetText(info.depositAmount * BigInt(first.length), info) },
           ]}
           extra={
@@ -553,7 +671,7 @@ export function GuestsScreen() {
               ))}
             </ul>
           }
-          action={`Turn away ${first.length}`}
+          action={`Turn away ${guestsText(first.length)}`}
           busy={event.busy}
           error={null}
           onClose={() => setConfirm(false)}

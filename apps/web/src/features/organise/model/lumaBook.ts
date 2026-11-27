@@ -12,7 +12,7 @@ export interface LumaPerson {
 export type LumaBook = Record<string, LumaPerson>;
 export type CheckedBook = Record<string, number>;
 
-const key = (contract: string, kind: "names" | "checked") => `kb:luma:${kind}:${contract.toLowerCase()}`;
+const key = (contract: string, kind: "names" | "checked" | "export") => `kb:luma:${kind}:${contract.toLowerCase()}`;
 
 function read<T>(k: string): T | null {
   try {
@@ -60,4 +60,29 @@ export function markChecked(contract: string, wallet: string, at: number): { boo
   if (before === undefined) book[wallet.toLowerCase()] = at;
   write(key(contract, "checked"), book);
   return { book, before };
+}
+
+/** The last Luma export loaded for this event (its raw text), so the match list comes back after a reload. */
+export interface SavedExport {
+  name: string;
+  text: string;
+  /** Date.now() when it was loaded. */
+  at: number;
+}
+
+export const readExport = (contract: string): SavedExport | null => read<SavedExport>(key(contract, "export"));
+
+export function writeExport(contract: string, file: SavedExport) {
+  write(key(contract, "export"), file);
+}
+
+/** Forgets the saved export and the names it gave; the door checks stay, so nobody is approved twice. */
+export function forgetLuma(contract: string) {
+  try {
+    window.localStorage.removeItem(key(contract, "export"));
+    window.localStorage.removeItem(key(contract, "names"));
+  } catch {
+    // storage blocked: nothing was kept
+  }
+  window.dispatchEvent(new Event("kb-luma"));
 }

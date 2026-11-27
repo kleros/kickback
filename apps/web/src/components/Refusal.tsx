@@ -8,9 +8,9 @@ import type { RefusalReason } from "@/lib/presence";
 import { paths } from "@/config/paths";
 
 export const REFUSAL_BODY: Record<RefusalReason, string> = {
-  "not-address": "This link has no event address in it.",
+  "not-address": "This link does not contain a complete event address.",
   "no-contract": "There is no event at this address.",
-  "not-kickback": "This address is not a contract we can verify.",
+  "not-kickback": "This address is a contract, but not a Kickback event.",
   "look-alike": "This contract looks like a Kickback event, but this site did not create it.",
 };
 
@@ -35,7 +35,7 @@ export function Refusal({
           <>
             <p>Check the link on the event&apos;s Luma page.</p>
             <p>
-              <Link className="kb-link" href={paths.home.getHref()}>
+              <Link className="kb-link kb-tap" href={paths.home.getHref()}>
                 Go to the home page
               </Link>
             </p>

@@ -139,7 +139,7 @@ export function FilePick({
           event.currentTarget.value = "";
         }}
       />
-      <Button className="kb-link" onPress={() => input.current?.click()}>
+      <Button className="kb-link kb-tap" onPress={() => input.current?.click()}>
         {file ? "Replace" : "Choose"}
       </Button>
     </GlassCard>

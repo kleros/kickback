@@ -22,7 +22,7 @@ const STEPS = [
   },
   {
     title: "Show up",
-    body: "Guests get their Luma QR code scanned at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
+    body: "Guests are checked in on Luma at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
@@ -136,8 +136,9 @@ export function HomeScreen({ events }: { events: ReactNode }) {
           there, and independent jurors decide under a public attendance policy.
         </p>
         <p className="home-note">
-          {isSepolia ? "Cases here go to the Kleros test court (Sepolia). " : ""}The contracts have no owner and cannot
-          be changed: nobody, not even the organiser, can take the deposits.
+          {isSepolia ? "Cases here go to the Kleros test court (Sepolia). " : ""}The contracts have no admin and cannot
+          be changed or upgraded. The organiser can only turn guests away (with a full refund), post who came or cancel
+          the event: nobody, not even the organiser, can take the deposits.
         </p>
       </GlassCard>
     </div>

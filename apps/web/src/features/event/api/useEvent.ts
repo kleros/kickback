@@ -77,6 +77,8 @@ export interface EventDeposits {
   byWallet: Map<string, WalletDeposits>;
   /** HeldShareSplit amounts added together: what a lost Kleros case's held share added to every attendee's share. */
   heldSplit: bigint;
+  /** How many held shares were split (logs with a non-zero amount). */
+  heldSplitCount: number;
 }
 
 const DEPOSITED = getAbiItem({ abi: presenceEventAbi, name: "Deposited" });
@@ -120,6 +122,8 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
         ).size,
         byWallet,
         heldSplit,
+        // each split counts once, unless its amount rounded down to nothing
+        heldSplitCount: logs.filter((log) => log.eventName === "HeldShareSplit" && (log.args.each ?? 0n) > 0n).length,
       };
     },
   });

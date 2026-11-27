@@ -29,6 +29,13 @@ describe("shareExample", () => {
 
   it("falls back to ten deposits under two registered", () => {
     expect(shareExample(parseEther("0.01"), 0)).toMatchObject({ deposits: 10, attend: 8, real: false });
+    // the illustration never shows more deposits than the event has spots
+    const d = parseEther("0.01");
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 0)).toMatchObject({ deposits: 10, attend: 8 });
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 1)).toMatchObject({ deposits: 1, attend: 1, noShows: 0 });
+    expect(shareExample(d, 1, undefined, undefined, 0, 0, 1).back).toBe(d);
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 2)).toMatchObject({ deposits: 2, attend: 1, noShows: 1 });
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 5)).toMatchObject({ deposits: 5, attend: 4, noShows: 1 });
   });
 
   it("uses the posted list once there is one, and never divides by zero", () => {

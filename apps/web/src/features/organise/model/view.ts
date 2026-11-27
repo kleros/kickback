@@ -45,6 +45,7 @@ export const PHASE_TONE: Record<Phase, Tone> = {
   "Payouts released": "end",
   Cancelled: "end",
   "Past the deadline": "warn",
+  Ended: "end",
 };
 
 /**

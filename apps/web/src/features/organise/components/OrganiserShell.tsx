@@ -47,7 +47,7 @@ export function ShellView({
   const current = tabs.find((tab) => tab.href.split("?")[0] === pathname)?.href ?? tabs[0]!.href;
   const back = (
     <div className="og-head">
-      <Link href={paths.organise.getHref()} className="kb-link text-sm">
+      <Link href={paths.organise.getHref()} className="kb-link kb-tap text-sm">
         ← Manage your events
       </Link>
     </div>
@@ -118,7 +118,7 @@ export function ShellView({
     return (
       <div className="og-page og-narrow" data-testid="organiser-locked">
         <div className="og-head">
-          <Link href={paths.organise.getHref()} className="kb-link text-sm">
+          <Link href={paths.organise.getHref()} className="kb-link kb-tap text-sm">
             ← Manage your events
           </Link>
         </div>
@@ -126,18 +126,18 @@ export function ShellView({
           <h1 className="og-h2">Only the organiser can open this page</h1>
           {!event.connected ? (
             <>
-              <p className="og-note">Connect the wallet that created this event to manage it.</p>
+              <p className="og-note">Connect this event&apos;s organiser wallet to manage it.</p>
               <div className="og-actions">
                 <ConnectWallet text="Connect wallet" />
               </div>
             </>
           ) : (
             <p className="og-note" data-testid="not-owner">
-              The connected wallet did not create this event. Switch to the wallet that created it, or open{" "}
+              The connected wallet is not this event&apos;s organiser. Switch to the organiser&apos;s wallet, or open{" "}
               <Link href={paths.organise.getHref()} className="kb-link">
                 Manage your events
               </Link>{" "}
-              to see the events of this wallet.
+              to see the events of the connected wallet.
             </p>
           )}
         </section>
@@ -147,7 +147,7 @@ export function ShellView({
     <OrganiserEventContext.Provider value={event}>
       <div className="og-page">
         <div className="og-head">
-          <Link href={paths.organise.getHref()} className="kb-link text-sm">
+          <Link href={paths.organise.getHref()} className="kb-link kb-tap text-sm">
             ← Manage your events
           </Link>
           <div className="og-head-row">
@@ -162,7 +162,7 @@ export function ShellView({
               {shortHex(address)}
               <CopyButton value={address} label="Copy contract address" />
             </span>
-            <Link href={paths.event.getHref(address)} className="kb-link text-sm" target="_blank" rel="noopener">
+            <Link href={paths.event.getHref(address)} className="kb-link kb-tap text-sm" target="_blank" rel="noopener">
               Guest page ↗
             </Link>
           </div>

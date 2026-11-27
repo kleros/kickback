@@ -1,5 +1,5 @@
 import { presenceEventAbi } from "@kickback/contracts";
-import { challengeOf, KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
+import { challengeOf, isAddressStrict, KickbackError, LUMA_URL, readEvent, type EventInfo } from "@kickback/core";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { PROTOCOL } from "@/config/protocol";
@@ -56,7 +56,8 @@ export async function loadEvent(
     info = await readEvent(client, contract, protocol);
   } catch (error) {
     const reason = refusalOf(error);
-    if (reason) throw new EventRefused(/^0x[0-9a-fA-F]{40}$/.test(contract) ? reason : "not-address", contract);
+    // "not-kickback" only once real code was found: a broken checksum is a bad address, not a contract
+    if (reason) throw new EventRefused(isAddressStrict(contract) ? reason : "not-address", contract);
     throw error;
   }
   // challenges exist only once the list is closed; a failed read keeps the plain wording

@@ -10,7 +10,8 @@ export interface GuestRow {
   /** 0 None, 1 Staker (booked), 2 Rejected (turned away), 3 Refunded (withdrew after a cancel or a missed list). */
   status: number;
   attended: boolean;
-  challenge?: ChallengeInfo;
+  /** With a Kleros case: whether it is ruled, and the ruling. */
+  challenge?: ChallengeInfo & { isRuled?: boolean; ruling?: number };
 }
 
 export interface OrganiserState {
@@ -30,6 +31,11 @@ export interface OrganiserState {
   sharePaid: Map<string, bigint>;
   /** Attendees whose wallet refused a pushed payment that is still waiting for them (owed > 0). */
   refused: Address[];
+  /**
+   * Cancelled or missed-deadline events: refunded guests whose wallet refused the pushed refund, which is still
+   * waiting for them (owed > 0).
+   */
+  refundRefused: Address[];
   /**
    * Challenges, oldest first; a case with Kleros carries whether it is ruled, and the ruling, and while it is not
    * final, the jurors' current ruling and its appeal window.
@@ -118,6 +124,13 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
     ),
   );
   const challenges = listed.map((ch, i) => ({ ...ch, ...rulings[i], appeal: appeals[i] }));
+  // a refund pushed to a wallet that refused it stays owed to that (already Refunded) wallet
+  const refundPhase = event.phase === 3 || (event.phase === 0 && Number(block.timestamp) > event.claimDeadline);
+  const refunded = refundPhase ? stakers.filter((_, i) => Number(statuses[i]) === 3) : [];
+  const refundOwed = await Promise.all(
+    refunded.map((a) => client.readContract({ ...c, functionName: "owed", args: [a] })),
+  );
+  const refundRefused = refunded.filter((_, i) => refundOwed[i]! > 0n);
   const unpaid =
     event.phase === 2
       ? attendees.flatMap((wallet, i) =>
@@ -144,6 +157,7 @@ export async function readOrganiser(client: PublicClient, contract: string): Pro
     unpaid,
     sharePaid,
     refused,
+    refundRefused,
     challenges,
   };
 }

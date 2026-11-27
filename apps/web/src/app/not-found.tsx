@@ -12,7 +12,7 @@ export default function NotFound() {
         <h1>Page not found</h1>
         <p>This link does not lead to a page on this site. Check that you copied the whole link.</p>
         <p>
-          <Link className="kb-link" href={paths.home.getHref()}>
+          <Link className="kb-link kb-tap" href={paths.home.getHref()}>
             Go to the home page
           </Link>
         </p>
