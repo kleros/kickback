@@ -78,5 +78,20 @@ describe("LUMA_URL and lumaLinkProblem", () => {
     expect(lumaLinkProblem("https://luma.com/calendar/manage/cal-x")?.kind).toBe("manage");
     expect(lumaLinkProblem("https://luma.com/home")?.kind).toBe("other");
     expect(lumaLinkProblem("not a link")?.kind).toBe("other");
+    expect(lumaLinkProblem("luma.com/abc123")?.text).toBe(
+      "Start the link with https://, such as https://luma.com/abc123.",
+    );
+  });
+
+  it("completes a Luma link typed without https://", async () => {
+    const { withHttps, lumaLinkProblem } = await import("../src/text");
+    expect(withHttps("luma.com/abc123")).toBe("https://luma.com/abc123");
+    expect(withHttps(" lu.ma/abc123 ")).toBe("https://lu.ma/abc123");
+    expect(withHttps("http://lu.ma/abc123")).toBe("https://lu.ma/abc123");
+    expect(withHttps("https://luma.com/abc123")).toBe("https://luma.com/abc123");
+    expect(withHttps("example.com/x")).toBe("example.com/x");
+    // the query is left for lumaLinkProblem to report
+    expect(lumaLinkProblem(withHttps("luma.com/abc123?tk=x"))?.kind).toBe("token");
+    expect(lumaLinkProblem(withHttps("luma.com/event/manage/evt-x"))?.kind).toBe("manage");
   });
 });

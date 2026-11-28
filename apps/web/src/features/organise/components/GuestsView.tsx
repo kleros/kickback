@@ -116,7 +116,7 @@ const sameWallet = (a: string | undefined, b: string | undefined) => !!a && !!b 
 export function GuestsScreen() {
   const event = useOrganiserEvent();
   const record = useEventRecord(event.address);
-  const luma = useLumaBook(event.address, event.isOwner);
+  const luma = useLumaBook(event.address, event.isOwner ? event.account : undefined, event.isOwner);
   const [ticked, setTicked] = useState<Set<string>>(new Set());
   const [confirm, setConfirm] = useState(false);
   const [search, setSearch] = useState("");
@@ -240,9 +240,24 @@ export function GuestsScreen() {
         ? `${formatUnits(units, 18)} ETH`
         : `${formatUnits(units, info.decimals)} ${info.symbol}`;
     const isGuest = new Set(guests.map((g) => g.wallet.toLowerCase()));
-    const who = (wallet: string | undefined) =>
-      sameWallet(wallet, info.owner)
+    // the event may have been handed to another organiser: credit each step to the organiser at that time
+    const handed = r.handovers.length > 0;
+    const organiserThen = (then: string | undefined) => then ?? info.owner;
+    const theOrganiser = (then: string | undefined) => {
+      const o = organiserThen(then);
+      return !handed
         ? "the organiser"
+        : sameWallet(o, info.owner)
+          ? `the organiser (${getAddress(o)})`
+          : `the organiser at the time (${getAddress(o)})`;
+    };
+    const byOrganiser = (then: string | undefined) => {
+      const t = theOrganiser(then);
+      return `By ${t}`;
+    };
+    const who = (wallet: string | undefined, then?: string) =>
+      sameWallet(wallet, organiserThen(then))
+        ? theOrganiser(then)
         : wallet && isGuest.has(wallet.toLowerCase())
           ? "the guest"
           : wallet;
@@ -251,9 +266,9 @@ export function GuestsScreen() {
         p.kind === "refund" && rec?.rejected && p.tx.toLowerCase() === rec.rejected.tx.toLowerCase()
           ? "refunded when the organiser turned them away"
           : p.via === "claimed"
-            ? `claimed by ${who(account)}`
+            ? `claimed by ${who(account, p.organiserThen)}`
             : p.via === "sent"
-              ? `sent by ${who(p.sender) ?? "someone"}`
+              ? `sent by ${who(p.sender, p.organiserThen) ?? "someone"}`
               : p.kind === "challenge"
                 ? "paid back by the contract"
                 : p.kind === "refund"
@@ -319,7 +334,7 @@ export function GuestsScreen() {
           : answer.kind === "added"
             ? "Added by the organiser"
             : answer.kind === "kleros"
-              ? `Sent to Kleros (case ${answer.caseId}) by ${sameWallet(answer.matcher, info.owner) ? "the organiser" : answer.matcher}`
+              ? `Sent to Kleros (case ${answer.caseId}) by ${sameWallet(answer.matcher, organiserThen(answer.organiserThen)) ? theOrganiser(answer.organiserThen) : answer.matcher}`
               : answer.kind === "unanswered"
                 ? "Accepted unanswered"
                 : "Accepted",
@@ -365,14 +380,19 @@ export function GuestsScreen() {
       )
       .map(([key, rec]) => {
         const organiser = sameWallet(key, info.owner);
+        // a wallet that organised the event before a handover
+        const earlier =
+          !organiser && handed && [r.firstOrganiser, ...r.handovers.map((h) => h.from)].some((o) => sameWallet(key, o));
         const n = rec.klerosFees.length;
         return {
           wallet: getAddress(key),
           status: n
-            ? `Sent ${n} ${n === 1 ? "case" : "cases"} to Kleros${organiser ? " (organiser)" : ""}`
+            ? `Sent ${n} ${n === 1 ? "case" : "cases"} to Kleros${organiser ? " (organiser)" : earlier ? " (previous organiser)" : ""}`
             : organiser
               ? "Organiser"
-              : "Other wallet",
+              : earlier
+                ? "Previous organiser"
+                : "Other wallet",
           ...money(rec, key),
           klerosFee: n ? `${formatUnits(sum(rec.klerosFees), 18)} ETH` : undefined,
           klerosTxs: rec.klerosFees.map((f) => txUrl(f.tx)).join(" "),
@@ -388,7 +408,7 @@ export function GuestsScreen() {
     // anyone can release: name the wallet in full (closing the list and cancelling are the organiser's alone)
     const releasedBy = (w?: string) => {
       if (!w) return undefined;
-      if (sameWallet(w, info.owner)) return "the organiser";
+      if (sameWallet(w, organiserThen(r.released?.organiserThen))) return theOrganiser(r.released?.organiserThen);
       if (!isGuest.has(w.toLowerCase())) return getAddress(w);
       const name = luma.nameOf(w);
       return `the guest ${name ? `${name} ` : ""}${getAddress(w)}`;
@@ -400,48 +420,96 @@ export function GuestsScreen() {
       label: a.how === "saved" ? "Attendance saved" : "Added to the list after it was closed",
       detail:
         a.how === "saved"
-          ? `By the organiser; ${guestsText(a.wallets.length)}`
-          : `By the organiser; ${listedNames(a.wallets)}`,
+          ? `${byOrganiser(a.by)}; ${guestsText(a.wallets.length)}`
+          : `${byOrganiser(a.by)}; ${listedNames(a.wallets)}`,
       tx: txUrl(a.tx),
+      block: a.block,
     });
-    const steps = [
-      r?.created && { label: "Event created", tx: txUrl(r.created.tx) },
-      ...r.attendanceTxs.filter((a) => a.how === "saved").map(attendanceStep),
-      r?.listClosed && {
-        label: "Attendance list closed",
-        detail: (() => {
-          const n = r.attendanceTxs.find((a) => a.how === "closed")?.wallets.length;
-          return n ? `By the organiser; ${guestsText(n)} added in the same transaction` : "By the organiser";
-        })(),
-        tx: txUrl(r.listClosed.tx),
-      },
-      ...r.attendanceTxs.filter((a) => a.how === "late").map(attendanceStep),
-      r?.released && {
-        label: "Payouts released",
-        detail: [
-          raised ? `Share at release: ${exact(r.released.share)}` : `Each attendee's share: ${exact(r.released.share)}`,
-          r.released.by && `released by ${releasedBy(r.released.by)}`,
-        ]
-          .filter(Boolean)
-          .join("; "),
-        tx: txUrl(r.released.tx),
-      },
-      ...splits.map(([key, rec]) => {
-        const h = rec.challenge!.heldSplit!;
-        const name = luma.nameOf(key);
-        return {
-          label: "Held share split",
-          detail: `${name ? `${name} ` : ""}${getAddress(key)}: split among the ${splitAmong(h)}, ${exact(h.each)} each`,
+    type Step = { label: string; detail?: string; tx: string; block?: bigint };
+    const steps = (
+      [
+        r?.created && {
+          label: "Event created",
+          ...(handed && r.firstOrganiser ? { detail: `For the organiser ${getAddress(r.firstOrganiser)}` } : {}),
+          tx: txUrl(r.created.tx),
+          block: r.created.block,
+        },
+        ...r.handovers.map((h) => ({
+          label: "Organiser changed",
+          detail: `From ${getAddress(h.from)} to ${getAddress(h.to)}`,
           tx: txUrl(h.tx),
-        };
-      }),
-      raised && {
-        label: "Final share per attendee",
-        detail: `Each attendee's share after the held shares were split: ${exact(info.payoutShare)}`,
-        tx: splits.length ? txUrl(splits[splits.length - 1]![1].challenge!.heldSplit!.tx) : "",
-      },
-      r?.cancelled && { label: "Event cancelled", detail: "By the organiser", tx: txUrl(r.cancelled.tx) },
-    ].filter((step): step is { label: string; detail?: string; tx: string } => !!step);
+          block: h.block,
+        })),
+        ...r.attendanceTxs.filter((a) => a.how === "saved").map(attendanceStep),
+        r?.listClosed && {
+          label: "Attendance list closed",
+          detail: (() => {
+            const n = r.attendanceTxs.find((a) => a.how === "closed")?.wallets.length;
+            const by = byOrganiser(r.listClosed.by);
+            return n ? `${by}; ${guestsText(n)} added in the same transaction` : by;
+          })(),
+          tx: txUrl(r.listClosed.tx),
+          block: r.listClosed.block,
+        },
+        ...r.attendanceTxs.filter((a) => a.how === "late").map(attendanceStep),
+        r?.released && {
+          label: "Payouts released",
+          detail: [
+            raised
+              ? `Share at release: ${exact(r.released.share)}`
+              : `Each attendee's share: ${exact(r.released.share)}`,
+            r.released.by && `released by ${releasedBy(r.released.by)}`,
+          ]
+            .filter(Boolean)
+            .join("; "),
+          tx: txUrl(r.released.tx),
+          block: r.released.block,
+        },
+        ...splits.map(([key, rec]) => {
+          const h = rec.challenge!.heldSplit!;
+          const name = luma.nameOf(key);
+          return {
+            label: "Held share split",
+            detail: `${name ? `${name} ` : ""}${getAddress(key)}: split among the ${splitAmong(h)}, ${exact(h.each)} each`,
+            tx: txUrl(h.tx),
+            block: h.block,
+          };
+        }),
+        raised &&
+          (() => {
+            // the share can still rise while a Kleros case is open: it is final only once none is
+            const open = info.openCases;
+            const lastSplit = splits.length ? splits[splits.length - 1]![1].challenge!.heldSplit! : undefined;
+            const splitText =
+              splits.length === 1 ? "the held share was split" : `${splits.length} held shares were split`;
+            return {
+              label: open > 0 ? "Share per attendee so far" : "Final share per attendee",
+              detail:
+                `Each attendee's share after ${splitText}: ${exact(info.payoutShare)}` +
+                (open > 0
+                  ? `. A share is still held for ${open === 1 ? "1 open Kleros case" : `${open} open Kleros cases`}, so this rises if ${open === 1 ? "that guest loses" : "those guests lose"}`
+                  : ""),
+              tx: lastSplit ? txUrl(lastSplit.tx) : "",
+              block: lastSplit?.block,
+            };
+          })(),
+        r?.cancelled && {
+          label: "Event cancelled",
+          detail: byOrganiser(r.cancelled.by),
+          tx: txUrl(r.cancelled.tx),
+          block: r.cancelled.block,
+        },
+      ] as (Step | false | undefined | null | "")[]
+    )
+      .filter((step): step is Step => !!step)
+      // in chain order (a stable sort: steps in one block keep the order above)
+      .map((step, i) => ({ step, i }))
+      .sort((a, b) => {
+        const x = a.step.block ?? 0n;
+        const y = b.step.block ?? 0n;
+        return x < y ? -1 : x > y ? 1 : a.i - b.i;
+      })
+      .map(({ step: { label, detail, tx } }) => ({ label, ...(detail !== undefined ? { detail } : {}), tx }));
     const blob = new Blob([recordCsv([...rows, ...others], steps)], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -527,6 +595,8 @@ export function GuestsScreen() {
         <GlassCard className="og-card">
           <LumaMatch
             contract={event.address}
+            owner={event.isOwner ? event.account : undefined}
+            approvedAt={luma.approvedAt}
             booked={booked}
             statuses={statusByWallet}
             closed={closed}
@@ -785,7 +855,14 @@ export function GuestsScreen() {
                   wallets.forEach((w) => next.delete(w.toLowerCase()));
                   return next;
                 }),
-              { TooLate: "The event has started, so guests can no longer be turned away. Nothing was sent." },
+              {
+                TooLate: "The event has started, so guests can no longer be turned away. Nothing was sent.",
+                // the page was behind the chain (another tab or device turned them away first)
+                NotAStaker:
+                  wallets.length === 1
+                    ? `${luma.nameOf(wallets[0]!) ?? shortHex(wallets[0]!)} was already turned away and refunded, perhaps from another tab or device. The list below is now up to date. Nothing was sent.`
+                    : "One of these guests was already turned away and refunded, perhaps from another tab or device. The list below is now up to date: check the selection and send again. Nothing was sent.",
+              },
               { pending: `Turning away ${guestsText(wallets.length)}… Waiting for confirmation.`, wallets },
             );
           }}

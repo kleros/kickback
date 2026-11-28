@@ -9,6 +9,12 @@ describe("cleanEventParam", () => {
     for (const raw of [`${A}%20`, `${A}.`, `${A})`, `(${A})`, `%3C${A}%3E`, ` ${A} `])
       expect(cleanEventParam(raw)).toBe(A);
   });
+  it("accepts an upper-case 0X prefix, as some keyboards type it", () => {
+    expect(cleanEventParam(`0X${A.slice(2)}`)).toBe(A);
+    expect(cleanEventParam(`(0X${A.slice(2)}).`)).toBe(A);
+    expect(cleanEventParam(`0X${A.slice(2)}a`)).toBe(`0X${A.slice(2)}a`);
+  });
+
   it("keeps anything that is not exactly one address as it is", () => {
     expect(cleanEventParam(`${A}a`)).toBe(`${A}a`);
     expect(cleanEventParam(A.slice(0, 41))).toBe(A.slice(0, 41));

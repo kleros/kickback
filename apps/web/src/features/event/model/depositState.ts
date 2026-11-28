@@ -154,7 +154,7 @@ export interface DepositInput {
     hash?: Hash;
   };
   /** Phase 1 after the challenge window: whether payouts can be released now, and with which expired challenges. */
-  release?: { expired: readonly Address[]; blocked: boolean };
+  release?: { expired: readonly Address[]; blocked: boolean; pending?: number };
   /** Wei, the network fee a challenge is expected to cost. */
   challengeFee?: bigint;
   busy?: boolean;
@@ -220,6 +220,10 @@ export interface DepositInput {
   organiser?: boolean;
   /** Challenges still waiting for the organiser's answer (the contract's waitingChallenges). */
   waitingChallenges?: number;
+  /** Waiting challenges still inside their answer time (the organiser can still answer them). */
+  answerable?: number;
+  /** Wallets that ever deposited, from the Deposited logs (a refund does not lower it); undefined while loading. */
+  depositsMade?: number;
   /** Guests on the attendance list so far. */
   attendeeCount?: number;
   /** The organiser page of this event. */
@@ -305,9 +309,19 @@ function organiserLine(input: DepositInput): string {
   const now = input.chainNow ?? 0;
   // stakerCount counts the deposits still held: none left means none to withdraw (refunded, or never made)
   const nobodyLeft = !input.stakerCount;
+  // never deposited, or every deposit returned (unknown while the deposit logs load: true either way)
+  const none =
+    input.depositsMade === 0
+      ? "No guest had deposited, so there is nothing to return."
+      : input.depositsMade === undefined
+        ? "No guest has a deposit to withdraw."
+        : "No guest has a deposit left to withdraw.";
+  // the challenges the organiser can still answer, or a count of all those waiting
+  const waitingText = (n: number, still = "") =>
+    `${n === 1 ? "A challenge is" : `${n} challenges are`} ${still}waiting for your answer on the organiser page.`;
   if (input.phase === 3)
     return nobodyLeft
-      ? "You cancelled this event. No guest has a deposit left to withdraw."
+      ? `You cancelled this event. ${none}`
       : "You cancelled this event. Guests can withdraw their full deposits.";
   if (input.phase === 2)
     return input.allPaid
@@ -315,19 +329,19 @@ function organiserLine(input: DepositInput): string {
       : "Payouts have been released. Track them on the organiser page.";
   if (input.phase === 1) {
     if (input.challengeEndsAt && now <= input.challengeEndsAt)
-      return (input.waitingChallenges ?? 0) > 0
-        ? "A challenge is waiting for your answer on the organiser page."
+      return (input.answerable ?? input.waitingChallenges ?? 0) > 0
+        ? waitingText(input.answerable ?? input.waitingChallenges ?? 0)
         : input.timeText
           ? `Challenges are open until ${input.timeText(input.challengeEndsAt)}.`
           : "Challenges are open for now.";
     return input.release?.blocked
-      ? "A challenge is still waiting for your answer on the organiser page."
+      ? waitingText(input.release.pending ?? 1, "still ")
       : "Challenges have closed. Release payouts on the organiser page.";
   }
   if (now < input.eventEnd) return "You organise this event. Guests deposit here.";
   if (input.claimDeadline !== undefined && now > input.claimDeadline)
     return nobodyLeft
-      ? "Attendance was not confirmed in time. No guest has a deposit left to withdraw."
+      ? `Attendance was not confirmed in time. ${none}`
       : "Attendance was not confirmed in time. Guests can withdraw their full deposits.";
   if (!input.stakerCount) return "The event ended with no deposits: there is nothing to confirm.";
   return (input.attendeeCount ?? 0) > 0
@@ -814,10 +828,13 @@ export function depositState(input: DepositInput): DepositView {
         foot: "The fee left goes to whoever sent it to Kleros.",
         shake: error !== undefined,
       });
+    // the Kleros cost can rise between the challenge and the match: then only part of the fee comes back
+    const back = resolveRefund(c);
+    const fee = c.deposit ?? 0n;
     return switchOr({
       key: "resolve",
       label: "Kleros has ruled",
-      amount: ethText(resolveRefund(c)),
+      amount: ethText(back),
       unit: "ETH",
       lines: error
         ? [error]
@@ -827,13 +844,23 @@ export function depositState(input: DepositInput): DepositView {
               tone: "pri",
             },
             {
-              text: c.ruling === 1 ? "Join the list to settle the ruling." : "Settle the ruling to end the challenge.",
+              text:
+                c.ruling !== 1
+                  ? "Settle the ruling to end the challenge."
+                  : input.phase === 2
+                    ? "Join the list, then claim your share here."
+                    : "Join the list to settle it and share the payouts.",
             },
           ],
       action: "resolve",
       button: c.ruling === 1 ? "Join the list" : "Settle the ruling",
       disabled: input.busy,
-      foot: c.ruling === 1 ? "Your Kleros fee comes back." : "Half the remaining fee comes back.",
+      foot:
+        c.ruling !== 1
+          ? "Half the remaining fee comes back."
+          : back >= fee
+            ? "Your Kleros fee comes back."
+            : `${ethText(back)} of your ${ethText(fee)} ETH fee comes back.`,
       shake: error !== undefined,
     });
   };

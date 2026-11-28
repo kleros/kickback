@@ -240,6 +240,18 @@ export const LUMA_URL =
   /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/(?:event\/evt-[A-Za-z0-9]+|(?!(?:home|create|calendar|discover|user|u|signin|login|settings|event|explore|pricing|manage)(?:$|\/))[A-Za-z0-9_-]+)\/?$/;
 
 /**
+ * A Luma link typed without its scheme ("luma.com/abc123", "lu.ma/abc123") or with plain http, completed to
+ * https; anything else is returned trimmed, as typed. Only the scheme changes: the query is left for
+ * `lumaLinkProblem` to report.
+ */
+export function withHttps(raw: string): string {
+  const t = raw.trim();
+  if (/^http:\/\//i.test(t)) return "https://" + t.slice(7);
+  if (/^(?:www\.)?(?:lu\.ma|luma\.com)(?:[/?#]|$)/i.test(t)) return "https://" + t;
+  return t;
+}
+
+/**
  * What is wrong with a pasted Luma link, in plain words, or null when it is a public event page. Run it on the
  * link as typed: a management page is refused, and an invite token or other query is reported (the caller strips it).
  */
@@ -249,7 +261,10 @@ export function lumaLinkProblem(raw: string): { kind: "manage" | "token" | "quer
   try {
     u = new URL(t);
   } catch {
-    return { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
+    // the link is there, but without https:// in front
+    return /(?:^|[^a-z0-9])(?:lu\.ma|luma\.com)\b/i.test(t)
+      ? { kind: "other", text: "Start the link with https://, such as https://luma.com/abc123." }
+      : { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
   }
   if (/^\/(?:event|calendar|home)\/manage(?:\/|$)/i.test(u.pathname) || /\/manage(?:\/|$)/i.test(u.pathname))
     return {

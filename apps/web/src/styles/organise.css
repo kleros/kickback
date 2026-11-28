@@ -172,6 +172,8 @@
   color: var(--kb-err);
   font-size: 14px;
   line-height: 20px;
+  /* a full wallet address in a refusal wraps inside the card */
+  overflow-wrap: anywhere;
 }
 .og-err[data-shake] {
   animation: og-shake 320ms var(--kb-ease-out);
@@ -414,10 +416,14 @@
   font-family: var(--kb-font-mono);
   font-size: 13px;
 }
+/* a short hash or wallet ("0x7052…e5d1 ↗") never breaks in the middle */
+.og-nowrap {
+  white-space: nowrap;
+}
+/* one sentence that wraps as text: a flex box would put each text run and the link in its own column */
 .og-success {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
+  display: block;
+  overflow-wrap: anywhere;
   padding: 14px 16px;
   border-radius: var(--kb-r-row);
   background: color-mix(in oklab, var(--kb-ok) 12%, transparent);

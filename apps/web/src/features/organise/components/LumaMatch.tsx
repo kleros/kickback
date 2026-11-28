@@ -23,6 +23,8 @@ const MATCH_TONE = { deposit: "ok", "turned-away": "end", refunded: "end", none:
 /** Luma registrations next to the deposits: who to approve on Luma, by verified wallet. */
 export function LumaMatch({
   contract,
+  owner,
+  approvedAt,
   booked,
   statuses,
   closed,
@@ -31,6 +33,10 @@ export function LumaMatch({
 }: {
   /** The event: the last export loaded for it is kept in this browser. */
   contract?: string;
+  /** The organiser wallet whose saved export is shown (undefined: nothing saved is read). */
+  owner?: string;
+  /** When a wallet was marked approved on this device ("I approved them on Luma"), if it was. */
+  approvedAt?: (wallet: string) => number | undefined;
   booked: readonly string[];
   /** Every guest who deposited, by lower-case wallet, with their status (1 deposited, 2 turned away, 3 refunded). */
   statuses?: ReadonlyMap<string, number>;
@@ -44,8 +50,11 @@ export function LumaMatch({
   const [csv, setCsv] = useState<{ name: string; text: string; at?: number } | null>(null);
   // the export loaded last time (raw text only: the matches are worked out again against today's deposits)
   useEffect(() => {
-    if (!contract) return;
-    const load = () => setCsv(readExport(contract));
+    if (!contract || !owner) {
+      setCsv(null);
+      return;
+    }
+    const load = () => setCsv(readExport(contract, owner));
     load();
     window.addEventListener("storage", load);
     window.addEventListener("kb-luma", load);
@@ -53,18 +62,22 @@ export function LumaMatch({
       window.removeEventListener("storage", load);
       window.removeEventListener("kb-luma", load);
     };
-  }, [contract]);
+  }, [contract, owner]);
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
   const rows = useMemo(() => (csv ? matchLuma(csv.text, booked, statuses) : null), [csv, booked, statuses]);
   // without the verified wallet column nothing can be matched: never tell the organiser to decline everyone
   const noWalletCol = csv ? !hasWalletColumn(csv.text) : false;
   const found = rows?.filter((r) => r.match === "deposit" && !r.dupOf) ?? [];
-  const toApprove = found.filter((r) => r.luma === "pending");
+  // a pending request whose wallet was marked approved here ("I approved them on Luma") counts as approved
+  const markedHere = (r: LumaMatchRow) =>
+    r.luma === "pending" && !r.dupOf && !!r.wallet && approvedAt?.(r.wallet) !== undefined;
+  const lumaNow = (r: LumaMatchRow) => (markedHere(r) ? "approved" : r.luma);
+  const toApprove = found.filter((r) => lumaNow(r) === "pending");
   // no deposit at all (a turned-away guest has its own line: it can never deposit, so it is never asked to)
   const noDeposit = (r: LumaMatchRow) => r.match === "none" || r.match === "no-wallet" || r.match === "refunded";
-  const toDecline = rows?.filter((r) => noDeposit(r) && r.luma === "pending") ?? [];
+  const toDecline = rows?.filter((r) => noDeposit(r) && lumaNow(r) === "pending") ?? [];
   // approved on Luma, but no deposit (no wallet, or never deposited): their Luma registration still works
-  const wronglyIn = rows?.filter((r) => noDeposit(r) && r.luma === "approved") ?? [];
+  const wronglyIn = rows?.filter((r) => noDeposit(r) && lumaNow(r) === "approved") ?? [];
   // turned away and refunded, with a request still open on Luma: decline it there
   const awayOpen = rows?.filter((r) => r.match === "turned-away" && !r.dupOf && r.luma !== "declined") ?? [];
   // after the event: everyone who deposited, also those since refunded or turned away
@@ -110,7 +123,7 @@ export function LumaMatch({
           setErr(null);
           const at = Date.now();
           setCsv({ name, text, at });
-          if (contract) writeExport(contract, { name, text, at });
+          if (contract && owner) writeExport(contract, owner, { name, text, at });
           if (hasWalletColumn(text)) onRows?.(parsed);
         }}
         testId="luma-csv"
@@ -120,11 +133,11 @@ export function LumaMatch({
         <p className="og-note" data-testid="luma-loaded">
           {csv.at ? `Loaded ${when(Math.floor(csv.at / 1000))}. ` : ""}Luma statuses are from that export; export again
           for the latest.{" "}
-          {contract && (
+          {contract && owner && (
             <Button
               className="kb-link kb-tap"
               onPress={() => {
-                forgetLuma(contract);
+                forgetLuma(contract, owner);
                 setCsv(null);
               }}
             >
@@ -201,9 +214,15 @@ export function LumaMatch({
                   <span className="og-mono og-cell-hide" title={r.wallet ?? undefined}>
                     {r.wallet ? shortHex(r.wallet) : "—"}
                   </span>
-                  <span className="og-cell-luma" data-luma={r.luma}>
+                  <span className="og-cell-luma" data-luma={lumaNow(r)}>
                     <span className="og-only-phone">Luma: </span>
-                    {r.luma === "pending" ? "Pending" : r.luma === "approved" ? "Approved" : "Declined"}
+                    {markedHere(r)
+                      ? "Approved (marked here)"
+                      : r.luma === "pending"
+                        ? "Pending"
+                        : r.luma === "approved"
+                          ? "Approved"
+                          : "Declined"}
                   </span>
                   <span className="og-cell-status">
                     <span className="og-dot" data-tone={r.dupOf ? "warn" : MATCH_TONE[r.match]} aria-hidden />

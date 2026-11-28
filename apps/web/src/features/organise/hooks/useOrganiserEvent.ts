@@ -3,8 +3,9 @@
 import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 
+import { presenceEventAbi } from "@kickback/contracts";
 import { errorText, revertName } from "@kickback/core";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { isAddressEqual, type Address, type Hash } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
@@ -48,7 +49,29 @@ export function useOrganiserEventSource(address: Address) {
   // something the contract refuses since the start (or end) passed; take the later of the two
   const chainTime = useChainTime(DEFAULT_CHAIN_ID);
   const now = data ? Math.max(data.now, chainTime.data?.now ?? 0) : undefined;
-  const isOwner = !!account && !!data && isAddressEqual(account, data.event.owner);
+  // the organiser, re-read on every block (the same block watcher as the clock): a handover locks the page for the
+  // old organiser, and opens it for the new one, within a block instead of at the next 15 s read
+  const block = chainTime.data?.blockNumber;
+  const liveOwner = useQuery({
+    queryKey: [...organiserKey(address), "owner", block?.toString() ?? "latest"],
+    enabled: client !== undefined && isEventAddress(address) && !!data && block !== undefined,
+    staleTime: STALE_TIME.immutable,
+    placeholderData: keepPreviousData,
+    retry: false,
+    queryFn: () =>
+      client!.readContract({
+        address,
+        abi: presenceEventAbi,
+        functionName: "owner",
+        blockNumber: block,
+      }) as Promise<Address>,
+  }).data;
+  const ownerChanged = !!data && !!liveOwner && !isAddressEqual(liveOwner, data.event.owner);
+  useEffect(() => {
+    // the snapshot is behind the chain: read it again, so no tab mixes the old event with the new organiser
+    if (ownerChanged) void queries.invalidateQueries({ queryKey: organiserKey(address), exact: true });
+  }, [ownerChanged, liveOwner, address, queries]);
+  const isOwner = !!account && !!data && isAddressEqual(account, liveOwner ?? data.event.owner);
   // a late challenge still inside its answer time holds up the release: the pill says so
   const phase = data
     ? phaseOf(data.event, now!, data.challenges.filter((c) => c.state === 1 && now! <= c.matchEndsAt).length)

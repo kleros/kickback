@@ -105,8 +105,7 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
   },
   "Payouts ready": {
     title: "Release payouts",
-    detail:
-      "The challenge window is over. Release payouts: attendees get their deposit back plus a share of the no-shows' deposits.",
+    detail: "The challenge window is over. Release payouts on the Payout tab: each attendee gets their share.",
     tab: "payout",
     action: "Open Payout",
   },
@@ -141,3 +140,55 @@ export const NEXT_STEP: Record<Phase, NextStep> = {
     done: true,
   },
 };
+
+/**
+ * Kleros cases, some ruled and ready to settle (the Payout tab's own words): `ready` of `total`. Used before and
+ * after the release with different counts, so the wording never drifts between the two.
+ */
+export function casesLine(total: number, ready: number): string {
+  if (ready >= total)
+    return `${total === 1 ? "The Kleros case has been ruled and is" : `All ${total} Kleros cases have been ruled and are`} ready to settle on the Payout tab.`;
+  return `${ready === 1 ? "1 ruling is" : `${ready} rulings are`} ready to settle on the Payout tab; ${total - ready === 1 ? "1 case is" : `${total - ready} cases are`} still waiting for the jurors.`;
+}
+
+/**
+ * The next step once the challenge window is over and nothing waits for an answer: settle ruled Kleros cases first
+ * (so their result counts in the split), then release. With no case open, what the release gives each attendee:
+ * a share of the no-shows' deposits only when there are no-shows (`share` above the deposit).
+ */
+export function payoutsReadyStep(p: {
+  openCases: number;
+  readyToSettle: number;
+  share: bigint;
+  deposit: bigint;
+  fmt: (units: bigint) => string;
+}): NextStep {
+  const ready = Math.min(p.readyToSettle, p.openCases);
+  const deciding = p.openCases - ready;
+  const release =
+    p.share > p.deposit
+      ? `Release payouts on the Payout tab: each attendee gets ${p.fmt(p.share)}, their deposit back plus a share of the no-shows' deposits.`
+      : `Release payouts on the Payout tab: every attendee gets their ${p.fmt(p.deposit)} deposit back.`;
+  const detail = [
+    ready === 1 &&
+      "1 Kleros ruling is ready to settle on the Payout tab. Settle it first so its result counts in the split, then release payouts.",
+    ready > 1 &&
+      `${ready} Kleros rulings are ready to settle on the Payout tab. Settle them first so their results count in the split, then release payouts.`,
+    ready === 0 && `The challenge window is over. ${release}`,
+    deciding === 1 && "1 case is still with Kleros: a share will be held for it until the jurors rule.",
+    deciding > 1 && `${deciding} cases are still with Kleros: a share will be held for each until the jurors rule.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    title:
+      ready === 0
+        ? "Release payouts"
+        : ready === 1
+          ? "Settle the ruling, then release payouts"
+          : "Settle the rulings, then release payouts",
+    detail,
+    tab: "payout",
+    action: "Open Payout",
+  };
+}

@@ -1,5 +1,5 @@
 import { csvCell } from "@kickback/core";
-import type { Address, Hash } from "viem";
+import { zeroAddress, type Address, type Hash } from "viem";
 
 /**
  * What a payment out of the event was for. `payout`: a share of the pool after the release. `refund`: a deposit
@@ -23,6 +23,8 @@ export interface Payment {
   via?: PaymentVia;
   /** The wallet that sent the transaction, when it is known. */
   sender?: Address;
+  /** The event's organiser when it was paid (the event can be handed over later). */
+  organiserThen?: Address;
 }
 
 /** A push the receiving wallet refused (PaymentFailed): the amount stays claimable. */
@@ -42,6 +44,8 @@ export interface ChallengeAnswer {
   /** Kleros only: who paid the matching fee, and the Kleros case number. */
   matcher?: Address;
   caseId?: bigint;
+  /** The event's organiser when it was answered. */
+  organiserThen?: Address;
 }
 
 export interface ChallengeRecord {
@@ -67,7 +71,15 @@ export interface WalletRecord {
   failed: FailedPayment[];
   challenge?: ChallengeRecord;
   /** Kleros fees this wallet paid to send someone's challenge to Kleros (matchChallenge). */
-  klerosFees: { tx: Hash; block: bigint; staker: Address; amount: bigint; caseId: bigint }[];
+  klerosFees: {
+    tx: Hash;
+    block: bigint;
+    staker: Address;
+    amount: bigint;
+    caseId: bigint;
+    /** The event's organiser when the fee was paid. */
+    organiserThen?: Address;
+  }[];
   /** Put on the list (AttendeeAdded), and how: see `AttendanceHow`. */
   added?: { tx: Hash; block: bigint; how: AttendanceHow };
 }
@@ -85,16 +97,32 @@ export interface AttendanceTx {
   block: bigint;
   how: Exclude<AttendanceHow, "challenge">;
   wallets: Address[];
+  /** The organiser who sent it (only the organiser can), when known. */
+  by?: Address;
+}
+
+/** The event handed to another organiser wallet (acceptOwnership). */
+export interface Handover {
+  tx: Hash;
+  block: bigint;
+  from: Address;
+  to: Address;
 }
 
 /** Every transaction that moved or settled the event's money, read from its own logs. */
 export interface EventRecord {
   wallets: Map<string, WalletRecord>;
   created?: { tx: Hash; block: bigint };
-  listClosed?: { tx: Hash; block: bigint };
-  /** `by`: the wallet that released (anyone can), when its transaction could be read. */
-  released?: { tx: Hash; block: bigint; share: bigint; by?: Address };
-  cancelled?: { tx: Hash; block: bigint };
+  /** The organiser the event was created for. */
+  firstOrganiser?: Address;
+  /** Each time the event was handed to another organiser wallet, in chain order. */
+  handovers: Handover[];
+  /** `by`: the organiser who closed it. */
+  listClosed?: { tx: Hash; block: bigint; by?: Address };
+  /** `by`: the wallet that released (anyone can), when its transaction could be read; `organiserThen`: the organiser then. */
+  released?: { tx: Hash; block: bigint; share: bigint; by?: Address; organiserThen?: Address };
+  /** `by`: the organiser who cancelled it. */
+  cancelled?: { tx: Hash; block: bigint; by?: Address };
   /** Each transaction that put guests on the list, in chain order (saved, closed or added after closing). */
   attendanceTxs: AttendanceTx[];
 }
@@ -117,6 +145,8 @@ export type RecordLog = {
     each?: bigint;
     attendees?: bigint;
     openCases?: bigint;
+    previousOwner?: Address;
+    newOwner?: Address;
   };
   transactionHash: Hash | null;
   blockNumber: bigint | null;
@@ -132,7 +162,10 @@ const CHALLENGE_STEPS = new Set(["Challenged", "ChallengeMatched", "ChallengeRes
  * `txs` (optional) names each transaction's sender and function, so claims, sends and answers are told apart.
  */
 export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string, TxInfo>): EventRecord {
-  const record: EventRecord = { wallets: new Map(), attendanceTxs: [] };
+  const record: EventRecord = { wallets: new Map(), attendanceTxs: [], handovers: [] };
+  // the organiser at each point of the logs, in chain order: the sender of every organiser-only step, and the
+  // organiser to credit for anything else (a handover in the same block counts only when its log comes first)
+  let owner: Address | undefined;
   const walletOf = (address: Address) => {
     const key = address.toLowerCase();
     let row = record.wallets.get(key);
@@ -172,6 +205,13 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
       return record.released ? "payout" : "refund";
     };
     switch (log.eventName) {
+      case "OwnershipTransferred":
+        if (!args.newOwner) break;
+        if (!args.previousOwner || args.previousOwner.toLowerCase() === zeroAddress)
+          record.firstOrganiser = args.newOwner;
+        else record.handovers.push({ ...at, from: args.previousOwner, to: args.newOwner });
+        owner = args.newOwner;
+        break;
       case "EventCreated":
         record.created = at;
         break;
@@ -194,6 +234,7 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
           kind,
           via: info ? (info.fn === "withdraw" ? "claimed" : info.fn === "distribute" ? "sent" : "auto") : undefined,
           sender: info?.from,
+          organiserThen: owner,
         });
         break;
       }
@@ -213,9 +254,15 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
         if (!args.staker) break;
         const c = walletOf(args.staker).challenge;
         const caseId = args.arbitratorDisputeID ?? 0n;
-        if (c) c.answer = { kind: "kleros", ...at, matcher: args.matcher, caseId };
+        if (c) c.answer = { kind: "kleros", ...at, matcher: args.matcher, caseId, organiserThen: owner };
         if (args.matcher)
-          walletOf(args.matcher).klerosFees.push({ ...at, staker: args.staker, amount: c?.fee ?? 0n, caseId });
+          walletOf(args.matcher).klerosFees.push({
+            ...at,
+            staker: args.staker,
+            amount: c?.fee ?? 0n,
+            caseId,
+            organiserThen: owner,
+          });
         break;
       }
       case "ChallengeResolved": {
@@ -235,6 +282,7 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
                   ? "unanswered"
                   : "accepted",
             ...at,
+            organiserThen: owner,
           };
         break;
       }
@@ -263,22 +311,29 @@ export function foldRecord(logs: readonly RecordLog[], txs?: ReadonlyMap<string,
         if (how === "challenge") break;
         const prev = record.attendanceTxs.find((a) => a.tx.toLowerCase() === tx);
         if (prev) prev.wallets.push(args.attendee);
-        else record.attendanceTxs.push({ ...at, how, wallets: [args.attendee] });
+        else record.attendanceTxs.push({ ...at, how, wallets: [args.attendee], by: owner });
         break;
       }
       case "ListClosed":
-        record.listClosed = at;
+        record.listClosed = { ...at, by: owner };
         break;
       case "PayoutsReleased":
-        record.released = { ...at, share: args.share ?? 0n, by: info?.from };
+        record.released = { ...at, share: args.share ?? 0n, by: info?.from, organiserThen: owner };
         break;
       case "Cancelled":
-        record.cancelled = at;
+        record.cancelled = { ...at, by: owner };
         break;
     }
   });
   return record;
 }
+
+/**
+ * How many held shares of lost Kleros cases have been split among the attendees (a split of nothing does not count,
+ * as on the guest page); undefined while the record is loading.
+ */
+export const heldSplitCount = (r?: EventRecord) =>
+  r ? [...r.wallets.values()].filter((w) => (w.challenge?.heldSplit?.each ?? 0n) > 0n).length : undefined;
 
 /** The columns of the downloaded record, in order. */
 export const RECORD_COLUMNS = [

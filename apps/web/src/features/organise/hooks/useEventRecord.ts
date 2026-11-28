@@ -28,6 +28,8 @@ const NAMES = [
   "HeldShareSplit",
   "PayoutsReleased",
   "Cancelled",
+  // handovers to another organiser (and the first organiser, in the creation transaction)
+  "OwnershipTransferred",
 ];
 /** The function each selector calls, to tell a claim (withdraw) from a send (distribute), and an answer's kind. */
 const FUNCTIONS = new Map(

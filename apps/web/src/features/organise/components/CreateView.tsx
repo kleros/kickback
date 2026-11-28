@@ -5,13 +5,21 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
-import { eventConfig, LUMA_URL, lumaLinkProblem, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
+import {
+  eventConfig,
+  LUMA_URL,
+  lumaLinkProblem,
+  MAX_SETTLEMENT_WINDOW,
+  MIN_SETTLEMENT_WINDOW,
+  withHttps,
+} from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   erc20Abi,
   formatEther,
   formatUnits,
   isAddress,
+  maxUint256,
   parseEventLogs,
   parseUnits,
   type Address,
@@ -64,6 +72,10 @@ function defaultDates(now = new Date()) {
   const end = new Date(start.getTime() + 4 * 3_600_000);
   return { start: local(start), end: local(end) };
 }
+
+/** Tabs, line breaks and other invisible control characters (the contract refuses them in a name). */
+// eslint-disable-next-line no-control-regex -- control characters are exactly what is matched
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]+/g;
 
 /** A thousands separator ("1,000", "12,500"): never read as a decimal comma, which could be off by 1000 times. */
 const THOUSANDS = /^[1-9]\d{0,2}(,\d{3})+$/;
@@ -228,9 +240,11 @@ export function CreateScreen() {
       capacity: 0,
     });
     // the link is stored on-chain for good: check and store the cleaned one (lower-case host, no query or #fragment)
-    const lumaProblem = lumaLinkProblem(form.url);
+    // a link typed without https:// (or with http://) is completed first; the query is still reported below
+    const typed = withHttps(form.url);
+    const lumaProblem = lumaLinkProblem(typed);
     if (lumaProblem?.kind === "manage" || lumaProblem?.kind === "other") throw new Error(lumaProblem.text);
-    const url = normaliseLuma(form.url);
+    const url = normaliseLuma(typed);
     if (!LUMA_URL.test(url)) throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
     if (thousands)
       throw new Error(
@@ -246,6 +260,9 @@ export function CreateScreen() {
           ? `Enter the deposit as a whole number: ${asset.symbol} has no decimal places.`
           : `Enter the deposit with at most ${asset.decimals} decimal places: that is the most ${asset.symbol} allows.`,
       );
+    // more than the contract can store: encoding it would fail, so say so here
+    const units = parseUnits(deposit, asset.decimals);
+    if (units > maxUint256) throw new Error("This deposit is too large. Enter a smaller amount.");
     const start = zonedUnix(form.start, form.zone);
     const end = zonedUnix(form.end, form.zone);
     if (!Number.isFinite(start) || !(start > 0)) throw new Error("Enter a start date and time.");
@@ -264,7 +281,7 @@ export function CreateScreen() {
       name: form.name,
       url,
       token: form.asset === "ETH" ? undefined : (tokenAddress as Address),
-      depositAmount: parseUnits(deposit, asset.decimals),
+      depositAmount: units,
       eventStart: start,
       eventEnd: end,
       claimDeadline: end + days * 86_400,
@@ -272,8 +289,16 @@ export function CreateScreen() {
     });
   };
   // an invite token or another query is dropped before the link goes on chain: say so, with the link stored
-  const lumaCheck = form.url.trim() ? lumaLinkProblem(form.url) : null;
-  const lumaNote = lumaCheck?.kind === "token" || lumaCheck?.kind === "query" ? lumaCheck.text : null;
+  const typedUrl = withHttps(form.url);
+  const lumaCheck = form.url.trim() ? lumaLinkProblem(typedUrl) : null;
+  // completed with https:// (and nothing else wrong with it): say so, with the link stored
+  const schemeAdded = !!form.url.trim() && typedUrl !== form.url.trim() && !lumaCheck;
+  const lumaNote =
+    lumaCheck?.kind === "token" || lumaCheck?.kind === "query"
+      ? lumaCheck.text
+      : schemeAdded
+        ? "The link has been completed with https://."
+        : null;
   let check: string | null = null;
   try {
     build();
@@ -293,14 +318,19 @@ export function CreateScreen() {
           : check;
   const plainDeposit = !thousands && /^\d+(\.\d+)?$/.test(deposit);
   // the amount as it will be stored, once it is a valid number for this asset (so parseUnits never rounds)
-  const depositShown =
+  const depositUnits =
     plainDeposit && asset && (deposit.split(".")[1] ?? "").length <= asset.decimals
-      ? `Guests will deposit ${formatUnits(parseUnits(deposit, asset.decimals), asset.decimals)} ${asset.symbol}.`
+      ? parseUnits(deposit, asset.decimals)
+      : undefined;
+  // only an amount that can be created: above zero and storable
+  const depositShown =
+    asset && depositUnits !== undefined && depositUnits > 0n && depositUnits <= maxUint256
+      ? `Guests will deposit ${formatUnits(depositUnits, asset.decimals)} ${asset.symbol}.`
       : undefined;
   const feeHint =
     fee === undefined
       ? undefined
-      : form.asset === "ETH" && plainDeposit && parseUnits(deposit, 18) < fee
+      : form.asset === "ETH" && plainDeposit && parseUnits(deposit, 18) > 0n && parseUnits(deposit, 18) < fee
         ? `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH. To send their case to Kleros, you pay the same fee, and you lose it if the jurors side with the guest, so mark everyone who came.`
         : `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH.`;
   const zoneName = form.zone.replace(/_/g, " ");
@@ -367,7 +397,12 @@ export function CreateScreen() {
       <GlassCard as="section" className="og-card">
         <div className="og-form" data-testid="create-form">
           <Field label="Event name" full hint="Shown to guests, and to Kleros jurors if there is a dispute.">
-            <input className="og-input" value={form.name} onChange={set("name")} />
+            <input
+              className="og-input"
+              value={form.name}
+              // a tab or another invisible character (pasted from a spreadsheet) becomes a space, as it is shown
+              onChange={(e) => setForm({ ...form, name: e.currentTarget.value.replace(CONTROL_CHARS, " ") })}
+            />
           </Field>
           <Field label="Luma event page" full hint="Required. Guests register there; Kickback only holds the deposits.">
             <input
@@ -379,7 +414,7 @@ export function CreateScreen() {
             />
             {lumaNote && (
               <span className="og-note" data-testid="luma-link-note">
-                {lumaNote} The link stored will be {normaliseLuma(form.url)}
+                {lumaNote} The link stored will be {normaliseLuma(typedUrl)}
               </span>
             )}
           </Field>
@@ -493,6 +528,7 @@ export function CreateScreen() {
           <Link href={paths.organiseEvent.getHref(earlierContract)} className="kb-link">
             Open the event
           </Link>
+          .
         </p>
       )}
       {earlierFailed && (

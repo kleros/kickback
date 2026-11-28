@@ -154,6 +154,8 @@ export async function readRelease(client: PublicClient, contract: Address) {
     expired: waiting.filter((ch) => now > ch.matchEndsAt).map((ch) => ch.wallet),
     // one still inside its answer time makes releasePayouts revert
     blocked: waiting.some((ch) => now <= ch.matchEndsAt),
+    /** How many are still inside their answer time. */
+    pending: waiting.filter((ch) => now <= ch.matchEndsAt).length,
   };
 }
 

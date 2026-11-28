@@ -68,3 +68,24 @@ describe("unpaidLede", () => {
     expect(unpaidLede([], 4, 16n, fmt, 0, 2)).toContain("each of the 2 open Kleros cases");
   });
 });
+
+describe("unpaidLede: how many held shares were split", () => {
+  const mixed = [
+    { owed: 2n, partlyPaid: true },
+    { owed: 16n, partlyPaid: false },
+  ];
+  const same = [
+    { owed: 2n, partlyPaid: true },
+    { owed: 2n, partlyPaid: true },
+  ];
+  it("says the number of cases when several held shares were split", () => {
+    expect(unpaidLede(mixed, 5, 16n, fmt, 0, 0, 2)).toContain("after the shares held for 2 Kleros cases were split");
+    expect(unpaidLede(same, 2, 16n, fmt, 0, 0, 2)).toContain(
+      "still have money to claim, after the shares held for 2 Kleros cases were split.",
+    );
+    expect(unpaidLede(mixed, 5, 16n, fmt, 0, 0, 1)).toContain("after the share held for a Kleros case was split");
+  });
+  it("uses wording without a number while the count is unknown", () => {
+    expect(unpaidLede(mixed, 5, 16n, fmt)).toContain("after a Kleros case's held share was split");
+  });
+});

@@ -5,16 +5,16 @@ import { useCallback, useEffect, useState } from "react";
 import { addNames, markChecked, readChecked, readNames, type CheckedBook, type LumaBook } from "../model/lumaBook";
 
 /**
- * The organiser's local Luma names and door checks for one event, shared by the tabs. Names are shown only
- * while `enabled` (the organiser's wallet is connected); door checks and the Luma request status always count,
- * so no one is approved twice.
+ * The organiser's local Luma names and door checks for one event, shared by the tabs. Names belong to the organiser
+ * wallet that loaded them (`owner`, the connected wallet while it is the event's organiser) and are read only while
+ * `enabled`; door checks are kept per event and always count, so no one is approved twice.
  */
-export function useLumaBook(contract: string, enabled: boolean) {
+export function useLumaBook(contract: string, owner: string | undefined, enabled: boolean) {
   const [names, setNames] = useState<LumaBook>({});
   const [checked, setChecked] = useState<CheckedBook>({});
   useEffect(() => {
     const load = () => {
-      setNames(readNames(contract));
+      setNames(owner && enabled ? readNames(contract, owner) : {});
       setChecked(readChecked(contract));
     };
     load();
@@ -24,14 +24,14 @@ export function useLumaBook(contract: string, enabled: boolean) {
       window.removeEventListener("storage", load);
       window.removeEventListener("kb-luma", load);
     };
-  }, [contract]);
+  }, [contract, owner, enabled]);
   const add = useCallback(
-    (rows: Parameters<typeof addNames>[1]) => {
-      if (!enabled) return;
-      setNames(addNames(contract, rows));
+    (rows: Parameters<typeof addNames>[2]) => {
+      if (!enabled || !owner) return;
+      setNames(addNames(contract, owner, rows));
       window.dispatchEvent(new Event("kb-luma"));
     },
-    [contract, enabled],
+    [contract, owner, enabled],
   );
   const check = useCallback(
     (wallet: string) => {

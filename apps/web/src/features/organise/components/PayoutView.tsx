@@ -21,7 +21,7 @@ import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { projectedShare, unpaidLede } from "../model/payout";
-import type { Payment } from "../model/record";
+import { heldSplitCount, type Payment } from "../model/record";
 import { assetText, ethText, shortHex, TYPED_WORDS, when } from "../model/view";
 import { tx } from "../operations/tx";
 
@@ -43,7 +43,7 @@ const noteText = (parts: readonly (string | false | 0 | undefined | null)[]) => 
 export function PayoutScreen() {
   const event = useOrganiserEvent();
   const record = useEventRecord(event.address);
-  const luma = useLumaBook(event.address, event.isOwner);
+  const luma = useLumaBook(event.address, event.isOwner ? event.account : undefined, event.isOwner);
   const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
   const [confirm, setConfirm] = useState<"release" | null>(null);
   // where the last action's result is shown: the challenge row it came from (its lower-case wallet), or "tab"
@@ -139,14 +139,22 @@ export function PayoutScreen() {
         )
         .sort((a, b) => Number(a.p.block - b.p.block))
     : [];
+  // the event can be handed to another organiser: each action is credited to the organiser at its time
+  const handed = (record.data?.handovers.length ?? 0) > 0;
+  const isOrganiserThen = (w: string, then: string | undefined) =>
+    w.toLowerCase() === (then ?? info.owner).toLowerCase();
+  const organiserWord = (w: string) =>
+    !handed || w.toLowerCase() === info.owner.toLowerCase()
+      ? "the organiser"
+      : `the organiser at the time (${shortHex(w)})`;
   const refundVia = (p: Payment) =>
     p.via === "claimed"
       ? "withdrawn by the guest"
       : p.via === "sent" && p.sender
         ? p.sender.toLowerCase() === me
           ? "sent by you"
-          : p.sender.toLowerCase() === info.owner.toLowerCase()
-            ? "sent by the organiser"
+          : isOrganiserThen(p.sender, p.organiserThen)
+            ? `sent by ${organiserWord(p.sender)}`
             : `sent by ${shortHex(p.sender)}`
         : p.via === "sent"
           ? "sent"
@@ -180,12 +188,12 @@ export function PayoutScreen() {
                 ? anyRefunded
                   ? "Every guest's deposit has been returned."
                   : "No guest has a deposit to get back."
-                : "Every guest gets their full deposit back. They can withdraw it on the guest page, or you can send the refunds now."
+                : `Every guest gets their full deposit back. They can withdraw it on the guest page, or you can send ${data.booked.length === 1 ? "the refund" : "the refunds"} now.`
               : allBack
                 ? anyRefunded
                   ? `Attendance was not confirmed by ${when(info.claimDeadline)}, so every deposit has been returned.`
                   : `Attendance was not confirmed by ${when(info.claimDeadline)}. No guest has a deposit to get back.`
-                : `Attendance was not confirmed by ${when(info.claimDeadline)}, so every guest gets their full deposit back. They can withdraw it on the guest page, or you can send the refunds now.`}
+                : `Attendance was not confirmed by ${when(info.claimDeadline)}, so every guest gets their full deposit back. They can withdraw it on the guest page, or you can send ${data.booked.length === 1 ? "the refund" : "the refunds"} now.`}
           </p>
           {data.refundRefused.length > 0 && (
             <div className="flex flex-col gap-1" data-testid="refunds-refused">
@@ -253,13 +261,15 @@ export function PayoutScreen() {
                       "tab",
                       "Refund",
                       () => tx.distribute(info.contract, batch),
-                      `Refunds sent to ${guests(batch.length)}.`,
+                      batch.length === 1 ? "Refund sent to 1 guest." : `Refunds sent to ${guests(batch.length)}.`,
                     );
                   }}
                 >
                   {data.booked.length > refundBatch.length
                     ? `Send refunds to the next ${guests(refundBatch.length)} (${data.booked.length} still owed)`
-                    : `Send refunds to every guest (${refundBatch.length})`}
+                    : refundBatch.length === 1
+                      ? "Send the refund (1 guest)"
+                      : `Send refunds to every guest (${refundBatch.length})`}
                 </GradientButton>
                 <span className="og-note">
                   You pay the network fee. A wallet that refuses the payment can still withdraw on the guest page.
@@ -347,11 +357,14 @@ export function PayoutScreen() {
                 const leftOver = 2n * c.deposit - c.arbitrationPaid;
                 const half = leftOver / 2n;
                 const matcherIsMe = !!me && c.matcher.toLowerCase() === me;
+                const matchedThen = recOf(c.wallet)?.challenge?.answer?.organiserThen;
                 const who = matcherIsMe
                   ? "you"
-                  : c.matcher.toLowerCase() === info.owner.toLowerCase()
-                    ? "the organiser"
+                  : isOrganiserThen(c.matcher, matchedThen)
+                    ? organiserWord(c.matcher)
                     : shortHex(c.matcher);
+                // the organiser when this guest challenged (the one who had to answer)
+                const answerer = c.organiser && c.organiser.toLowerCase() !== zeroAddress ? c.organiser : info.owner;
                 const appeal =
                   c.state === 2 && !c.isRuled && c.appeal && (c.appeal.end > 0 || c.appeal.final)
                     ? c.appeal
@@ -452,7 +465,7 @@ export function PayoutScreen() {
                         : c.state === 1 && now <= c.matchEndsAt
                           ? `This guest says they came, and has paid ${ethText(c.deposit)} to challenge. The time to add guests has passed. If they came, do nothing: they will be added when payouts are released after ${when(c.matchEndsAt)}. If they did not, send the case to Kleros by paying the same ${ethText(c.deposit)} from your wallet before then. Kleros jurors then decide, and whichever side wins gets back what is left of the two fees.`
                           : c.state === 1
-                            ? `${event.isOwner ? "You" : "The organiser"} did not answer in time, so this guest will be added automatically when payouts are released.`
+                            ? `${me && answerer.toLowerCase() === me ? "You" : answerer.toLowerCase() === info.owner.toLowerCase() ? "The organiser" : `The organiser at the time (${shortHex(answerer)})`} did not answer in time, so this guest will be added automatically when payouts are released.`
                             : c.state === 2
                               ? ruled
                                 ? c.ruling === 1
@@ -516,6 +529,10 @@ export function PayoutScreen() {
                                     "Add",
                                     () => tx.addAttendees(info.contract, [c.wallet]),
                                     `${name ?? shortHex(c.wallet)} added to the list.`,
+                                    undefined,
+                                    {
+                                      DuplicateAttendee: `${name ?? shortHex(c.wallet)} is already on the attendance list. Nothing was sent.`,
+                                    },
                                   )
                                 }
                               >
@@ -626,8 +643,8 @@ export function PayoutScreen() {
                   {releasedBy ? (
                     <>
                       {" by "}
-                      {releasedBy.toLowerCase() === info.owner.toLowerCase() ? (
-                        "the organiser"
+                      {isOrganiserThen(releasedBy, record.data.released.organiserThen) ? (
+                        organiserWord(releasedBy)
                       ) : isGuestWallet(releasedBy) ? (
                         <>
                           the guest{" "}
@@ -656,30 +673,46 @@ export function PayoutScreen() {
                   fmt,
                   data.refused.length,
                   info.openCases,
+                  heldSplitCount(record.data),
                 )}
               </p>
               {data.unpaid.length > 0 ? (
-                <div className="og-actions">
-                  <GradientButton
-                    isDisabled={!canActAsAnyone}
-                    onPress={() => {
-                      const batch = toSend;
-                      act(
-                        "tab",
-                        "Send",
-                        () => tx.distribute(info.contract, batch),
-                        `Sent to ${attendees(batch.length)}.`,
-                      );
-                    }}
-                  >
-                    {data.unpaid.length > toSend.length
-                      ? `Send to the next ${attendees(toSend.length)} (${data.unpaid.length} unpaid)`
-                      : `Send to ${attendees(toSend.length)}`}
-                  </GradientButton>
-                  <span className="og-note">
-                    A wallet that refuses the payment can still claim it on the guest page.
-                  </span>
-                </div>
+                <>
+                  {/* who the send pays: the wallet is what the transaction pays, the name (if loaded) who that is */}
+                  <ul className="og-note flex flex-col gap-1" data-testid="unpaid-list">
+                    {data.unpaid.map((u) => (
+                      <li key={u.wallet} title={u.wallet}>
+                        {luma.nameOf(u.wallet) ?? "—"} · <span className="og-mono">{shortHex(u.wallet)}</span> ·{" "}
+                        {fmt(u.owed)}
+                        {u.partlyPaid ? " (the rest of their share)" : ""}
+                      </li>
+                    ))}
+                  </ul>
+                  {data.unpaid.length > toSend.length && (
+                    <p className="og-note">{`One transaction pays the first ${toSend.length} listed; send again for the rest.`}</p>
+                  )}
+                  <div className="og-actions">
+                    <GradientButton
+                      isDisabled={!canActAsAnyone}
+                      onPress={() => {
+                        const batch = toSend;
+                        act(
+                          "tab",
+                          "Send",
+                          () => tx.distribute(info.contract, batch),
+                          `Sent to ${attendees(batch.length)}.`,
+                        );
+                      }}
+                    >
+                      {data.unpaid.length > toSend.length
+                        ? `Send to the next ${attendees(toSend.length)} (${data.unpaid.length} unpaid)`
+                        : `Send to ${attendees(toSend.length)}`}
+                    </GradientButton>
+                    <span className="og-note">
+                      A wallet that refuses the payment can still claim it on the guest page.
+                    </span>
+                  </div>
+                </>
               ) : (
                 <p className="og-note" data-testid="nothing-left">
                   Nothing is left to send.
@@ -734,7 +767,11 @@ export function PayoutScreen() {
           onClose={() => setConfirm(null)}
           onConfirm={() => {
             setConfirm(null);
-            act("tab", "Release", () => tx.releasePayouts(info.contract, expired), RELEASED);
+            act("tab", "Release", () => tx.releasePayouts(info.contract, expired), RELEASED, undefined, {
+              // another wallet (or this one, from another tab) released first: the list is no longer "closed"
+              NotListed:
+                "Payouts were already released a moment ago, so nothing was sent. The page now shows who released them.",
+            });
           }}
         />
       )}

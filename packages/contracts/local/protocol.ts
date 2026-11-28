@@ -266,7 +266,7 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
       `The name is too long. Remove ${cut} character${cut === 1 ? "" : "s"} (accented letters and emoji take more room than plain letters).`,
     );
   }
-  if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes or line breaks.');
+  if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes, tabs, line breaks or other invisible characters.');
   if (bytes(u) > MAX_URL) throw new Error("The event link is too long.");
   if (u && !/^https:\/\/\S+$/.test(u)) throw new Error("The event link must start with https://.");
   if (!jsonSafe(u)) throw new Error("The event link cannot contain quotes or backslashes.");

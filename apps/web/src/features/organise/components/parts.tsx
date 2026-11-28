@@ -33,8 +33,8 @@ export interface Figure {
 export function Figures({ rows, big, testId }: { rows: readonly Figure[]; big?: boolean; testId?: string }) {
   return (
     <dl className={big ? "og-figs og-fig-big" : "og-figs"} data-testid={testId}>
-      {rows.map((row) => (
-        <div key={row.label} className={big ? "og-fig og-fig-big" : "og-fig"}>
+      {rows.map((row, i) => (
+        <div key={`${row.label}-${i}`} className={big ? "og-fig og-fig-big" : "og-fig"}>
           <dt>{row.label}</dt>
           <dd className="kb-num">
             {row.value}
@@ -229,7 +229,7 @@ export function TxLink({ tx, testId }: { tx: string; testId?: string }) {
   const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
   return explorer ? (
     <a
-      className="kb-link og-mono"
+      className="kb-link og-mono og-nowrap"
       href={`${explorer}/tx/${tx}`}
       target="_blank"
       rel="noreferrer"
@@ -239,7 +239,7 @@ export function TxLink({ tx, testId }: { tx: string; testId?: string }) {
       {shortHex(tx)} ↗
     </a>
   ) : (
-    <span className="og-mono" title={tx} data-testid={testId}>
+    <span className="og-mono og-nowrap" title={tx} data-testid={testId}>
       {shortHex(tx)}
     </span>
   );
@@ -252,7 +252,7 @@ export function Addr({ address, testId }: { address: string; testId?: string }) 
   const shown = isAddress(address, { strict: false }) ? getAddress(address) : address;
   return explorer ? (
     <a
-      className="kb-link og-mono"
+      className="kb-link og-mono og-nowrap"
       href={`${explorer}/address/${address}`}
       target="_blank"
       rel="noreferrer"
@@ -262,7 +262,7 @@ export function Addr({ address, testId }: { address: string; testId?: string }) 
       {shortHex(shown)} ↗
     </a>
   ) : (
-    <span className="og-mono" title={address} data-testid={testId}>
+    <span className="og-mono og-nowrap" title={address} data-testid={testId}>
       {shortHex(shown)}
     </span>
   );

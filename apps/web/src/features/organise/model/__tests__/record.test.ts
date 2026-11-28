@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { foldRecord, recordCsv, type RecordLog } from "../record";
+import { foldRecord, heldSplitCount, recordCsv, type RecordLog } from "../record";
 
 const A = "0x00000000000000000000000000000000000000aA" as const;
 const B = "0x00000000000000000000000000000000000000bB" as const;
@@ -185,5 +185,57 @@ describe("recordCsv", () => {
         .split("\n")[1]
         ?.startsWith("'=SUM(A1)"),
     ).toBe(true);
+  });
+});
+
+describe("foldRecord: handovers to another organiser", () => {
+  const ALICE = "0x00000000000000000000000000000000000000a1" as const;
+  const DAVE = "0x00000000000000000000000000000000000000d4" as const;
+  const ZERO = "0x0000000000000000000000000000000000000000" as const;
+
+  it("records each handover and credits every step to the organiser at that time", () => {
+    const handover = log("OwnershipTransferred", 6, { previousOwner: ALICE, newOwner: DAVE });
+    const r = foldRecord(
+      [
+        log("OwnershipTransferred", 1, { previousOwner: ZERO, newOwner: ALICE }),
+        log("EventCreated", 1),
+        log("Deposited", 2, { staker: A, amount: 10n }),
+        log("Deposited", 3, { staker: B, amount: 10n }),
+        log("AttendeeAdded", 4, { attendee: A }),
+        log("ListClosed", 4),
+        log("Paid", 5, { account: B, to: B, amount: 1n, eth: true }),
+        handover,
+        // released in the same block as the handover, after it: Dave is the organiser by then
+        { ...log("PayoutsReleased", 6, { share: 20n }), transactionHash: `0x${"e".repeat(64)}` },
+      ],
+      new Map([[`0x${"e".repeat(64)}`, { from: DAVE, fn: "releasePayouts" }]]),
+    );
+    expect(r.firstOrganiser).toBe(ALICE);
+    expect(r.handovers).toEqual([{ tx: handover.transactionHash, block: 6n, from: ALICE, to: DAVE }]);
+    expect(r.listClosed?.by).toBe(ALICE);
+    expect(r.attendanceTxs[0]?.by).toBe(ALICE);
+    expect(r.wallets.get(B.toLowerCase())?.payments[0]?.organiserThen).toBe(ALICE);
+    expect(r.released).toMatchObject({ by: DAVE, organiserThen: DAVE });
+  });
+
+  it("credits a release in the handover's block but before its log to the earlier organiser", () => {
+    const r = foldRecord([
+      log("OwnershipTransferred", 1, { previousOwner: ZERO, newOwner: ALICE }),
+      { ...log("PayoutsReleased", 6, { share: 20n }), transactionHash: `0x${"f".repeat(64)}` },
+      log("OwnershipTransferred", 6, { previousOwner: ALICE, newOwner: DAVE }),
+    ]);
+    expect(r.released?.organiserThen).toBe(ALICE);
+    expect(r.handovers).toHaveLength(1);
+  });
+
+  it("counts held shares that were split, leaving out a split of nothing", () => {
+    const r = foldRecord([
+      log("Challenged", 2, { staker: A, deposit: 1n }),
+      log("Challenged", 3, { staker: B, deposit: 1n }),
+      log("HeldShareSplit", 8, { staker: A, each: 5n, attendees: 2n, openCases: 0n }),
+      log("HeldShareSplit", 9, { staker: B, each: 0n, attendees: 2n, openCases: 0n }),
+    ]);
+    expect(heldSplitCount(r)).toBe(1);
+    expect(heldSplitCount(undefined)).toBeUndefined();
   });
 });

@@ -36,8 +36,16 @@ export function unpaidLede(
   refused = 0,
   /** Kleros cases still open: a lost case's held share is split among the attendees later. */
   openCases = 0,
+  /** How many held shares have been split so far (undefined while the record is loading). */
+  splits?: number,
 ) {
   const n = unpaid.length;
+  const after =
+    splits === undefined || splits < 1
+      ? "after a Kleros case's held share was split"
+      : splits === 1
+        ? "after the share held for a Kleros case was split"
+        : `after the shares held for ${splits} Kleros cases were split`;
   const held =
     openCases === 1
       ? "a share is held for the open Kleros case and is split among the attendees unless Kleros rules that guest came"
@@ -54,14 +62,14 @@ export function unpaidLede(
     const amounts = new Set(unpaid.map((u) => u.owed.toString()));
     const head = `${n} of ${attendeesText(total)} still ${n === 1 ? "has" : "have"} money to claim`;
     if (amounts.size === 1)
-      return `${head}, after the share held for a Kleros case was split. ${n === 1 ? "They are" : "Each is"} owed ${fmt(unpaid[0]!.owed)}. ${send}`;
+      return `${head}, ${after}. ${n === 1 ? "They are" : "Each is"} owed ${fmt(unpaid[0]!.owed)}. ${send}`;
     const k = partly.length;
     const full = n - k;
     const partOwed = new Set(partly.map((u) => u.owed.toString()));
     const partText =
       partOwed.size === 1
-        ? `${k} ${isAre(k)} owed the rest of their share (${fmt(partly[0]!.owed)}${k === 1 ? "" : " each"}, after the share held for a Kleros case was split)`
-        : `${k} ${isAre(k)} owed the rest of their share, after the share held for a Kleros case was split`;
+        ? `${k} ${isAre(k)} owed the rest of their share (${fmt(partly[0]!.owed)}${k === 1 ? "" : " each"}, ${after})`
+        : `${k} ${isAre(k)} owed the rest of their share, ${after}`;
     return `${head}: ${partText}${full > 0 ? ` and ${full} ${isAre(full)} owed the full ${fmt(share)}` : ""}. ${send}`;
   }
   if (n < total)

@@ -101,6 +101,27 @@ describe("depositState", () => {
     expect(unruled.label).toBe("With Kleros");
   });
 
+  it("says how much of the Kleros fee comes back when the Kleros cost changed before the match", () => {
+    const g = galleryInput("ruled");
+    const at = (arbitrationPaid: bigint, phase = g.phase) =>
+      depositState({
+        ...g,
+        phase,
+        guest: {
+          ...g.guest!,
+          challenge: { ...g.guest!.challenge, ruling: 1, deposit: parseEther("0.015"), arbitrationPaid },
+        },
+      });
+    // the cost rose: only part of the fee comes back
+    const partial = at(parseEther("0.0225"));
+    expect(partial.amount).toBe("0.0075");
+    expect(partial.foot).toBe("0.0075 of your 0.015 ETH fee comes back.");
+    expect(at(parseEther("0.015")).foot).toBe("Your Kleros fee comes back.");
+    expect(at(parseEther("0.01")).foot).toBe("Your Kleros fee comes back.");
+    expect(at(parseEther("0.015"), 1).lines[1]!.text).toBe("Join the list to settle it and share the payouts.");
+    expect(at(parseEther("0.015"), 2).lines[1]!.text).toBe("Join the list, then claim your share here.");
+  });
+
   it("shows the money a ruled case pays back, and short one-line errors for the money actions", () => {
     const g = galleryInput("ruled");
     const c = { ...g.guest!.challenge, deposit: parseEther("0.03"), arbitrationPaid: parseEther("0.03") };
@@ -345,11 +366,34 @@ describe("depositState: round 2 fixes", () => {
     );
     expect(line({ phase: 3 })).toBe("You cancelled this event. Guests can withdraw their full deposits.");
     // no deposit left (all refunded, or none made): nothing promised
-    expect(line({ phase: 3, stakerCount: 0 })).toBe(
+    expect(line({ phase: 3, stakerCount: 0, depositsMade: 2 })).toBe(
       "You cancelled this event. No guest has a deposit left to withdraw.",
     );
-    expect(line({ chainNow: end + 8 * 86_400, stakerCount: 0 })).toBe(
+    expect(line({ chainNow: end + 8 * 86_400, stakerCount: 0, depositsMade: 2 })).toBe(
       "Attendance was not confirmed in time. No guest has a deposit left to withdraw.",
+    );
+    // never any deposit: nothing was "left"
+    expect(line({ phase: 3, stakerCount: 0, depositsMade: 0 })).toBe(
+      "You cancelled this event. No guest had deposited, so there is nothing to return.",
+    );
+    expect(line({ chainNow: end + 8 * 86_400, stakerCount: 0, depositsMade: 0 })).toBe(
+      "Attendance was not confirmed in time. No guest had deposited, so there is nothing to return.",
+    );
+    // the deposit logs still loading: true either way
+    expect(line({ phase: 3, stakerCount: 0 })).toBe("You cancelled this event. No guest has a deposit to withdraw.");
+    // the count of challenges waiting for the organiser's answer
+    expect(line({ ...listed, waitingChallenges: 4 })).toBe(
+      "4 challenges are waiting for your answer on the organiser page.",
+    );
+    expect(line({ ...listed, waitingChallenges: 4, answerable: 1 })).toBe(
+      "A challenge is waiting for your answer on the organiser page.",
+    );
+    // every waiting challenge is past its answer time: nothing to answer
+    expect(line({ ...listed, waitingChallenges: 2, answerable: 0, timeText: () => "Wed 4 Nov, 18:00" })).toBe(
+      "Challenges are open until Wed 4 Nov, 18:00.",
+    );
+    expect(line({ ...after, release: { expired: [], blocked: true, pending: 2 } })).toBe(
+      "2 challenges are still waiting for your answer on the organiser page.",
     );
   });
 

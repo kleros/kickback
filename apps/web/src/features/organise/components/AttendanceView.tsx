@@ -38,7 +38,7 @@ const guests = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
 
 export function AttendanceScreen() {
   const event = useOrganiserEvent();
-  const luma = useLumaBook(event.address, event.isOwner);
+  const luma = useLumaBook(event.address, event.isOwner ? event.account : undefined, event.isOwner);
   const record = useEventRecord(event.address);
   const [csv, setCsv] = useState<{ name: string; text: string; at?: number } | null>(null);
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
@@ -52,17 +52,18 @@ export function AttendanceScreen() {
   const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked, {}, rejected) : null), [csv, booked, rejected]);
   // the loaded check-in export and its ticks are kept per event in this browser, like the Guests tab's export:
   // shown only while the organiser's wallet is connected, hidden (not deleted) for any other wallet or none
-  const accountKey = event.account?.toLowerCase();
   const isOwner = event.isOwner;
+  // the organiser's own saved data: another wallet that later became the organiser starts with nothing
+  const owner = isOwner ? event.account?.toLowerCase() : undefined;
   const contract = event.address;
   useEffect(() => {
     setErr(null);
     setConfirm(null);
     const load = () => {
-      const saved = isOwner ? readCheckin(contract) : null;
+      const saved = owner ? readCheckin(contract, owner) : null;
       setCsv(saved ? { name: saved.name, text: saved.text, at: saved.at } : null);
       // ticks are kept on their own (also ticks made by hand with no export); older ones were kept with the export
-      const ticks = isOwner ? (readTicks(contract) ?? saved?.picked ?? null) : null;
+      const ticks = owner ? (readTicks(contract, owner) ?? saved?.picked ?? null) : null;
       setPicked(ticks ? new Set(ticks) : null);
     };
     load();
@@ -73,11 +74,11 @@ export function AttendanceScreen() {
       window.removeEventListener("storage", load);
       window.removeEventListener("kb-luma", load);
     };
-  }, [accountKey, isOwner, contract]);
+  }, [owner, contract]);
   /** Saves the organiser's ticks for this event in this browser (null: back to the export's own check-ins). */
   const savePicked = (next: Set<string> | null) => {
-    if (!event.isOwner) return;
-    writeTicks(event.address, next ? [...next] : null);
+    if (!owner) return;
+    writeTicks(event.address, owner, next ? [...next] : null);
   };
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
@@ -236,12 +237,20 @@ export function AttendanceScreen() {
             const name = luma.nameOf(w);
             const challenge = data.challenges.find((c) => c.wallet.toLowerCase() === w.toLowerCase());
             const on = already.has(w.toLowerCase());
+            // a case Kleros has ruled on but nobody has settled yet (a ruling above 2 cannot be settled)
+            const ruled = challenge?.state === 2 && challenge.isRuled === true && (challenge.ruling ?? 99) <= 2;
             const text = on
               ? challenge
                 ? "Came (added after a challenge)"
                 : "Came"
               : challenge?.state === 2
-                ? "With Kleros: a share is held"
+                ? ruled
+                  ? challenge.ruling === 1
+                    ? "Kleros ruled they came · a share is held · settle on the Payout tab"
+                    : challenge.ruling === 2
+                      ? "Kleros ruled they did not come · a share is held · settle on the Payout tab"
+                      : "Kleros did not rule either way · a share is held · settle on the Payout tab"
+                  : "With Kleros: a share is held"
                 : challenge?.state === 3
                   ? challenge.ruling === 0
                     ? "Did not come (Kleros did not rule either way)"
@@ -282,7 +291,7 @@ export function AttendanceScreen() {
         <h2 className="kb-h1">Attendance</h2>
         <p className="og-lede">
           {left > 0
-            ? `${lead}: ${left === 1 ? "1 guest has" : `${left} guests have`} not withdrawn their deposit yet. They can withdraw it on the guest page, or you can send the refunds on the Payout tab.`
+            ? `${lead}: ${left === 1 ? "1 guest has" : `${left} guests have`} not withdrawn their deposit yet. They can withdraw it on the guest page, or you can send ${left === 1 ? "the refund" : "the refunds"} on the Payout tab.`
             : deposited > 0
               ? `${lead}, and every deposit has been returned.`
               : `${lead}. No guest had deposited, so there is nothing to return.`}
@@ -292,7 +301,7 @@ export function AttendanceScreen() {
             href={paths.organiseEvent.getHref(event.address, undefined, "payout")}
             className="kb-link kb-tap self-start"
           >
-            Send the refunds on the Payout tab
+            {left === 1 ? "Send the refund on the Payout tab" : "Send the refunds on the Payout tab"}
           </Link>
         )}
         <Messages event={event} />
@@ -328,6 +337,8 @@ export function AttendanceScreen() {
         {
           TooLate: "The time to add guests ended before your list was sent. Nothing was recorded.",
           NotListed: "The list changed before your send. Nothing was recorded.",
+          DuplicateAttendee:
+            "One of these guests is already on the list (it changed since this page loaded). Nothing was recorded.",
         },
         { pending: `Adding ${guests(sent.length)} to the list… Waiting for confirmation.`, wallets: sent },
       );
@@ -440,8 +451,10 @@ export function AttendanceScreen() {
             setCsv({ name, text, at });
             setPicked(null);
             // kept in this browser for this event (a new file clears the ticks saved with the last one)
-            writeCheckin(event.address, { name, text, at });
-            writeTicks(event.address, null);
+            if (owner) {
+              writeCheckin(event.address, owner, { name, text, at });
+              writeTicks(event.address, owner, null);
+            }
             // names only from a real Luma export (its verified wallet column), as on the Guests tab
             if (hasWalletColumn(text)) luma.add(rows);
           }}
@@ -454,7 +467,7 @@ export function AttendanceScreen() {
           <Button
             className="kb-link kb-tap"
             onPress={() => {
-              forgetCheckin(event.address);
+              if (owner) forgetCheckin(event.address, owner);
               setCsv(null);
               setPicked(null);
             }}
@@ -527,6 +540,15 @@ export function AttendanceScreen() {
           // a challenge still waiting for the organiser's answer
           const ch = challengeOf.get(w.toLowerCase());
           const challenged = !on && ch?.state === 1;
+          // a case Kleros has ruled on stays with Kleros (no tick) until it is settled on the Payout tab
+          const ruledCh = withKleros && ch?.isRuled === true && (ch.ruling ?? 99) <= 2 ? ch : undefined;
+          const klerosText = !ruledCh
+            ? "With Kleros"
+            : ruledCh.ruling === 1
+              ? "Kleros ruled they came · settle on the Payout tab"
+              : ruledCh.ruling === 2
+                ? "Kleros ruled they did not come · settle on the Payout tab"
+                : "Kleros did not rule either way · settle on the Payout tab";
           const challengedText = !challenged
             ? ""
             : now <= ch.matchEndsAt
@@ -547,7 +569,7 @@ export function AttendanceScreen() {
                   <span className="og-dot" data-tone={withKleros ? "end" : isOn(w) ? "ok" : "warn"} aria-hidden />
                   <span>
                     {withKleros
-                      ? "With Kleros"
+                      ? klerosText
                       : challenged && !isOn(w)
                         ? challengedText
                         : on
@@ -580,7 +602,7 @@ export function AttendanceScreen() {
       </div>
       {picked && (
         <Button
-          className="kb-link self-start"
+          className="kb-link kb-tap self-start"
           onPress={() => {
             setPicked(null);
             savePicked(null);

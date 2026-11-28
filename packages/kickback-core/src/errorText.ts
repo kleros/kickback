@@ -56,7 +56,7 @@ export const KICKBACK_ERROR_TEXT: Record<string, (args: readonly unknown[]) => s
   WasRejected: ([x]) => `The organiser turned ${x} away, so this wallet cannot deposit again.`,
   EventFull: ([x]) => `The event is full (${String(x)} ${Number(x) === 1 ? "spot" : "spots"}).`,
   NotAStaker: ([x]) => `${x} has no deposit for this event.`,
-  DuplicateAttendee: ([x]) => `${x} appears twice in the list.`,
+  DuplicateAttendee: ([x]) => `${x} is already on the attendance list.`,
   NoAttendees: () => "The attendance list is empty: add at least one guest who came, or cancel the event.",
   NothingToWithdraw: () => "There is nothing to withdraw for this wallet.",
   TransferFailed: ([x]) =>

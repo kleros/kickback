@@ -118,3 +118,101 @@ test("attendance refuses a file that is not a check-in list, and keeps hand tick
   await expect(page.getByLabel(`${DAVE} came`)).toBeChecked();
   await expect(page.getByLabel(`${BOB} came`)).not.toBeChecked();
 });
+
+test("a handover gives the new organiser a clean start and is in the record", async ({
+  page,
+  wallet,
+  time,
+  hardhat,
+}) => {
+  test.setTimeout(300_000);
+  const ALICE = MOCK_ACCOUNTS.alice;
+  const CAROL: Address = "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC";
+  const call = async (from: Address, event: Address, functionName: "transferOwnership" | "acceptOwnership") => {
+    const hash = await hardhat.writeContract({
+      address: event,
+      abi: presenceEventAbi,
+      functionName,
+      args: functionName === "transferOwnership" ? [DAVE] : [],
+      account: from,
+      chain: hardhat.chain,
+    } as never);
+    await hardhat.waitForTransactionReceipt({ hash });
+  };
+  await time.install();
+  const now = await time.getHardhatTime();
+  const ev = await createEvent(page, wallet, "R6 Handover", minute(now + 3600), minute(now + 7200));
+  await deposit(hardhat, BOB, ev);
+  await deposit(hardhat, CAROL, ev);
+  // Alice loads her Luma export: names next to the wallets
+  await page.goto(`/organise/${ev}/guests`);
+  await wallet.connect("alice");
+  await expect(page.getByTestId("guest-row")).toHaveCount(2, { timeout: 30_000 });
+  await page.getByTestId("luma-csv").setInputFiles({
+    name: "luma.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "api_id,name,email,ticket_name,eth_address,approval_status",
+        `p1,Bob Lantern,bob@example.com,Deposit,${BOB},approved`,
+        `p2,Carol Lantern,carol@example.com,Deposit,${CAROL},approved`,
+      ].join("\n"),
+    ),
+  });
+  await expect(page.getByTestId("guest-row").filter({ hasText: "Bob Lantern" })).toHaveCount(1);
+  // after the event: her check-in export and a tick by hand
+  await time.setTime(minute(now + 7200) + 120);
+  await page.goto(`/organise/${ev}/attendance`);
+  await wallet.connect("alice");
+  await page.getByTestId("checkin-csv").setInputFiles({
+    name: "checkin.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(
+      [
+        "api_id,name,email,eth_address,checked_in_at,approval_status",
+        `c1,Bob Lantern,bob@example.com,${BOB},2026-11-26T20:10:00.000Z,approved`,
+        `c2,Carol Lantern,carol@example.com,${CAROL},,approved`,
+      ].join("\n"),
+    ),
+  });
+  await expect(page.getByTestId("checkin-loaded")).toBeVisible();
+  await page.getByLabel(`${CAROL} came`).check();
+  await expect(page.getByLabel(`${BOB} came`)).toBeChecked();
+
+  // the event is handed to Dave: Alice's open page locks within a block or two, not at the next 15 s read
+  await call(ALICE, ev, "transferOwnership");
+  await call(DAVE, ev, "acceptOwnership");
+  await expect(page.getByText("Only the organiser can open this page")).toBeVisible({ timeout: 12_000 });
+
+  // Dave on the same browser: none of Alice's names, exports or ticks
+  await wallet.connect(DAVE);
+  await expect(page.getByTestId("attendance-row")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByTestId("checkin-loaded")).toHaveCount(0);
+  await expect(page.getByLabel(`${BOB} came`)).not.toBeChecked();
+  await expect(page.getByLabel(`${CAROL} came`)).not.toBeChecked();
+  await expect(page.getByTestId("attendance")).not.toContainText("Lantern");
+  await page.goto(`/organise/${ev}/guests`);
+  await wallet.connect(DAVE);
+  await expect(page.getByTestId("guest-row")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByTestId("guests")).not.toContainText("Lantern");
+  await expect(page.getByTestId("luma-loaded")).toHaveCount(0);
+  await expect(page.getByTestId("guest-row").first()).toContainText("—");
+  // the record names no guest and says who handed the event to whom, in which transaction
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Download the record (CSV)" }).click(),
+  ]);
+  const { readFileSync } = await import("node:fs");
+  const text = readFileSync((await download.path())!, "utf8");
+  expect(text).not.toContain("Lantern");
+  expect(text).toMatch(new RegExp(`Organiser changed,,From ${ALICE} to ${DAVE},`));
+  // the overview records it too
+  await page.goto(`/organise/${ev}`);
+  await wallet.connect(DAVE);
+  await expect(page.getByTestId("overview-handover")).toBeVisible({ timeout: 30_000 });
+
+  // Alice is no longer the organiser: nothing of the event, and nothing of her data
+  await wallet.connect("alice");
+  await expect(page.getByText("Only the organiser can open this page")).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("body")).not.toContainText("Lantern");
+});

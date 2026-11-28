@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { presenceEventAbi } from "@kickback/contracts";
 import { gasLimitFor, isEth, revertName } from "@kickback/core";
@@ -192,6 +192,17 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
   const send = useDeposit(event.contract, event.token, event.depositAmount);
 
   const sendError = send.error instanceof SendError ? send.error : undefined;
+  // an EventFull refusal goes stale once a spot opens again (a guest turned away): bring the Deposit button back,
+  // but only after the event was seen full, so the "stayed in your wallet" line shows until the read catches up
+  const full = !!event.capacity && event.stakerCount !== undefined && event.stakerCount >= event.capacity;
+  const wasFull = useRef(full);
+  const refusedFull = sendError?.kind === "refused" && revertName(sendError.cause) === "EventFull";
+  useEffect(() => {
+    if (wasFull.current && !full && refusedFull) send.reset();
+    wasFull.current = full;
+    // only a change of fullness counts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [full]);
   const sent = sentTx.data ? { ...sentTx.data.record, outcome: sentTx.data.outcome } : null;
   const waiting = send.isPending || sent?.outcome === "pending";
   const wallNow = useTicker(waiting);
@@ -266,6 +277,11 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     guests: event.stakerCount,
     organiser: connected && isAddressEqual(address, event.owner),
     waitingChallenges: event.waitingChallenges,
+    answerable:
+      event.phase === 1 && now !== undefined && event.waitingAnswerEnds
+        ? event.waitingAnswerEnds.filter((t) => now <= t).length
+        : undefined,
+    depositsMade: deposits.data?.guests,
     attendeeCount: event.attendeeCount,
     organiserHref: paths.organiseEvent.getHref(event.contract),
     heldSplit: deposits.data?.heldSplit,
