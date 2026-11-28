@@ -229,6 +229,14 @@ export const ipfsPathOf = (text: string | Uint8Array) => "/ipfs/" + ipfsCidV0(te
 // eslint-disable-next-line no-control-regex
 export const jsonSafe = (s: string) => !/["\\\u0000-\u001f\u007f]/.test(s);
 
+/**
+ * Characters that do not show but change a text: C1 controls, zero-width space, text-direction marks, overrides
+ * and isolates, line and paragraph separators, word joiners and the BOM (kickback-core's DISGUISE_RE without C0,
+ * which jsonSafe covers, and without ZWNJ/ZWJ, which emoji and Persian or Indic names need). They often come
+ * along with copied text; the contract would store them, so a name could look the same as another or reorder.
+ */
+export const HIDDEN_RE = /[\u0080-\u009f\u200b\u200e\u200f\u2028-\u202e\u2060-\u2069\ufeff]/;
+
 export type EventForm = {
   name: string;
   url?: string;
@@ -266,10 +274,16 @@ export function eventConfig(form: EventForm, now = Math.floor(Date.now() / 1000)
       `The name is too long. Remove ${cut} character${cut === 1 ? "" : "s"} (accented letters and emoji take more room than plain letters).`,
     );
   }
-  if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes, tabs, line breaks or other invisible characters.');
+  if (!jsonSafe(n)) throw new Error('The name cannot contain quotes ("), backslashes, tabs or line breaks.');
+  if (HIDDEN_RE.test(n))
+    throw new Error(
+      "The name cannot contain invisible or text-direction characters, which often come along with copied text. Type the name again.",
+    );
   if (bytes(u) > MAX_URL) throw new Error("The event link is too long.");
   if (u && !/^https:\/\/\S+$/.test(u)) throw new Error("The event link must start with https://.");
   if (!jsonSafe(u)) throw new Error("The event link cannot contain quotes or backslashes.");
+  if (HIDDEN_RE.test(u))
+    throw new Error("The event link cannot contain invisible or text-direction characters. Type or paste it again.");
   const amount = BigInt(form.depositAmount);
   if (amount <= 0n) throw new Error("The deposit must be more than 0.");
   const [s, e, d] = [form.eventStart, form.eventEnd, form.claimDeadline].map(Number) as [number, number, number];

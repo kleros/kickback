@@ -15,6 +15,7 @@ import { FROM_BLOCK, PROTOCOL } from "@/config/protocol";
 import { foldGuestLogs, type WalletDeposits } from "../model/guestLogs";
 
 export { eventKey, loadEvent, EventRefused, type KickbackEvent, type RefusalReason } from "@/lib/presence";
+export { useBlockTime } from "@/lib/web3/chain-time";
 
 /** The event at `contract`, read on-chain and checked against this site's factory. */
 export function useEvent(contract: string) {
@@ -126,17 +127,6 @@ export function useEventDeposits(contract: Address | undefined, fromBlock: numbe
         heldSplitCount: logs.filter((log) => log.eventName === "HeldShareSplit" && (log.args.each ?? 0n) > 0n).length,
       };
     },
-  });
-}
-
-/** Unix seconds of a block; blocks never change, so each is read once. */
-export function useBlockTime(block: bigint | undefined) {
-  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
-  return useQuery({
-    queryKey: ["block-time", DEFAULT_CHAIN_ID, block?.toString()],
-    enabled: client !== undefined && block !== undefined,
-    staleTime: STALE_TIME.immutable,
-    queryFn: async () => Number((await client!.getBlock({ blockNumber: block! })).timestamp),
   });
 }
 

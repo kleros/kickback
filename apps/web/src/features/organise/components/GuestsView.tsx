@@ -265,15 +265,17 @@ export function GuestsScreen() {
       const how =
         p.kind === "refund" && rec?.rejected && p.tx.toLowerCase() === rec.rejected.tx.toLowerCase()
           ? "refunded when the organiser turned them away"
-          : p.via === "claimed"
-            ? `claimed by ${who(account, p.organiserThen)}`
-            : p.via === "sent"
-              ? `sent by ${who(p.sender, p.organiserThen) ?? "someone"}`
-              : p.kind === "challenge"
-                ? "paid back by the contract"
-                : p.kind === "refund"
-                  ? "refunded by the contract"
-                  : "paid by the contract";
+          : p.kind === "refund" && p.via === "claimed"
+            ? `withdrawn by ${who(account, p.organiserThen)}`
+            : p.via === "claimed"
+              ? `claimed by ${who(account, p.organiserThen)}`
+              : p.via === "sent"
+                ? `sent by ${who(p.sender, p.organiserThen) ?? "someone"}`
+                : p.kind === "challenge"
+                  ? "paid back by the contract"
+                  : p.kind === "refund"
+                    ? "refunded by the contract"
+                    : "paid by the contract";
       return `${exact(p.amount, p.eth)} to ${p.to}, ${how}: ${txUrl(p.tx)}`;
     };
     const money = (rec: WalletRecord | undefined, wallet: string) => {
@@ -602,6 +604,7 @@ export function GuestsScreen() {
             closed={closed}
             onRows={luma.add}
             ended={ended}
+            beforeEnd={now < info.eventEnd}
           />
         </GlassCard>
       )}

@@ -12,7 +12,16 @@ import { useAccount, usePublicClient } from "wagmi";
 import { EventRefused } from "@/lib/presence";
 import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
-import { SendError, sendLock, sentTxStore, useSend, useSendBusy, useSentTx } from "@/lib/web3/send";
+import {
+  DEPLOY_RECORD_KEY,
+  isSendBusy,
+  SendError,
+  sentTxStore,
+  useSend,
+  useSendBusy,
+  useSendHolder,
+  useSentTx,
+} from "@/lib/web3/send";
 import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -74,7 +83,13 @@ export function useOrganiserEventSource(address: Address) {
   const isOwner = !!account && !!data && isAddressEqual(account, liveOwner ?? data.event.owner);
   // a late challenge still inside its answer time holds up the release: the pill says so
   const phase = data
-    ? phaseOf(data.event, now!, data.challenges.filter((c) => c.state === 1 && now! <= c.matchEndsAt).length)
+    ? phaseOf(
+        data.event,
+        now!,
+        data.challenges.filter((c) => c.state === 1 && now! <= c.matchEndsAt).length,
+        // Staker (1) or Refunded (3): a deposit was held at the end; none means nothing was ever due
+        data.guests.some((g) => g.status === 1 || g.status === 3),
+      )
     : null;
 
   // the send under way: its label ("Turn away 2"), the sentence that says so, the wallets it touches, and the tab
@@ -120,7 +135,9 @@ export function useOrganiserEventSource(address: Address) {
     return set;
   };
   const mine = (sender?: Address) => !!sender && !!account && isAddressEqual(sender, account);
-  const busy = useSendBusy();
+  // per wallet: another wallet's send in this browser does not lock this one's controls
+  const busy = useSendBusy(account);
+  const holder = useSendHolder(account);
   const send = useSend({
     // recorded, so a reload while it confirms still knows about it and does not offer the same send again
     record: true,
@@ -167,7 +184,7 @@ export function useOrganiserEventSource(address: Address) {
     /** The sentence shown while it confirms ("Turning away 1 guest… Waiting for confirmation."), and its wallets. */
     progress?: { pending: string; wallets?: readonly string[] },
   ) => {
-    if (runningRef.current || earlierPending || sendLock.getState().busy) return;
+    if (runningRef.current || earlierPending || isSendBusy(account)) return;
     runningRef.current = true;
     const sender = account;
     const origin = pathname;
@@ -226,6 +243,24 @@ export function useOrganiserEventSource(address: Address) {
     /** A send from this wallet, from before a reload or another tab (or one whose wait ran out), still confirming. */
     earlier: earlierPending && sent.data ? { hash: sent.data.record.hash, at: sent.data.record.at } : null,
     busy: busy || running !== null || earlierPending,
+    /**
+     * A send from this wallet that this page did not start (another event, the create page, or this event from a
+     * page since left) still confirming: why the buttons are locked. `hash` is unknown while the wallet's prompt is
+     * open; `where` says what it was for.
+     */
+    elsewhere:
+      busy && running === null && !earlierPending && holder
+        ? {
+            hash: holder.hash ?? null,
+            where: !holder.contract
+              ? ("unknown" as const)
+              : isAddressEqual(holder.contract, DEPLOY_RECORD_KEY)
+                ? ("create" as const)
+                : isAddressEqual(holder.contract, address)
+                  ? ("this" as const)
+                  : ("other" as const),
+          }
+        : null,
     /** The last send's failure, on the tab that sent it and for the wallet that sent it. */
     error: error && error.origin === pathname && mine(error.account) ? { text: error.text, at: error.at } : null,
     /** The last send's confirmation, on the tab that sent it and for the wallet that sent it. */

@@ -32,7 +32,7 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 
 import { isShowableTime, zonedDateText } from "@/utils/time";
 
-import { sendLock, sentTxStore, useSend, useSentTx } from "@/lib/web3/send";
+import { isSendBusy, sentTxStore, useSend, useSendHolder, useSentTx } from "@/lib/web3/send";
 import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -174,7 +174,12 @@ export function CreateScreen() {
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   // a message belongs to the wallet that sent it: drop it on Disconnect or an account switch
   const accountKey = address?.toLowerCase();
-  useEffect(() => setError(null), [accountKey]);
+  // this visit's own create, once the wallet gave its hash: "Waiting for confirmation (0x…)" under the button
+  const [mineSent, setMineSent] = useState<Hash | null>(null);
+  useEffect(() => {
+    setError(null);
+    setMineSent(null);
+  }, [accountKey]);
   const tokenAddress = form.token.trim();
   const token = useToken(form.asset === "token" ? tokenAddress : "");
   const fee = useChallengeFee().data;
@@ -193,6 +198,9 @@ export function CreateScreen() {
   const recent = !!earlier && Math.abs(Date.now() - earlier.record.at) < 3_600_000;
   const earlierPending = recent && earlier?.outcome === "pending";
   const earlierMined = recent && earlier?.outcome === "mined" ? earlier.record.hash : undefined;
+  // this wallet's send from another page (an event's tab, left while it confirms): the button waits for it
+  const holder = useSendHolder(address);
+  const busyElsewhere = !!holder && !send.isPending && !created && !earlierPending;
   const earlierFailed = recent && earlier && earlier.outcome !== "pending" && earlier.outcome !== "mined";
   const earlierEvent = useQuery({
     queryKey: ["create-receipt", DEFAULT_CHAIN_ID, earlierMined],
@@ -315,7 +323,9 @@ export function CreateScreen() {
         ? `Switch your wallet to ${DEFAULT_CHAIN.name}.`
         : earlierPending
           ? "Wait for the event you already created to confirm."
-          : check;
+          : busyElsewhere
+            ? "Wait for your other transaction to confirm."
+            : check;
   const plainDeposit = !thousands && /^\d+(\.\d+)?$/.test(deposit);
   // the amount as it will be stored, once it is a valid number for this asset (so parseUnits never rounds)
   const depositUnits =
@@ -346,13 +356,18 @@ export function CreateScreen() {
   // second mutate would also drop the first one's callbacks, so the page would never open the new event)
   const inFlight = useRef(false);
   const create = () => {
-    if (inFlight.current || created || send.isPending || earlierPending || sendLock.getState().busy) return;
+    if (inFlight.current || created || send.isPending || earlierPending || isSendBusy(address)) return;
     inFlight.current = true;
     setError(null);
+    setMineSent(null);
     // the zone is not on chain: kept in this browser, so the organiser pages can show the event's own times
     if (address) eventZone.saveCreate(DEFAULT_CHAIN_ID, address, form.zone);
     send.mutate(
-      { expectedAccount: address, prepare: async () => tx.create(PROTOCOL!.factory, build()) },
+      {
+        expectedAccount: address,
+        prepare: async () => tx.create(PROTOCOL!.factory, build()),
+        onSent: (hash) => setMineSent(hash),
+      },
       {
         onSuccess: (receipt) => {
           // locked from here: a second press would create a second event (the ref stays set too)
@@ -372,6 +387,7 @@ export function CreateScreen() {
         },
         onError: (e) => {
           inFlight.current = false;
+          setMineSent(null);
           setError({ text: e.message, at: Date.now() });
         },
       },
@@ -520,6 +536,30 @@ export function CreateScreen() {
             Manage your events
           </Link>
           .
+        </p>
+      )}
+      {send.isPending && (
+        <p className="og-note" role="status" data-testid="create-pending">
+          {mineSent ? (
+            <>
+              Creating your event… Waiting for confirmation (<TxLink tx={mineSent} />
+              ). Keep this page open.
+            </>
+          ) : (
+            "Confirm in your wallet."
+          )}
+        </p>
+      )}
+      {busyElsewhere && holder && (
+        <p className="og-note" role="status" data-testid="elsewhere-pending">
+          {holder.hash ? (
+            <>
+              A transaction you sent from this wallet is still confirming (<TxLink tx={holder.hash} />
+              ). You can create the event once it is confirmed.
+            </>
+          ) : (
+            "Your wallet has another request open. You can create the event once it is done."
+          )}
         </p>
       )}
       {earlierMined && earlierContract && (

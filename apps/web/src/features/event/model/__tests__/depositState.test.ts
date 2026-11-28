@@ -535,3 +535,94 @@ describe("depositState: round 2 fixes", () => {
     expect(plain.button).toBe("Waiting for the ruling to be recorded");
   });
 });
+
+describe("depositState, round 7 fixes", () => {
+  it("keeps the spots-left line on a capped event once a wallet connects", () => {
+    const b = galleryInput("ready");
+    const view = depositState({ ...b, capacity: 3, guests: 2, stakerCount: 2 });
+    expect(view.key).toBe("ready");
+    expect(view.lines.map((l) => l.text)).toEqual([
+      "2 deposits so far · 1 spot left.",
+      expect.stringMatching(/^From /),
+    ]);
+    // no cap: only the wallet line
+    expect(depositState({ ...b, capacity: undefined, guests: 2 }).lines).toHaveLength(1);
+    // the count still loading: no empty line
+    expect(depositState({ ...b, capacity: 3, guests: undefined }).lines.map((l) => l.text)).not.toContain("");
+  });
+
+  it("asks an attendee to settle a ruled case before releasing payouts", () => {
+    const r = galleryInput("release");
+    const view = depositState({
+      ...r,
+      openCases: 1,
+      guest: { ...r.guest!, ruledCase: { wallet: FIXTURE.wallet, ruling: 2 } },
+    });
+    expect(view.key).toBe("resolve");
+    expect(view.action).toBe("settle");
+    expect(view.button).toBe("Settle the ruling");
+    expect(view.lines.map((l) => l.text)).toEqual([
+      "Kleros has ruled on a case. Anyone can settle it.",
+      "Then payouts can be released.",
+    ]);
+    // none ruled: the release as before
+    expect(depositState({ ...r, openCases: 1 }).key).toBe("release");
+  });
+
+  it("tells the organiser to settle ruled cases before releasing", () => {
+    const b = baseInput();
+    const end = b.eventEnd;
+    const after = {
+      ...b,
+      organiser: true,
+      stakerCount: 3,
+      phase: 1,
+      challengeEndsAt: end + 86_400,
+      chainNow: end + 2 * 86_400,
+      release: { expired: [], blocked: false },
+    };
+    const line = (over: Partial<DepositInput>) => depositState({ ...after, ...over }).lines[0]?.text;
+    expect(line({ ruledCases: 1, openCases: 2 })).toBe(
+      "Kleros has ruled on a case. Settle it on the organiser page, then release payouts.",
+    );
+    expect(line({ ruledCases: 2, openCases: 2 })).toBe(
+      "Kleros has ruled on 2 cases. Settle them on the organiser page, then release payouts.",
+    );
+  });
+
+  it("an event nobody deposited in stays ended after the deadline on the organiser's card", () => {
+    const b = baseInput();
+    const end = b.eventEnd;
+    const view = depositState({
+      ...b,
+      organiser: true,
+      stakerCount: 0,
+      claimDeadline: end + 7 * 86_400,
+      chainNow: end + 8 * 86_400,
+      heldAtEnd: false,
+    });
+    expect(view.lines[0]?.text).toBe("The event ended with no deposits: there is nothing to confirm.");
+  });
+
+  it("says why Deposit is locked while this wallet's other send confirms", () => {
+    const b = galleryInput("ready");
+    const view = depositState({ ...b, busy: true, busyElsewhere: { hash: FIXTURE.tx } });
+    expect(view.disabled).toBe(true);
+    expect(view.lines[0]?.text).toBe("Wait: your other transaction is confirming.");
+    expect(view.lines).toHaveLength(2);
+  });
+
+  it("links a 'came' or 'no ruling' Kleros ruling to the case", () => {
+    const r = galleryInput("ruled");
+    const c = r.guest!.challenge!;
+    for (const ruling of [0, 1]) {
+      const view = depositState({
+        ...r,
+        evidenceUrl: (id) => `https://resolve.kleros.io/cases/${id}`,
+        guest: { ...r.guest!, challenge: { ...c, isRuled: true, ruling } },
+      });
+      expect(view.key).toBe("resolve");
+      expect(view.lines[0]?.link).toBeDefined();
+    }
+  });
+});

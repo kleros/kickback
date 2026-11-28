@@ -165,15 +165,6 @@ export function GuestCheck({
         text: refundText(wallet),
         wallet,
       };
-    const before = approvedAt(wallet);
-    if (before !== undefined)
-      return {
-        tone: "warn",
-        title: "Already approved: approve only one",
-        text: `A request with this deposit was already approved here on ${when(Math.floor(before / 1000))}. One deposit covers one guest.`,
-        wallet,
-        done: true,
-      };
     if (closed)
       return {
         tone: "warn",
@@ -189,6 +180,16 @@ export function GuestCheck({
         tone: "warn",
         title: "Event over: no approval needed",
         text: `Status: ${statusOf?.(wallet) ?? "Deposited"}.`,
+        wallet,
+        done: true,
+      };
+    // the event's state wins: "approve only one" means nothing once nothing can be approved
+    const before = approvedAt(wallet);
+    if (before !== undefined)
+      return {
+        tone: "warn",
+        title: "Already approved: approve only one",
+        text: `A request with this deposit was already approved here on ${when(Math.floor(before / 1000))}. One deposit covers one guest.`,
         wallet,
         done: true,
       };
@@ -359,7 +360,7 @@ export function GuestCheck({
         <input
           ref={input}
           className="og-input is-mono"
-          placeholder="0x… or deposit link"
+          placeholder="0x… or link"
           value={text}
           spellCheck={false}
           autoComplete="off"

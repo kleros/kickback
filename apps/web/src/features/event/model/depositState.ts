@@ -158,6 +158,11 @@ export interface DepositInput {
   /** Wei, the network fee a challenge is expected to cost. */
   challengeFee?: bigint;
   busy?: boolean;
+  /**
+   * The send that makes `busy`, when this card did not start it (this wallet's send for another event or the
+   * create page): the card says so instead of greying out Deposit with no reason. `hash` once the wallet gave one.
+   */
+  busyElsewhere?: { hash?: Hash };
   /** The latest block's time, unix seconds; the app's "now". */
   chainNow: number | undefined;
   chain: { id: number; name: string };
@@ -224,6 +229,10 @@ export interface DepositInput {
   answerable?: number;
   /** Wallets that ever deposited, from the Deposited logs (a refund does not lower it); undefined while loading. */
   depositsMade?: number;
+  /** Whether any guest held a deposit at the end (false: nobody did, so nothing was ever due); undefined unknown. */
+  heldAtEnd?: boolean;
+  /** Open Kleros cases the jurors have ruled on but nobody has settled yet. */
+  ruledCases?: number;
   /** Guests on the attendance list so far. */
   attendeeCount?: number;
   /** The organiser page of this event. */
@@ -334,11 +343,18 @@ function organiserLine(input: DepositInput): string {
         : input.timeText
           ? `Challenges are open until ${input.timeText(input.challengeEndsAt)}.`
           : "Challenges are open for now.";
-    return input.release?.blocked
-      ? waitingText(input.release.pending ?? 1, "still ")
-      : "Challenges have closed. Release payouts on the organiser page.";
+    if (input.release?.blocked) return waitingText(input.release.pending ?? 1, "still ");
+    // settle first, so each ruling's result counts in the split
+    const ruled = Math.min(input.ruledCases ?? 0, input.openCases ?? 0);
+    if (ruled > 0)
+      return ruled === 1
+        ? "Kleros has ruled on a case. Settle it on the organiser page, then release payouts."
+        : `Kleros has ruled on ${ruled} cases. Settle them on the organiser page, then release payouts.`;
+    return "Challenges have closed. Release payouts on the organiser page.";
   }
   if (now < input.eventEnd) return "You organise this event. Guests deposit here.";
+  if (input.heldAtEnd === false && !input.stakerCount)
+    return "The event ended with no deposits: there is nothing to confirm.";
   if (input.claimDeadline !== undefined && now > input.claimDeadline)
     return nobodyLeft
       ? `Attendance was not confirmed in time. ${none}`
@@ -842,6 +858,7 @@ export function depositState(input: DepositInput): DepositView {
             {
               text: c.ruling === 1 ? "Kleros jurors ruled you came." : "Kleros jurors did not rule either way.",
               tone: "pri",
+              link: caseLink(c),
             },
             {
               text:
@@ -906,6 +923,26 @@ export function depositState(input: DepositInput): DepositView {
       !!input.challengeEndsAt && input.chainNow !== undefined && input.chainNow > input.challengeEndsAt;
     if (guest.attended) {
       // anyone can release payouts once no challenge is still waiting for an answer
+      // a ruled Kleros case first: settled before the release, its result counts in the split (anyone can settle)
+      if (windowOver && input.release && !input.release.blocked && guest.ruledCase && openCases > 0) {
+        const error = errorFor("settle");
+        return switchOr({
+          key: "resolve",
+          label: "On the attendance list",
+          amount: owed(amount),
+          lines: error
+            ? [error]
+            : [
+                { text: "Kleros has ruled on a case. Anyone can settle it.", tone: "pri" },
+                { text: "Then payouts can be released." },
+              ],
+          action: "settle",
+          button: "Settle the ruling",
+          disabled: input.busy,
+          foot: null,
+          shake: error !== undefined,
+        });
+      }
       if (windowOver && input.release && !input.release.blocked) {
         const error = errorFor("release");
         return switchOr({
@@ -1484,6 +1521,17 @@ export function depositState(input: DepositInput): DepositView {
     }
   }
 
+  if (!notice && input.busy && input.busyElsewhere) {
+    const href = input.busyElsewhere.hash ? txHref(explorer, input.busyElsewhere.hash) : undefined;
+    notice = {
+      text: input.busyElsewhere.hash
+        ? "Wait: your other transaction is confirming."
+        : "Wait: your wallet has another request open.",
+      tone: "warn",
+      link: href ? { label: "Etherscan", href } : undefined,
+    };
+  }
+
   if (sent?.outcome === "dropped") return dropped;
   if (sent?.outcome === "replaced") return replaced(sent.hash);
   if (sent?.outcome === "failed" && (send.status === "idle" || send.errorKind === "unconfirmed")) return failed(true);
@@ -1537,6 +1585,11 @@ export function depositState(input: DepositInput): DepositView {
 
   const shown = isToken ? input.tokenBalance : input.balance;
   const where = shown === undefined ? `From ${me}` : `From ${me} · ${fmt(shown)} ${sym}`;
+  // a capped event keeps its spots-left count once a wallet connects ("2 deposits so far · 1 spot left.")
+  const spotsLine = input.capacity && input.guests !== undefined ? guestsLine(input.guests, input.capacity) : undefined;
+  // tokens keep their two lines: the count takes the step's place only for the last spot
+  const lastSpot =
+    !!input.capacity && input.guests !== undefined && input.capacity - input.guests === 1 ? spotsLine : undefined;
 
   if (isToken && (input.allowance === undefined || input.allowance < amount))
     return {
@@ -1544,7 +1597,7 @@ export function depositState(input: DepositInput): DepositView {
       label: "Refundable deposit",
       lines: notice
         ? [notice, { text: where }]
-        : [{ text: `Step 1 of 2: allow exactly ${amt} ${sym}.`, tone: "pri" }, { text: where }],
+        : [lastSpot ?? { text: `Step 1 of 2: allow exactly ${amt} ${sym}.`, tone: "pri" }, { text: where }],
       action: "approve",
       button: `Allow ${amt} ${sym}`,
       disabled: input.busy || input.allowance === undefined,
@@ -1558,8 +1611,10 @@ export function depositState(input: DepositInput): DepositView {
     lines: notice
       ? [notice, { text: where }]
       : isToken
-        ? [{ text: `Step 2 of 2: send your ${amt} ${sym} deposit.`, tone: "pri" }, { text: where }]
-        : [{ text: where }],
+        ? [lastSpot ?? { text: `Step 2 of 2: send your ${amt} ${sym} deposit.`, tone: "pri" }, { text: where }]
+        : spotsLine
+          ? [spotsLine, { text: where }]
+          : [{ text: where }],
     button: "Deposit",
     shake: notice !== undefined,
     ...deposit,

@@ -15,7 +15,7 @@ import { STALE_TIME } from "@/lib/query";
 import { useChainTime } from "@/lib/web3/chain-time";
 import { isRejected, isUnknownChain } from "@/lib/web3/chainErrors";
 import { connectWallet, hasInjectedWallet, installedWallets } from "@/lib/web3/connect";
-import { SendError, useSentTx, useSendBusy } from "@/lib/web3/send";
+import { SendError, useSentTx, useSendBusy, useSendHolder } from "@/lib/web3/send";
 import { wagmiConfig } from "@/lib/web3/wagmi";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -158,7 +158,9 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
   const mine = address ? deposits.data?.byWallet.get(address.toLowerCase()) : undefined;
   const depositedAt = useBlockTime(mine?.block);
   const money = useGuestMoney(event.contract, token, event.depositAmount, event.challengeDeposit);
-  const busy = useSendBusy();
+  // per wallet: another wallet's send in this browser does not hold up this one
+  const busy = useSendBusy(address);
+  const holder = useSendHolder(address);
   const phase = event.phase;
   const refundedAt = useBlockTime(mine?.refundedBlock);
   const balance = useBalance({
@@ -235,6 +237,8 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     capacity: event.capacity,
     stakerCount: event.stakerCount,
     openCases: event.openCases,
+    ruledCases: event.ruledCases,
+    heldAtEnd: event.heldAtEnd,
     // nothing of the pool is owed any more (reservedPool also counts open Kleros cases)
     allPaid: event.phase === 2 && event.reservedPool === 0n,
     guest: money.query.data,
@@ -243,6 +247,8 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     tokenBalance: money.query.data?.tokenBalance,
     moneySend: money.send,
     busy,
+    // this wallet's send that this card did not start: for another event, the create page, or a page since left
+    busyElsewhere: holder && !send.isPending && money.send.status !== "pending" ? { hash: holder.hash } : undefined,
     chainNow: chainTime?.now,
     chain: { id: DEFAULT_CHAIN_ID, name: DEFAULT_CHAIN.name },
     wallet: {

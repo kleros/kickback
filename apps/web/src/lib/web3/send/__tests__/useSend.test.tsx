@@ -168,7 +168,7 @@ describe("useSentTx", () => {
           timeout = reject;
         }),
     );
-    const watcher = renderHook(() => ({ sent: useSentTx(EVENT), busy: useSendBusy() }), { wrapper });
+    const watcher = renderHook(() => ({ sent: useSentTx(EVENT), busy: useSendBusy(ALICE) }), { wrapper });
     await vi.waitFor(() => expect(watcher.result.current.sent.data).toBeNull());
     const sender = renderHook(() => useSend({ record: true }), { wrapper });
     let sending!: Promise<unknown>;

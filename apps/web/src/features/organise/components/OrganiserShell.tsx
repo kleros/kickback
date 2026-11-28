@@ -31,6 +31,14 @@ export const organiserTabs = (address: string) => [
   { href: paths.organiseEvent.getHref(address, undefined, "payout"), label: "Payout" },
 ];
 
+/** Whose send holds this wallet's buttons, when this page did not start it. */
+const ELSEWHERE_TEXT = {
+  other: "A transaction you sent from this wallet for another event",
+  create: "The event you are creating from this wallet",
+  this: "A transaction you sent from this wallet for this event",
+  unknown: "A transaction you sent from this wallet",
+} as const;
+
 export function ShellView({
   address,
   pathname,
@@ -188,6 +196,18 @@ export function ShellView({
           <p className="og-note" role="status" data-testid="earlier-pending">
             A transaction you sent from this wallet is still confirming (<TxLink tx={event.earlier.hash} />
             ). The buttons are locked until it is confirmed.
+          </p>
+        )}
+        {event.isOwner && event.elsewhere && (
+          <p className="og-note" role="status" data-testid="elsewhere-pending">
+            {event.elsewhere.hash ? (
+              <>
+                {ELSEWHERE_TEXT[event.elsewhere.where]} is still confirming (<TxLink tx={event.elsewhere.hash} />
+                ). The buttons unlock when it is confirmed.
+              </>
+            ) : (
+              "Your wallet has another request open. The buttons unlock when it is done."
+            )}
           </p>
         )}
         {children}

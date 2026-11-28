@@ -77,6 +77,11 @@ describe("protocol helpers", function () {
     assert.throws(() => eventConfig({ ...ok, name: "" }, t), /name/);
     assert.throws(() => eventConfig({ ...ok, url: "http://x" }, t), /https/);
     assert.throws(() => eventConfig({ ...ok, depositAmount: 0n }, t), /more than 0/);
+    // invisible and text-direction characters are refused; ZWJ (emoji sequences) and ZWNJ (scripts) are not
+    assert.throws(() => eventConfig({ ...ok, name: "Party\u200b" }, t), /invisible or text-direction/);
+    assert.throws(() => eventConfig({ ...ok, name: "Party\u202e" }, t), /invisible or text-direction/);
+    assert.throws(() => eventConfig({ ...ok, name: "Par\ufeffty" }, t), /invisible or text-direction/);
+    assert.equal(eventConfig({ ...ok, name: "Pride \u{1F3F3}\u{FE0F}\u200d\u{1F308}" }, t).name.length > 0, true);
     assert.throws(() => eventConfig({ ...ok, eventEnd: t + 5 }, t), /end after/);
     assert.throws(
       () => eventConfig({ ...ok, eventEnd: ok.eventStart, claimDeadline: ok.eventStart + 7 * 86400 }, t),

@@ -28,6 +28,11 @@ export interface KickbackEvent extends EventInfo {
   ruledCases?: number;
   /** The answer deadline (matchEndsAt) of each challenge still waiting for the organiser; undefined when unknown. */
   waitingAnswerEnds?: number[];
+  /**
+   * An open event with no deposit now: whether any guest held one at the end (kept, or refunded after a missed
+   * deadline). False means nobody did, so nothing was ever due; undefined when unknown or not asked.
+   */
+  heldAtEnd?: boolean;
 }
 
 export class EventRefused extends Error {
@@ -109,8 +114,23 @@ export async function loadEvent(
     } catch {
       // unknown
     }
+  // an open event with no deposit now: nobody deposited (or all were turned away), or every refund was taken back
+  let heldAtEnd: boolean | undefined;
+  if (info.phase === 0 && info.stakerCount === 0)
+    try {
+      const c = { address: info.contract, abi: presenceEventAbi } as const;
+      const stakers = await client.readContract({ ...c, functionName: "stakers" });
+      const statuses = await Promise.all(
+        stakers.map((s) => client.readContract({ ...c, functionName: "status", args: [s] })),
+      );
+      // Staker (1) or Refunded (3): a deposit was held at the end; Rejected (2) was refunded before the start
+      heldAtEnd = statuses.some((st) => Number(st) === 1 || Number(st) === 3);
+    } catch {
+      // unknown: the phase falls back to the deadline
+    }
   return {
     ...info,
+    heldAtEnd,
     challengeCount,
     casesSent,
     ruledCases,

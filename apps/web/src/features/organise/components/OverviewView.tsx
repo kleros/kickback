@@ -12,6 +12,8 @@ import { NumberPop } from "@/components/ui/NumberPop";
 
 import { zonedDateText } from "@/utils/time";
 
+import { useBlockTime } from "@/lib/web3/chain-time";
+
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 
@@ -33,10 +35,16 @@ const LUMA_SETUP = [
   "Approve each request that has a deposit; you can check them on the Guests tab.",
 ];
 
+/** Said on a cancelled event's step: Luma is where guests registered, so they are told there. */
+const LUMA_AFTER_CANCEL = " If you have not yet, cancel the event on Luma too, so registered guests are told.";
+
 export function OverviewScreen({ court }: { court: string }) {
   const event = useOrganiserEvent();
   const { overview, phase, address } = event;
   const record = useEventRecord(address);
+  // when payouts were released (or the event cancelled): the block's time, cached for good once read
+  const releasedAt = useBlockTime(record.data?.released?.block).data;
+  const cancelledAt = useBlockTime(record.data?.cancelled?.block).data;
   const [cancel, setCancel] = useState(false);
   // the dialog belongs to the wallet that opened it: close it on Disconnect, an account or a network switch
   const accountKey = event.account?.toLowerCase();
@@ -68,6 +76,27 @@ export function OverviewScreen({ court }: { court: string }) {
   const readyToSettle = data.challenges.filter(
     (c) => c.state === 2 && c.isRuled === true && (c.ruling ?? 99) <= 2,
   ).length;
+  // final rulings Kleros has not recorded yet (the Payout tab offers "Record the ruling" for them)
+  const toRecord = data.challenges.filter((c) => c.state === 2 && c.isRuled !== true && c.appeal?.final).length;
+  const ready = Math.min(readyToSettle, disputedCount);
+  // the ruled cases, said beside any challenge still waiting for an answer (settle first: the result counts)
+  const rulingText = [
+    ready === 1 && "1 Kleros ruling is ready to settle on the Payout tab: settle it so its result counts in the split.",
+    ready > 1 &&
+      `${ready} Kleros rulings are ready to settle on the Payout tab: settle them so their results count in the split.`,
+    toRecord === 1 && "1 Kleros ruling is final but not yet recorded: record it on the Payout tab, then settle it.",
+    toRecord > 1 &&
+      `${toRecord} Kleros rulings are final but not yet recorded: record them on the Payout tab, then settle them.`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const withRulings = rulingText ? ` ${rulingText}` : "";
+  const deciding = Math.max(0, disputedCount - ready - toRecord);
+  // Luma is the only place guests registered: a cancel is said there too (before the end, so they are told)
+  const lumaCancel =
+    now < info.eventEnd
+      ? " Cancel the event on Luma too, so registered guests are told and approved registrations stop working."
+      : " Tell your guests on Luma that the event was cancelled.";
   const cases = info.openCases;
   const casesText =
     readyToSettle === 0
@@ -92,13 +121,13 @@ export function OverviewScreen({ court }: { court: string }) {
     ? owed > 0
       ? {
           title: NEXT_STEP[phase].title,
-          detail: `${lead}${owed === 1 ? "1 guest has" : `${owed} guests have`} not withdrawn their deposit yet. They can withdraw it on the guest page, or you can send ${owed === 1 ? "the refund" : "the refunds"} on the Payout tab.`,
+          detail: `${lead}${owed === 1 ? "1 guest has" : `${owed} guests have`} not withdrawn their deposit yet. They can withdraw it on the guest page, or you can send ${owed === 1 ? "the refund" : "the refunds"} on the Payout tab.${phase === "Cancelled" ? LUMA_AFTER_CANCEL : ""}`,
           tab: "payout",
           action: "Open Payout",
         }
       : {
           title: NEXT_STEP[phase].title,
-          detail: `${lead}${deposited > 0 ? "Every guest's deposit has been returned." : "No guest had deposited, so there is nothing to return."}`,
+          detail: `${lead}${deposited > 0 ? "Every guest's deposit has been returned." : "No guest had deposited, so there is nothing to return."}${phase === "Cancelled" ? LUMA_AFTER_CANCEL : ""}`,
           tab: null,
           action: null,
           done: true,
@@ -122,7 +151,7 @@ export function OverviewScreen({ court }: { court: string }) {
         : phase === "Challenges pending" && waiting.length > 0
           ? {
               title: "Answer challenges",
-              detail: `The challenge window is over, but ${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} ${event.isOwner ? "still waiting for your answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released." : "still waiting for the organiser's answer."} You can release payouts after ${when(lastAnswer)}.`,
+              detail: `The challenge window is over, but ${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} ${event.isOwner ? "still waiting for your answer. If a guest did not come, send their case to Kleros. If they came, do nothing: they will be added when payouts are released." : "still waiting for the organiser's answer."} You can release payouts after ${when(lastAnswer)}.${withRulings}`,
               tab: "payout",
               action: "Open Payout",
             }
@@ -137,70 +166,83 @@ export function OverviewScreen({ court }: { court: string }) {
                 tab: null,
                 action: null,
               }
-            : phase === "Challenge window" && waiting.length === 0
+            : phase === "Challenge window" && waiting.length > 0
               ? {
-                  title:
-                    readyToSettle === 0
-                      ? "Kleros is deciding"
-                      : readyToSettle === 1
-                        ? "Settle the Kleros case"
-                        : "Settle the Kleros cases",
-                  detail: `${
-                    readyToSettle === 0
-                      ? `${disputedCount === 1 ? "1 case is" : `${disputedCount} cases are`} with Kleros jurors. Send evidence (Luma check-in, photos) on each case page.`
-                      : `${casesLine(disputedCount, Math.min(readyToSettle, disputedCount))}${disputedCount > readyToSettle ? " Send evidence (Luma check-in, photos) on each case page that is still with the jurors." : ""}`
-                  } Guests left off the list can still challenge until ${when(info.challengeEndsAt)}; if one does, answer it within 1 day. After that, release payouts on the Payout tab: a share is held for each case still with Kleros.`,
+                  title: "Answer challenges",
+                  detail: `${waiting.length === 1 ? "1 challenge is" : `${waiting.length} challenges are`} ${event.isOwner ? "waiting for your answer" : "waiting for the organiser's answer"}. Add anyone who came. If a guest did not come, send their case to Kleros within 1 day of their challenge, or they will be added.${withRulings} Guests left off the list can still challenge until ${when(info.challengeEndsAt)}.`,
                   tab: "payout",
                   action: "Open Payout",
                 }
-              : phase === "Payouts ready"
-                ? payoutsReadyStep({
-                    openCases: info.openCases,
-                    readyToSettle,
-                    // what the release gives each attendee: the Payout tab's own figure
-                    share: projectedShare(info, data.challenges).share ?? 0n,
-                    deposit: info.depositAmount,
-                    fmt: (u) => assetText(u, info),
-                  })
-                : phase === "Payouts released" && info.openCases > 0
-                  ? {
-                      title:
-                        readyToSettle > 0
-                          ? readyToSettle === 1
-                            ? "Settle the Kleros case"
-                            : "Settle the Kleros cases"
-                          : info.openCases === 1
-                            ? "Wait for the Kleros ruling"
-                            : "Wait for the Kleros rulings",
-                      detail: casesText + payText,
-                      tab: "payout",
-                      action: "Open Payout",
-                    }
-                  : phase === "Payouts released" && data.unpaid.length === 0 && data.refused.length === 0
+              : phase === "Challenge window" && waiting.length === 0
+                ? {
+                    title:
+                      readyToSettle > 0
+                        ? readyToSettle === 1
+                          ? "Settle the Kleros case"
+                          : "Settle the Kleros cases"
+                        : toRecord > 0
+                          ? toRecord === 1
+                            ? "Record the Kleros ruling"
+                            : "Record the Kleros rulings"
+                          : "Kleros is deciding",
+                    detail: `${
+                      readyToSettle === 0 && toRecord === 0
+                        ? `${disputedCount === 1 ? "1 case is" : `${disputedCount} cases are`} with Kleros jurors. Send evidence (Luma check-in, photos) on each case page.`
+                        : toRecord === 0
+                          ? `${casesLine(disputedCount, ready)}${disputedCount > readyToSettle ? " Send evidence (Luma check-in, photos) on each case page that is still with the jurors." : ""}`
+                          : `${rulingText}${deciding > 0 ? ` ${deciding === 1 ? "1 case is" : `${deciding} cases are`} still with the jurors: send evidence (Luma check-in, photos) on each case page.` : ""}`
+                    } Guests left off the list can still challenge until ${when(info.challengeEndsAt)}; if one does, answer it within 1 day. After that, release payouts on the Payout tab: a share is held for each case still with Kleros.`,
+                    tab: "payout",
+                    action: "Open Payout",
+                  }
+                : phase === "Payouts ready"
+                  ? payoutsReadyStep({
+                      openCases: info.openCases,
+                      readyToSettle,
+                      // what the release gives each attendee: the Payout tab's own figure
+                      share: projectedShare(info, data.challenges).share ?? 0n,
+                      deposit: info.depositAmount,
+                      fmt: (u) => assetText(u, info),
+                    })
+                  : phase === "Payouts released" && info.openCases > 0
                     ? {
-                        title: "All done",
-                        detail:
-                          info.openCases > 0
-                            ? "Every attendee has been paid their share so far."
-                            : "Every attendee has been paid their share.",
-                        tab: null,
-                        action: null,
-                        done: true,
+                        title:
+                          readyToSettle > 0
+                            ? readyToSettle === 1
+                              ? "Settle the Kleros case"
+                              : "Settle the Kleros cases"
+                            : info.openCases === 1
+                              ? "Wait for the Kleros ruling"
+                              : "Wait for the Kleros rulings",
+                        detail: casesText + payText,
+                        tab: "payout",
+                        action: "Open Payout",
                       }
-                    : phase === "Payouts released"
+                    : phase === "Payouts released" && data.unpaid.length === 0 && data.refused.length === 0
                       ? {
-                          ...NEXT_STEP[phase],
-                          detail: unpaidLede(
-                            data.unpaid,
-                            info.attendeeCount,
-                            info.payoutShare,
-                            (u) => assetText(u, info),
-                            data.refused.length,
-                            info.openCases,
-                            splits,
-                          ),
+                          title: "All done",
+                          detail:
+                            info.openCases > 0
+                              ? "Every attendee has been paid their share so far."
+                              : "Every attendee has been paid their share.",
+                          tab: null,
+                          action: null,
+                          done: true,
                         }
-                      : NEXT_STEP[phase];
+                      : phase === "Payouts released"
+                        ? {
+                            ...NEXT_STEP[phase],
+                            detail: unpaidLede(
+                              data.unpaid,
+                              info.attendeeCount,
+                              info.payoutShare,
+                              (u) => assetText(u, info),
+                              data.refused.length,
+                              info.openCases,
+                              splits,
+                            ),
+                          }
+                        : NEXT_STEP[phase];
   const booking = phase === "Deposits open" || phase === "Live now";
   const guestLink = `${typeof window === "undefined" ? "" : window.location.origin}${paths.event.getHref(address)}`;
   const deadline =
@@ -226,8 +268,8 @@ export function OverviewScreen({ court }: { court: string }) {
   const cancelled = info.phase === 3;
   const hasDeposits = info.stakerCount > 0;
   const cancelNote = hasDeposits
-    ? "Every guest who still has a deposit can then withdraw it in full on the guest page. This cannot be undone."
-    : "No guest has a deposit, so nothing needs to be returned. This cannot be undone.";
+    ? `Every guest who still has a deposit can then withdraw it in full on the guest page.${lumaCancel} This cannot be undone.`
+    : `No guest has a deposit, so nothing needs to be returned.${lumaCancel} This cannot be undone.`;
   const canCancel = event.isOwner && event.onChain && info.phase === 0 && now <= info.claimDeadline;
   return (
     <div className="flex flex-col gap-6" data-testid="overview">
@@ -335,7 +377,19 @@ export function OverviewScreen({ court }: { court: string }) {
             cancelled
               ? {
                   label: "Cancelled",
-                  value: record.data?.cancelled ? <TxLink tx={record.data.cancelled.tx} testId="cancel-tx" /> : "—",
+                  value: record.data?.cancelled ? (
+                    <>
+                      {cancelledAt !== undefined && (
+                        <>
+                          {when(cancelledAt)}
+                          {" · "}
+                        </>
+                      )}
+                      <TxLink tx={record.data.cancelled.tx} testId="cancel-tx" />
+                    </>
+                  ) : (
+                    "—"
+                  ),
                 }
               : info.phase >= 1
                 ? {
@@ -366,7 +420,15 @@ export function OverviewScreen({ court }: { court: string }) {
                   {
                     label: "Payouts released",
                     value: record.data?.released ? (
-                      <TxLink tx={record.data.released.tx} testId="overview-released-tx" />
+                      <>
+                        {releasedAt !== undefined && (
+                          <>
+                            {when(releasedAt)}
+                            {" · "}
+                          </>
+                        )}
+                        <TxLink tx={record.data.released.tx} testId="overview-released-tx" />
+                      </>
                     ) : (
                       "—"
                     ),
@@ -427,8 +489,15 @@ export function OverviewScreen({ court }: { court: string }) {
               "Cancel",
               () => tx.cancel(info.contract),
               hasDeposits
-                ? "The event is cancelled. Guests can now withdraw their deposits."
-                : "The event is cancelled. No guest has a deposit to withdraw.",
+                ? `The event is cancelled. Guests can now withdraw their deposits.${lumaCancel}`
+                : `The event is cancelled. No guest has a deposit to withdraw.${lumaCancel}`,
+              undefined,
+              {
+                NotOpen:
+                  "The event was already cancelled, or its attendance list was closed, perhaps from another tab or device. The page above is now up to date. Nothing was sent.",
+                TooLate:
+                  "The deadline to confirm who came has passed, so the event can no longer be cancelled. Nothing was sent.",
+              },
             );
           }}
         />

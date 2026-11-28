@@ -262,6 +262,11 @@
 @media (max-width: 520px) {
   .og-actions > .kb-btn {
     flex: 1 1 100%;
+    /* a long label ("Copy 12 emails with no deposit") wraps onto two lines inside the card, not past it */
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
   }
 }
 .og-locked {
@@ -339,9 +344,9 @@
 .og-input[aria-invalid="true"] {
   box-shadow: inset 0 0 0 1px var(--kb-err);
 }
+/* 16px like every input: iOS zooms the page in on focus below that */
 .og-input.is-mono {
   font-family: var(--kb-font-mono);
-  font-size: 14px;
 }
 .og-confirm-input {
   font-family: var(--kb-font-mono);
@@ -959,6 +964,13 @@
     grid-column: 1 / -1;
     grid-row: 3;
     min-width: 0;
+    /* each transaction link a real tap target, its lines far enough apart for a thumb */
+    row-gap: 8px;
+    align-items: center;
+  }
+  .og-table.is-guests .og-cell-txs > a.kb-link {
+    min-height: 32px;
+    padding: 0 2px;
   }
   .og-table.is-guests .og-cell-status {
     grid-row: 4;
@@ -1030,6 +1042,7 @@
   .og-selbar .og-actions > .kb-btn {
     flex: 1 1 auto;
     min-width: auto;
+    white-space: nowrap;
     height: 44px;
   }
 }

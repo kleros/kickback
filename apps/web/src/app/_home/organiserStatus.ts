@@ -10,6 +10,6 @@ export const organiserStatus: RowStatus = (event, now) => {
     event.waitingChallenges > 0 &&
     now > event.challengeEndsAt &&
     now <= event.challengeEndsAt + event.matchPeriod;
-  const phase = phaseOf(event, now, mayWait ? 1 : 0);
+  const phase = phaseOf(event, now, mayWait ? 1 : 0, event.heldAtEnd);
   return { text: phaseLabel(phase, event), tone: PHASE_TONE[phase] };
 };

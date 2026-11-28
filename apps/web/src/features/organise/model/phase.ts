@@ -24,6 +24,11 @@ export function phaseOf(
   >,
   now: number,
   stillWaiting = 0,
+  /**
+   * Whether any guest held a deposit when the event ended (a deposit kept, or one refunded after a cancel or a missed
+   * deadline); undefined while unknown. False keeps an event nobody deposited in "Ended" after the deadline too.
+   */
+  heldAtEnd?: boolean,
 ): Phase {
   if (event.phase === 3) return "Cancelled";
   if (event.phase === 2) return "Payouts released";
@@ -33,10 +38,11 @@ export function phaseOf(
       : stillWaiting > 0
         ? "Challenges pending"
         : "Payouts ready";
-  if (now > event.claimDeadline) return "Past the deadline";
   // nobody holds a deposit once it ended (none made, or all turned away): nothing to confirm. After the deadline
-  // a refund also lowers stakerCount, so an empty event there stays "Past the deadline" (Overview tells which)
-  if (now >= event.eventEnd && event.stakerCount === 0) return "Ended";
+  // a refund also lowers stakerCount, so there only a known "nobody held one" keeps it "Ended"
+  if (now >= event.eventEnd && event.stakerCount === 0 && (now <= event.claimDeadline || heldAtEnd === false))
+    return "Ended";
+  if (now > event.claimDeadline) return "Past the deadline";
   if (now < event.eventStart) return "Deposits open";
   if (now < event.eventEnd) return "Live now";
   return event.attendeeCount > 0 ? "List not closed" : "Attendance due";

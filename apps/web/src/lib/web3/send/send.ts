@@ -17,7 +17,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 
-import { acquireSendLock, releaseSendLock } from "./lock";
+import { acquireSendLock, noteSendLock, releaseSendLock } from "./lock";
 import { learnTxNonce, type SentTx, type SentTxStore } from "./sentTx";
 
 /** A call to `to`, or with `to` omitted a contract creation whose `data` is the bytecode plus its constructor args. */
@@ -154,15 +154,22 @@ async function learnTxNonceUntil(
  * names `contractAddress`). Refuses while another send is under way.
  */
 export async function sendTx(deps: SendDeps, args: SendArgs): Promise<TransactionReceipt> {
-  if (!acquireSendLock()) throw new SendError("busy", "Another action is under way. Wait for it to finish.");
+  const holder = deps.wallet.getAddress();
+  if (!holder) throw new SendError("no-account", "Connect your wallet first. Nothing was sent.");
+  // per account: nonces are per account, so another wallet's send in this browser does not hold this one up
+  if (!acquireSendLock(holder)) throw new SendError("busy", "Another action is under way. Wait for it to finish.");
   try {
-    return await sendLocked(deps, args);
+    return await sendLocked(deps, args, holder);
   } finally {
-    releaseSendLock();
+    releaseSendLock(holder);
   }
 }
 
-async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: SendArgs): Promise<TransactionReceipt> {
+async function sendLocked(
+  deps: SendDeps,
+  { prepare, expectedAccount, onSent }: SendArgs,
+  holder: Address,
+): Promise<TransactionReceipt> {
   const { client, wallet, chainId, errorText, gasLimitFor, sent } = deps;
   const now = deps.now ?? Date.now;
 
@@ -192,6 +199,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
     throw new SendError("refused", "There is no contract code to deploy, so nothing was sent.");
   const tx = { account, ...(request.to ? { to: request.to } : {}), data, value: request.value ?? 0n } as const;
   const recordKey = request.to ?? DEPLOY_RECORD_KEY;
+  noteSendLock(holder, { contract: recordKey });
 
   const stillSame = () => {
     const current = wallet.getAddress();
@@ -253,6 +261,7 @@ async function sendLocked(deps: SendDeps, { prepare, expectedAccount, onSent }: 
   } catch (error) {
     throw new SendError("wallet", errorText(error), undefined, { cause: error });
   }
+  noteSendLock(holder, { hash });
   onSent?.(hash);
 
   const waiting = new AbortController();

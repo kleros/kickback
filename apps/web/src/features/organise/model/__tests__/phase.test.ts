@@ -28,6 +28,10 @@ describe("phaseOf", () => {
     expect(NEXT_STEP.Ended.tab).toBeNull();
     // after the deadline a refund lowers stakerCount too: it stays the missed deadline
     expect(phaseOf(empty, 2000)).toBe("Past the deadline");
+    // unless nobody held a deposit at the end: then nothing was due, and it stays "Ended"
+    expect(phaseOf(empty, 2000, 0, false)).toBe("Ended");
+    expect(phaseOf(empty, 2000, 0, true)).toBe("Past the deadline");
+    expect(phaseOf(empty, 2000, 0, undefined)).toBe("Past the deadline");
   });
 });
 

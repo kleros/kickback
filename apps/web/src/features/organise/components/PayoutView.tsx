@@ -169,7 +169,14 @@ export function PayoutScreen() {
           {event.pending.text}
         </p>
       )}
-      {info.phase === 0 && !missed ? (
+      {event.phase === "Ended" ? (
+        <GlassCard className="og-card" data-testid="payout-ended">
+          <h3 className="og-h2">Event ended</h3>
+          <p className="og-lede">
+            No guest had a deposit when the event ended, so there is nothing to confirm or pay out.
+          </p>
+        </GlassCard>
+      ) : info.phase === 0 && !missed ? (
         <GlassCard className="og-card">
           <h3 className="og-h2">Confirm who came first</h3>
           <p className="og-lede">Payouts open once the list is closed and the challenge window is over.</p>
@@ -394,7 +401,11 @@ export function PayoutScreen() {
                           : `${appealRuling} The appeal time has ended. The ruling becomes final once Kleros records it; then it can be settled here.`
                       : now <= ourDeadline
                         ? `${appealRuling} ${weCan} appeal on the case page until ${when(ourDeadline)} by paying ${ethText(appeal.costAbsent)}; after that the ruling becomes final and can be settled here.`
-                        : `${appealRuling} The appeal time has ended. The ruling becomes final once Kleros records it; then it can be settled here.`;
+                        : appeal.ruling === 1 && now <= appeal.end
+                          ? `${appealRuling} ${event.isOwner ? "Your" : "The organiser's"} time to appeal ended on ${when(appeal.loserEnd)}. If ${event.isOwner ? "you" : "the organiser"} appealed, the guest must pay ${ethText(appeal.costAttended)} on the case page by ${when(appeal.end)} to keep this ruling. Otherwise the ruling becomes final after ${when(appeal.end)} and can then be settled here.`
+                          : now <= appeal.end
+                            ? `${appealRuling} The time to appeal ended on ${when(appeal.loserEnd)}. The ruling becomes final after ${when(appeal.end)} and can then be settled here.`
+                            : `${appealRuling} The appeal time has ended. The ruling becomes final once Kleros records it; then it can be settled here.`;
                 const steps = recOf(c.wallet)?.challenge;
                 const hasActions = !!href || canMatch || canSettle || waitingFirstRuling || canRecord;
                 // a lost case after the release: its held share was split among the attendees (and the cases still open)
@@ -439,7 +450,7 @@ export function PayoutScreen() {
                         : appeal
                           ? final
                             ? "Kleros ruled, not yet recorded"
-                            : now <= appeal.end
+                            : now <= (appeal.ruling === 1 || appeal.ruling === 2 ? appeal.end : appeal.loserEnd)
                               ? "Kleros ruled: appeal open"
                               : "Kleros ruled: waiting for the final ruling"
                           : "With Kleros"
@@ -746,8 +757,14 @@ export function PayoutScreen() {
           words={[TYPED_WORDS.pay]}
           figures={[
             { label: "All deposits", value: assetText(pool, info) },
-            { label: "Attendees", value: String(attendeesAfter) },
-            { label: "Added from unanswered challenges", value: String(expired.length) },
+            {
+              label: "Attendees",
+              value: String(attendeesAfter),
+              note:
+                expired.length > 0
+                  ? `including ${expired.length} added because ${expired.length === 1 ? "their challenge was" : "their challenges were"} not answered in time`
+                  : undefined,
+            },
             ...(info.openCases > 0
               ? [
                   {

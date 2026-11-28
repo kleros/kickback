@@ -30,6 +30,7 @@ export function LumaMatch({
   closed,
   onRows,
   ended = false,
+  beforeEnd = false,
 }: {
   /** The event: the last export loaded for it is kept in this browser. */
   contract?: string;
@@ -44,6 +45,8 @@ export function LumaMatch({
   closed?: "cancelled" | "missed";
   /** The event is over: the export only adds names to the guest list and the record, nothing is left to approve. */
   ended?: boolean;
+  /** The event's end has not come yet (a cancelled event's Luma registrations still work then). */
+  beforeEnd?: boolean;
   /** Called with the parsed rows, so names can be shown next to wallets on this device. */
   onRows?: (rows: readonly LumaMatchRow[]) => void;
 }) {
@@ -84,7 +87,7 @@ export function LumaMatch({
   const had = rows?.filter((r) => r.match !== "none" && r.match !== "no-wallet" && !r.dupOf) ?? [];
   const hadAway = had.filter((r) => r.match === "turned-away").length;
   const hadBack = had.filter((r) => r.match === "refunded").length;
-  // a second request on one wallet that is still open on Luma: decline it, so one deposit has one QR code
+  // a second request on one wallet that is still open on Luma: decline it, so one deposit has one registration
   const dups = rows?.filter((r) => r.dupOf && r.luma !== "declined") ?? [];
   const mails = (list: readonly LumaMatchRow[]) => list.map((r) => r.email).filter(Boolean);
   const count = (k: number) => `${k} ${k === 1 ? "email" : "emails"}`;
@@ -92,6 +95,9 @@ export function LumaMatch({
   const declineMails = mails(toDecline);
   const wrongMails = mails([...new Set([...wronglyIn, ...awayOpen, ...dups])]);
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+  // a cancelled event before its end: every request still open on Luma (duplicates and turned-away ones too)
+  const openMails = mails(rows?.filter((r) => lumaNow(r) !== "declined") ?? []);
+  const cancelledEarly = closed === "cancelled" && beforeEnd;
   const hadNote = [
     hadAway > 0 && `${hadAway} turned away and refunded`,
     hadBack > 0 &&
@@ -155,9 +161,27 @@ export function LumaMatch({
       {rows && !noWalletCol && (
         <div className="flex flex-col gap-3 border-t border-[var(--kb-hair)] pt-3">
           {ended ? (
-            <p className="og-lede" data-testid="luma-summary">
-              {`${had.length} of ${rows.length} ${plural(rows.length, "request", "requests")} had a deposit${hadNote.length ? ` (${hadNote.join(", ")})` : ""}. The event is over: nothing to approve or decline on Luma.`}
-            </p>
+            <>
+              <p className="og-lede" data-testid="luma-summary">
+                {`${had.length} of ${rows.length} ${plural(rows.length, "request", "requests")} had a deposit${hadNote.length ? ` (${hadNote.join(", ")})` : ""}. ${
+                  cancelledEarly
+                    ? "You cancelled the event: cancel it on Luma too (or decline every approved and pending request), so guests are told."
+                    : closed === "cancelled"
+                      ? "You cancelled the event after it ended: nothing to approve or decline on Luma."
+                      : "The event is over: nothing to approve or decline on Luma."
+                }`}
+              </p>
+              {cancelledEarly && openMails.length > 0 && (
+                <>
+                  <div className="og-actions">
+                    <CopyTextButton
+                      value={openMails.join(", ")}
+                    >{`Copy ${count(openMails.length)} still registered on Luma`}</CopyTextButton>
+                  </div>
+                  <p className="og-note">On Luma, search each email under Guests.</p>
+                </>
+              )}
+            </>
           ) : (
             <>
               <p className="og-lede" data-testid="luma-summary">
@@ -225,13 +249,19 @@ export function LumaMatch({
                           : "Declined"}
                   </span>
                   <span className="og-cell-status">
-                    <span className="og-dot" data-tone={r.dupOf ? "warn" : MATCH_TONE[r.match]} aria-hidden />
+                    <span
+                      className="og-dot"
+                      data-tone={r.dupOf || (closed && r.match === "deposit") ? "warn" : MATCH_TONE[r.match]}
+                      aria-hidden
+                    />
                     <span>
                       {r.dupOf
                         ? r.luma === "declined" || ended
                           ? `Same wallet as ${r.dupOf}`
                           : `Same wallet as ${r.dupOf}: decline this one`
-                        : MATCH_TEXT[r.match]}
+                        : closed && r.match === "deposit"
+                          ? "Can withdraw deposit"
+                          : MATCH_TEXT[r.match]}
                     </span>
                   </span>
                 </div>

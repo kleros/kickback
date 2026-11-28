@@ -95,8 +95,17 @@ export function AttendanceScreen() {
     (w) => !already.has(w.toLowerCase()) && chosen.has(w.toLowerCase()) && !inCase.has(w.toLowerCase()),
   );
   const listed = info.phase === 1;
+  const fallback = new Set((plan?.attending ?? []).map((a) => a.toLowerCase()));
   const inWindow = info.phase === 0 && now >= info.eventEnd && now <= info.claimDeadline;
   const canAdd = event.isOwner && event.onChain && !event.busy && (inWindow || (listed && now <= info.challengeEndsAt));
+  // "Reset ticks" only when it would change a box the organiser can still edit
+  const canReset =
+    !!picked &&
+    canAdd &&
+    booked.some((w) => {
+      const k = w.toLowerCase();
+      return !already.has(k) && !inCase.has(k) && picked.has(k) !== fallback.has(k);
+    });
   const total = booked.filter(isOn).length;
   // on the list on the blockchain, not counting ticks that are not sent yet
   const onChain = booked.filter((w) => already.has(w.toLowerCase())).length;
@@ -156,7 +165,7 @@ export function AttendanceScreen() {
         <Messages event={event} />
       </GlassCard>
     );
-  if (info.phase === 0 && now <= info.claimDeadline && info.stakerCount === 0)
+  if ((info.phase === 0 && now <= info.claimDeadline && info.stakerCount === 0) || event.phase === "Ended")
     return (
       <div className="flex flex-col gap-5" data-testid="attendance-empty">
         <h2 className="kb-h1">Attendance</h2>
@@ -483,12 +492,12 @@ export function AttendanceScreen() {
             {`${plan.skipped.length} ${plan.skipped.length === 1 ? "row" : "rows"} not used`}
             {listed && !windowOpen
               ? notCheckedIn > 0
-                ? ` · ${guests(notCheckedIn)} deposited but did not check in.`
+                ? ` · ${guests(notCheckedIn)} who deposited and did not check in ${notCheckedIn === 1 ? "is" : "are"} not on the list.`
                 : ""
               : unscanned > 0 &&
                 (listed
-                  ? ` · ${guests(unscanned)} deposited but did not check in. Add any you saw at the door before ${when(info.challengeEndsAt)}, or they may challenge.`
-                  : ` · ${guests(unscanned)} deposited but did not check in. Tick any you saw at the door, or they may challenge.`)}
+                  ? ` · ${guests(unscanned)} who deposited and did not check in ${unscanned === 1 ? "is" : "are"} not on the list yet. Add any you saw at the door before ${when(info.challengeEndsAt)}, or they may challenge.`
+                  : ` · ${guests(unscanned)} who deposited and did not check in ${unscanned === 1 ? "is" : "are"} not ticked. Tick any you saw at the door, or they may challenge.`)}
           </summary>
           <ul>
             {plan.skipped.map((s) => (
@@ -501,6 +510,11 @@ export function AttendanceScreen() {
                     <span className="og-mono whitespace-nowrap">{shortHex(s.wallet)}</span>
                   </>
                 )}
+                {s.wallet && already.has(s.wallet.toLowerCase())
+                  ? " · now on the list"
+                  : s.wallet && !listed && isOn(s.wallet as Address)
+                    ? " · ticked"
+                    : ""}
               </li>
             ))}
           </ul>
@@ -600,7 +614,7 @@ export function AttendanceScreen() {
           );
         })}
       </div>
-      {picked && (
+      {canReset && (
         <Button
           className="kb-link kb-tap self-start"
           onPress={() => {

@@ -2,7 +2,7 @@ import { gasLimitFor, TX_GAS_CAP } from "@kickback/core";
 import { HttpRequestError, InsufficientFundsError, type Address, type Hash, type TransactionReceipt } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { sendLock } from "../lock";
+import { acquireSendLock, isSendBusy, resetSendLock } from "../lock";
 import { DEPLOY_RECORD_KEY, SendError, sendTx, type SendDeps, type SendWallet } from "../send";
 import { createSentTxStore, reconcileSentTx, sentTxKey } from "../sentTx";
 
@@ -85,7 +85,7 @@ function setup(
 }
 
 afterEach(() => {
-  sendLock.setState({ busy: false });
+  resetSendLock();
 });
 
 describe("sendTx order", () => {
@@ -306,7 +306,15 @@ describe("one action at a time", () => {
     await vi.waitFor(() => expect(first.client.waitForTransactionReceipt).toHaveBeenCalled());
     finish();
     await running;
-    expect(sendLock.getState().busy).toBe(false);
+    expect(isSendBusy(ALICE)).toBe(false);
+  });
+
+  it("another wallet's send does not hold this one up (the lock is per account)", async () => {
+    acquireSendLock(BOB);
+    const { deps, prepare } = setup();
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
+    expect(isSendBusy(BOB)).toBe(true);
+    expect(isSendBusy(ALICE)).toBe(false);
   });
 
   it("two calls in the same tick: exactly one runs", async () => {
@@ -320,7 +328,7 @@ describe("one action at a time", () => {
     const { client, deps, prepare } = setup();
     client.call.mockRejectedValueOnce(new Error("revert"));
     await expect(sendTx(deps, { prepare })).rejects.toBeInstanceOf(SendError);
-    expect(sendLock.getState().busy).toBe(false);
+    expect(isSendBusy(ALICE)).toBe(false);
     await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
   });
 });
@@ -557,7 +565,7 @@ describe("deploying a contract", () => {
     const other = setup({ walletChain: 5 });
     await expect(sendTx(other.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "wrong-chain" });
 
-    sendLock.setState({ busy: true });
+    acquireSendLock(ALICE);
     const busy = setup();
     await expect(sendTx(busy.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "busy" });
   });
