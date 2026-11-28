@@ -1,8 +1,8 @@
 import { gasLimitFor, TX_GAS_CAP } from "@kickback/core";
-import type { Address, Hash, TransactionReceipt } from "viem";
+import { HttpRequestError, InsufficientFundsError, type Address, type Hash, type TransactionReceipt } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { sendLock } from "../lock";
+import { acquireSendLock, isSendBusy, resetSendLock } from "../lock";
 import { DEPLOY_RECORD_KEY, SendError, sendTx, type SendDeps, type SendWallet } from "../send";
 import { createSentTxStore, reconcileSentTx, sentTxKey } from "../sentTx";
 
@@ -85,7 +85,7 @@ function setup(
 }
 
 afterEach(() => {
-  sendLock.setState({ busy: false });
+  resetSendLock();
 });
 
 describe("sendTx order", () => {
@@ -166,7 +166,7 @@ describe("refusals before the wallet prompt", () => {
     expect(error).toBeInstanceOf(SendError);
     expect(error).toMatchObject({
       kind: "refused",
-      message: "This would fail, so nothing was sent: plain words for TooEarly()",
+      message: "plain words for TooEarly() Nothing was sent.",
     });
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
@@ -176,7 +176,7 @@ describe("refusals before the wallet prompt", () => {
     client.estimateGas.mockRejectedValueOnce(new Error("out of gas"));
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
       kind: "refused",
-      message: "This would fail, so nothing was sent: plain words for out of gas",
+      message: "plain words for out of gas Nothing was sent.",
     });
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
@@ -250,6 +250,36 @@ describe("refusals before the wallet prompt", () => {
     expect(wallet.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it("a chain read that fails inside prepare is a network error, not a refusal", async () => {
+    const { deps, wallet } = setup();
+    const prepare = vi.fn(async () => {
+      throw new HttpRequestError({ url: "https://rpc.example", details: "fetch failed" });
+    });
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "network",
+      message: "The network did not answer, so nothing was sent. Try again.",
+    });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("an RPC failure during the dry run or gas estimate is a network error, not a refusal", async () => {
+    const { deps, prepare, client, wallet } = setup();
+    client.call.mockRejectedValueOnce(new HttpRequestError({ url: "https://rpc.example", details: "fetch failed" }));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({
+      kind: "network",
+      message: "The network did not answer, so nothing was sent. Try again.",
+    });
+    client.estimateGas.mockRejectedValueOnce(new HttpRequestError({ url: "https://rpc.example", status: 429 }));
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "network" });
+    expect(wallet.sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("a dry run that fails for lack of funds stays a refusal", async () => {
+    const { deps, prepare, client } = setup();
+    client.call.mockRejectedValueOnce(new InsufficientFundsError());
+    await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "refused" });
+  });
+
   it("a wallet refusal is put in plain words", async () => {
     const { deps, prepare, wallet } = setup();
     wallet.sendTransaction.mockRejectedValueOnce(new Error("User rejected the request."));
@@ -276,7 +306,15 @@ describe("one action at a time", () => {
     await vi.waitFor(() => expect(first.client.waitForTransactionReceipt).toHaveBeenCalled());
     finish();
     await running;
-    expect(sendLock.getState().busy).toBe(false);
+    expect(isSendBusy(ALICE)).toBe(false);
+  });
+
+  it("another wallet's send does not hold this one up (the lock is per account)", async () => {
+    acquireSendLock(BOB);
+    const { deps, prepare } = setup();
+    await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
+    expect(isSendBusy(BOB)).toBe(true);
+    expect(isSendBusy(ALICE)).toBe(false);
   });
 
   it("two calls in the same tick: exactly one runs", async () => {
@@ -290,7 +328,7 @@ describe("one action at a time", () => {
     const { client, deps, prepare } = setup();
     client.call.mockRejectedValueOnce(new Error("revert"));
     await expect(sendTx(deps, { prepare })).rejects.toBeInstanceOf(SendError);
-    expect(sendLock.getState().busy).toBe(false);
+    expect(isSendBusy(ALICE)).toBe(false);
     await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ status: "success" });
   });
 });
@@ -301,7 +339,7 @@ describe("the pending record", () => {
     client.getTransaction.mockRejectedValue(new Error("not found"));
     let seen: unknown;
     client.waitForTransactionReceipt.mockImplementationOnce(async () => {
-      seen = JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null");
+      seen = JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE)) ?? "null");
       return receipt("success");
     });
 
@@ -322,14 +360,14 @@ describe("the pending record", () => {
   it("is forgotten when the transaction fails on-chain", async () => {
     const { deps, prepare, storage } = setup({ status: "reverted" });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "reverted", hash: HASH });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
   });
 
   it("is kept when no receipt comes in time: the transaction may still land", async () => {
     const { client, deps, prepare, storage } = setup();
     client.waitForTransactionReceipt.mockRejectedValueOnce(new Error("timed out"));
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "unconfirmed", hash: HASH });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(true);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(true);
   });
 
   it("is not written when the caller keeps no record", async () => {
@@ -364,7 +402,7 @@ describe("the receipt", () => {
         return receipt("success", REPLACEMENT);
       });
       await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "replaced", hash: HASH });
-      expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+      expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
     },
   );
 
@@ -381,7 +419,7 @@ describe("the receipt", () => {
       return receipt("success", REPLACEMENT);
     });
     await expect(sendTx(deps, { prepare })).resolves.toMatchObject({ transactionHash: REPLACEMENT });
-    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toMatchObject({ hash: REPLACEMENT });
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE))!)).toMatchObject({ hash: REPLACEMENT });
   });
 
   it("a sped-up copy that reverts is reported failed under its own hash", async () => {
@@ -391,13 +429,13 @@ describe("the receipt", () => {
       return receipt("reverted", REPLACEMENT);
     });
     await expect(sendTx(deps, { prepare })).rejects.toMatchObject({ kind: "reverted", hash: REPLACEMENT });
-    expect(storage.map.has(sentTxKey(1, EVENT))).toBe(false);
+    expect(storage.map.has(sentTxKey(1, EVENT, ALICE))).toBe(false);
   });
 });
 
 describe("the recorded nonce", () => {
   const storedNonce = (storage: ReturnType<typeof memoryStorage>) =>
-    (JSON.parse(storage.map.get(sentTxKey(1, EVENT)) ?? "null") as { txNonce: number | null } | null)?.txNonce;
+    (JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE)) ?? "null") as { txNonce: number | null } | null)?.txNonce;
 
   /** Holds the receipt until `release` is called, so the send stays in flight. */
   const holdReceipt = (client: ReturnType<typeof setup>["client"]) => {
@@ -478,7 +516,7 @@ describe("the recorded nonce", () => {
     sent.save(newer);
     answer({ nonce: 9 });
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT))!)).toEqual(newer);
+    expect(JSON.parse(storage.map.get(sentTxKey(1, EVENT, ALICE))!)).toEqual(newer);
     release();
     await running;
   });
@@ -527,7 +565,7 @@ describe("deploying a contract", () => {
     const other = setup({ walletChain: 5 });
     await expect(sendTx(other.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "wrong-chain" });
 
-    sendLock.setState({ busy: true });
+    acquireSendLock(ALICE);
     const busy = setup();
     await expect(sendTx(busy.deps, { prepare: deploy() })).rejects.toMatchObject({ kind: "busy" });
   });

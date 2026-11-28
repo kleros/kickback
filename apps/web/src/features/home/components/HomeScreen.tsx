@@ -17,18 +17,23 @@ const EXAMPLE = payoutExample(parseEther("0.01"), 10, 8);
 
 const STEPS = [
   {
-    title: "Book a spot",
-    body: "Guests send the deposit (ETH or a token like USDC) from their own wallet, and they are in. Bookings stay open until the event ends, for walk-ins. Anyone the organiser turns away gets it all back.",
+    title: "Register and deposit",
+    body: "Guests register on Luma, send the refundable deposit from their own wallet, and paste the deposit link in their Luma registration. The organiser approves them. Anyone turned away before the event starts gets their deposit back in full.",
   },
   {
     title: "Show up",
-    body: "After the event, the organiser posts who came. Anyone left off can challenge the list, and Kleros jurors decide.",
+    body: "Guests are checked in on Luma at the door. After the event, the organiser confirms who came. Anyone left off can challenge, and Kleros jurors decide.",
   },
   {
     title: "Get paid",
-    body: "The pool is split equally among everyone on the list. No-shows lose their deposit.",
+    body: (
+      <>
+        Everyone who came claims their deposit back, plus an equal share of the{" "}
+        <span className="nowrap">no-shows&apos;</span> deposits. No-shows get nothing back.
+      </>
+    ),
   },
-] as const;
+] satisfies readonly { title: string; body: ReactNode }[];
 
 function Example() {
   const noShows = EXAMPLE.booked - EXAMPLE.came;
@@ -40,24 +45,29 @@ function Example() {
       data-testid="home-example"
     >
       <h2 id="home-example-title" className="home-eyebrow">
-        {EXAMPLE.booked} guests book at {ethText(EXAMPLE.deposit)} ETH, {EXAMPLE.came} come
+        Example: {EXAMPLE.booked} guests deposited {ethText(EXAMPLE.deposit)} ETH each, and {EXAMPLE.came} showed up
       </h2>
       <dl className="home-rows">
         <div>
-          <dt>Pool</dt>
+          <dt>
+            All deposits ({EXAMPLE.booked} × {ethText(EXAMPLE.deposit)})
+          </dt>
           <dd className="kb-num">{ethText(EXAMPLE.pool)} ETH</dd>
         </div>
         <div>
-          <dt>Each guest who came</dt>
+          <dt>Each of the {EXAMPLE.came} who showed up got</dt>
           <dd className="kb-num is-ok">{ethText(EXAMPLE.share)} ETH</dd>
         </div>
         <div>
-          <dt>Each no-show</dt>
+          <dt>
+            Each of the {noShows} {noShows === 1 ? "no-show got" : "no-shows got"}
+          </dt>
           <dd className="kb-num is-err">0 ETH</dd>
         </div>
       </dl>
       <p className="home-note">
-        Their {ethText(EXAMPLE.deposit)} ETH back, plus an equal share of the {noShows} no-shows&apos; deposits.
+        Each person who showed up got their own {ethText(EXAMPLE.deposit)} ETH back, plus{" "}
+        {ethText(EXAMPLE.share - EXAMPLE.deposit)} ETH from the no-shows&apos; deposits.
       </p>
     </GlassCard>
   );
@@ -70,14 +80,14 @@ export function HomeScreen({ events }: { events: ReactNode }) {
       <section className="home-hero">
         <div className="home-hero-text">
           <h1 className="home-title">
-            Turn signups into guests.
+            Turn sign-ups into guests.
             <span>Reward the people who show up.</span>
           </h1>
           <p className="home-lede">
-            Web3 events get thousands of signups and only a fraction of the guests actually show up. Proof of Presence
-            asks every guest for a small refundable deposit, which turns each booking into a real commitment. Everyone
-            who attends gets their deposit back plus a share of the no-shows&apos; deposits, and a fair attendance list
-            backed by Kleros settles any dispute.
+            Web3 events get thousands of sign-ups, but only a fraction of guests actually show up. Proof of Presence
+            asks every guest for a small refundable deposit, which turns each sign-up into a real commitment. Everyone
+            who attends gets their deposit back plus a share of the no-shows&apos; deposits, and Kleros jurors settle
+            any dispute over the attendance list.
           </p>
           <div className="home-actions">
             <Link href={paths.organiseNew.getHref()} className="kb-btn" data-testid="home-create">
@@ -122,12 +132,13 @@ export function HomeScreen({ events }: { events: ReactNode }) {
           A fair list, settled by Kleros
         </h2>
         <p>
-          Every event&apos;s contract has a challenge built in. A guest left off the list can say they were there, and
-          independent jurors decide under a public attendance policy.
+          Every event&apos;s contract has a built-in challenge process. A guest left off the list can say they were
+          there, and independent jurors decide under a public attendance policy.
         </p>
         <p className="home-note">
-          {isSepolia ? "Cases here go to the Test court (Sepolia). " : ""}The contracts have no owner and cannot be
-          changed: nobody, not even the organiser, can take the deposits.
+          {isSepolia ? "Cases here go to the Kleros test court (Sepolia). " : ""}The contracts have no admin and cannot
+          be changed or upgraded. The organiser can only turn guests away (with a full refund), post who came or cancel
+          the event: nobody, not even the organiser, can take the deposits.
         </p>
       </GlassCard>
     </div>

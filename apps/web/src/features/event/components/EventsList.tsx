@@ -12,16 +12,29 @@ import { useChainTime } from "@/lib/web3/chain-time";
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 
-import { useEvent } from "../api/useEvent";
+import { useEvent, type KickbackEvent } from "../api/useEvent";
 import { unitsText } from "../model/depositState";
-import { eventStatus, STATUS_TEXT, type ListedEvent } from "../model/listing";
+import type { ListedEvent } from "../model/listing";
 import { eventDateText, isShowableTime } from "../model/when";
 
-function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
+/** A row's status pill: its words and its colour ("live", "ok", "warn" or "end"). */
+export type RowStatus = (event: KickbackEvent, now: number) => { text: string; tone: string };
+
+function EventRow({
+  row,
+  now,
+  hrefOf,
+  statusOf,
+}: {
+  row: ListedEvent;
+  now: number | undefined;
+  hrefOf?: (row: ListedEvent) => string;
+  statusOf?: RowStatus;
+}) {
   const event = useEvent(row.contract);
-  const href = paths.event.getHref(row.contract, row.from);
+  const href = hrefOf ? hrefOf(row) : paths.event.getHref(row.contract, row.from);
   const data = event.data;
-  const status = data && now !== undefined ? eventStatus(data.phase, data.eventEnd, data.claimDeadline, now) : null;
+  const status = data && now !== undefined && statusOf ? statusOf(data, now) : null;
 
   return (
     <li>
@@ -46,7 +59,7 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
                   {eventDateText(data.eventStart, data.clock)}
                 </time>
               ) : event.isError ? (
-                "Not available on this network"
+                "Could not load this event"
               ) : (
                 <i className="home-skel w-56" />
               )}
@@ -61,13 +74,21 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
               )}
             </span>
             <span className="home-event-meta">
-              {row.mine && <span className="kb-chip">Yours</span>}
               {status && (
-                <span className="home-status" data-status={status}>
-                  {STATUS_TEXT[status]}
+                <span className="home-status" data-status={status.tone}>
+                  {status.text}
                 </span>
               )}
-              {data && <span className="kb-num">{data.stakerCount} booked</span>}
+              {data && (
+                <span className="kb-num">
+                  {/* cancelled or past the deadline: the count is what guests have not taken back yet */}
+                  {data.phase === 3 || (data.phase === 0 && now !== undefined && now > data.claimDeadline)
+                    ? data.stakerCount === 0
+                      ? "No deposits held"
+                      : `${data.stakerCount} ${data.stakerCount === 1 ? "deposit" : "deposits"} not yet withdrawn`
+                    : `${data.stakerCount} ${data.stakerCount === 1 ? "deposit" : "deposits"}`}
+                </span>
+              )}
             </span>
           </span>
         </Link>
@@ -76,18 +97,28 @@ function EventRow({ row, now }: { row: ListedEvent; now: number | undefined }) {
   );
 }
 
-/** The factory's newest events and the ones created from this browser. */
-export function EventsList({ rows }: { rows: readonly ListedEvent[] }) {
+/**
+ * A list of events, each row linking to `hrefOf` (the guest page by default), with the pill `statusOf` gives.
+ * Renders nothing when empty.
+ */
+export function EventsList({
+  rows,
+  hrefOf,
+  statusOf,
+}: {
+  rows: readonly ListedEvent[];
+  hrefOf?: (row: ListedEvent) => string;
+  statusOf?: RowStatus;
+}) {
   const time = useChainTime(DEFAULT_CHAIN_ID);
   const now = time.data?.now;
 
-  if (!rows.length)
-    return <p className="home-empty">No featured events yet. Guests open an event from its own link.</p>;
+  if (!rows.length) return null;
   return (
     <ul className="home-events" data-testid="home-events">
       {rows.map((row) => (
         <ErrorBoundary key={row.contract.toLowerCase()} fallback={null}>
-          <EventRow row={row} now={now} />
+          <EventRow row={row} now={now} hrefOf={hrefOf} statusOf={statusOf} />
         </ErrorBoundary>
       ))}
     </ul>

@@ -72,11 +72,22 @@ describe("protocol helpers", function () {
       claimDeadline: t + 20 + 7 * 86400,
     };
     assert.equal(eventConfig(ok, t).capacity, 0);
+    assert.throws(() => eventConfig({ ...ok, capacity: 2.5 }, t), /whole number/);
+    assert.throws(() => eventConfig({ ...ok, capacity: 5_000_000_000 }, t), /at most 4,294,967,295/);
     assert.throws(() => eventConfig({ ...ok, name: "" }, t), /name/);
     assert.throws(() => eventConfig({ ...ok, url: "http://x" }, t), /https/);
     assert.throws(() => eventConfig({ ...ok, depositAmount: 0n }, t), /more than 0/);
+    // invisible and text-direction characters are refused; ZWJ (emoji sequences) and ZWNJ (scripts) are not
+    assert.throws(() => eventConfig({ ...ok, name: "Party\u200b" }, t), /invisible or text-direction/);
+    assert.throws(() => eventConfig({ ...ok, name: "Party\u202e" }, t), /invisible or text-direction/);
+    assert.throws(() => eventConfig({ ...ok, name: "Par\ufeffty" }, t), /invisible or text-direction/);
+    assert.equal(eventConfig({ ...ok, name: "Pride \u{1F3F3}\u{FE0F}\u200d\u{1F308}" }, t).name.length > 0, true);
     assert.throws(() => eventConfig({ ...ok, eventEnd: t + 5 }, t), /end after/);
-    assert.throws(() => eventConfig({ ...ok, eventStart: t - 30, eventEnd: t - 20 }, t), /past/);
+    assert.throws(
+      () => eventConfig({ ...ok, eventEnd: ok.eventStart, claimDeadline: ok.eventStart + 7 * 86400 }, t),
+      /end after/,
+    );
+    assert.throws(() => eventConfig({ ...ok, eventStart: t - 30, eventEnd: t - 20 }, t), /already passed/);
     assert.throws(() => eventConfig({ ...ok, claimDeadline: t + 30 }, t), /7 days/);
   });
 });

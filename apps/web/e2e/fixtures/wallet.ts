@@ -27,11 +27,22 @@ export class WalletFixture {
 
     this.address = address;
 
-    await this.page.waitForFunction(() => "__connectMockAccount" in window);
-    await this.page.evaluate(([account, features]) => window.__connectMockAccount!(account, features), [
-      account,
-      features,
-    ] as const);
+    // done only once the header shows this wallet: until then the page still offers to connect one.
+    // A connect sent while wagmi is still restoring the last session on load can be lost, so retry.
+    const chip = this.page.locator(`[data-testid="wallet-chip"][aria-label*="${address}" i]`);
+    for (let attempt = 0; ; attempt++) {
+      await this.page.waitForFunction(() => "__connectMockAccount" in window);
+      await this.page.evaluate(([account, features]) => window.__connectMockAccount!(account, features), [
+        account,
+        features,
+      ] as const);
+      try {
+        await chip.waitFor({ state: "attached", timeout: 10_000 });
+        return;
+      } catch (error) {
+        if (attempt >= 2) throw error;
+      }
+    }
   }
 }
 

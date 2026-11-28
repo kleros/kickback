@@ -59,12 +59,9 @@ export function parseCsv(text: unknown): Record<string, string>[] {
           wasQuoting = true;
           continue;
         }
-        throw new Error(`Invalid Closing Quote: got "${next}" at line ${line} instead of a comma or a line break`);
+        throw new Error(`A quote mark is out of place on line ${line}.`);
       }
-      if (field.length)
-        throw new Error(
-          `Invalid Opening Quote: a quote is found inside a field at line ${line}, value is ${JSON.stringify(field)}`,
-        );
+      if (field.length) throw new Error(`A quote mark is out of place on line ${line}.`);
       quoting = true;
       continue;
     }
@@ -83,7 +80,7 @@ export function parseCsv(text: unknown): Record<string, string>[] {
     }
     field += ch;
   }
-  if (quoting) throw new Error(`Quote Not Closed: the text ends inside a quoted field (line ${line})`);
+  if (quoting) throw new Error(`A quoted cell is not closed (line ${line}).`);
   if (wasQuoting || record.length || field.length) {
     endField();
     endRecord();
@@ -191,24 +188,26 @@ export const fmt = (units: bigint, decimals = DECIMALS): string => {
 };
 
 /**
- * An ETH amount for people to read: exact when it fits in `digits` decimals ("0.01 ETH"), otherwise
- * rounded down and marked with "~" ("~0.013333 ETH"). Dust is shown in full.
+ * An amount for people to read: exact when it fits in `digits` decimals ("0.01"), otherwise rounded to the
+ * nearest last digit and marked "≈" ("≈0.016" for 0.015999999999999999, "≈0.016667" for a third of 0.05).
+ * An even split of a pool rarely ends, and a wei of integer-division dust must not change the digits shown.
+ * Dust that would round to 0 is shown in full.
  */
-/** An amount for reading: at most `digits` decimals, marked "~" when cut (an even split of a pool rarely ends). */
 export function readableUnits(units: bigint, decimals: number, digits = 6): string {
   const exact = decimalText(units, decimals);
-  const [whole = "0", dec = ""] = exact.split(".");
-  if (dec.length <= digits) return exact;
-  const short = dec.slice(0, digits).replace(/0+$/, "");
-  return short || whole !== "0" ? `~${whole}${short ? "." + short : ""}` : exact;
+  if (decimals <= digits) return exact;
+  const step = 10n ** BigInt(decimals - digits);
+  if (units % step === 0n) return exact;
+  const negative = units < 0n;
+  const abs = negative ? -units : units;
+  const rounded = ((abs + step / 2n) / step) * step;
+  if (rounded === 0n) return exact;
+  return `≈${negative ? "-" : ""}${decimalText(rounded, decimals)}`;
 }
 
+/** An ETH amount for people to read, with its unit: "0.01 ETH", "≈0.016667 ETH". */
 export function fmtEth(units: bigint, digits = 6): string {
-  const exact = fmt(units);
-  const [whole = "0", dec = ""] = exact.split(".");
-  if (dec.length <= digits) return `${exact} ETH`;
-  const short = dec.slice(0, digits).replace(/0+$/, "");
-  return short || whole !== "0" ? `~${whole}${short ? "." + short : ""} ETH` : `${exact} ETH`;
+  return `${readableUnits(units, DECIMALS, digits)} ETH`;
 }
 
 /** An ETH amount in wei; throws on an empty, malformed or over-precise text (viem's parseEther reads "" as 0). */
@@ -230,4 +229,57 @@ export function lumaDecision(approval: unknown): LumaDecision {
   // exact words only: "pending_approval" must not count as approved
   if (/^(approved|going|accepted)$/.test(a)) return "approved";
   return "pending";
+}
+
+/**
+ * A public Luma event page link, as the guest page accepts it for "Back to Luma" and the share link: a single
+ * slug (luma.com/abc123) or /event/evt-…, with no query (a ?tk= invite token must never go on chain) and not one
+ * of Luma's own pages (home, create, calendar, discover, user, sign-in, settings, the management pages).
+ */
+export const LUMA_URL =
+  /^https:\/\/(?:www\.)?(?:lu\.ma|luma\.com)\/(?:event\/evt-[A-Za-z0-9]+|(?!(?:home|create|calendar|discover|user|u|signin|login|settings|event|explore|pricing|manage)(?:$|\/))[A-Za-z0-9_-]+)\/?$/;
+
+/**
+ * A Luma link typed without its scheme ("luma.com/abc123", "lu.ma/abc123") or with plain http, completed to
+ * https; anything else is returned trimmed, as typed. Only the scheme changes: the query is left for
+ * `lumaLinkProblem` to report.
+ */
+export function withHttps(raw: string): string {
+  const t = raw.trim();
+  if (/^http:\/\//i.test(t)) return "https://" + t.slice(7);
+  if (/^(?:www\.)?(?:lu\.ma|luma\.com)(?:[/?#]|$)/i.test(t)) return "https://" + t;
+  return t;
+}
+
+/**
+ * What is wrong with a pasted Luma link, in plain words, or null when it is a public event page. Run it on the
+ * link as typed: a management page is refused, and an invite token or other query is reported (the caller strips it).
+ */
+export function lumaLinkProblem(raw: string): { kind: "manage" | "token" | "query" | "other"; text: string } | null {
+  const t = raw.trim();
+  let u: URL;
+  try {
+    u = new URL(t);
+  } catch {
+    // the link is there, but without https:// in front
+    return /(?:^|[^a-z0-9])(?:lu\.ma|luma\.com)\b/i.test(t)
+      ? { kind: "other", text: "Start the link with https://, such as https://luma.com/abc123." }
+      : { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
+  }
+  if (/^\/(?:event|calendar|home)\/manage(?:\/|$)/i.test(u.pathname) || /\/manage(?:\/|$)/i.test(u.pathname))
+    return {
+      kind: "manage",
+      text: "This is your Luma management page. Paste the public link of the event page (Share, then Copy link), such as https://luma.com/abc123.",
+    };
+  const clean = `${u.protocol}//${u.host.toLowerCase()}${u.pathname}`;
+  if (!LUMA_URL.test(clean))
+    return { kind: "other", text: "Paste the event's Luma link, such as https://luma.com/abc123." };
+  if (u.searchParams.has("tk"))
+    return {
+      kind: "token",
+      text: "This link contained a private invite token (?tk=…). It would be stored on the blockchain for anyone to see, so it has been removed.",
+    };
+  if (u.search)
+    return { kind: "query", text: "The part of the link after “?” has been removed: guests only need the event page." };
+  return null;
 }

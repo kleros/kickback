@@ -17,7 +17,8 @@ export function useShare(text: string, url: string) {
   const share = async () => {
     setError(undefined);
     try {
-      await navigator.share({ text, url });
+      // a text that already carries the link would post it twice
+      await navigator.share(text.includes(url) ? { text } : { text, url });
     } catch (caught) {
       if (caught && typeof caught === "object" && "name" in caught && caught.name === "AbortError") return;
       setNative(false);

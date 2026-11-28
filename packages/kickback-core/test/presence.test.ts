@@ -78,6 +78,48 @@ describe("reading an event", () => {
   });
 });
 
+describe("events a wallet organises", () => {
+  const k = chainKit();
+
+  test("eventsOwnedBy follows a handover and ignores look-alike logs", async () => {
+    const ev = await deployLocalEvent({ walletClient: k.wallet(0), publicClient: k.client, name: "Kept" });
+    const now = (await k.client.getBlock()).timestamp;
+    const handed = await createEvent(
+      { walletClient: k.wallet(0), publicClient: k.client },
+      ev.factory,
+      localEventConfig(now, { name: "Handed over" }),
+    );
+    const hand = async (event: `0x${string}`, from: number, to: number) => {
+      await k.mined(
+        await k.wallet(from).writeContract({
+          address: event,
+          abi: presenceEventAbi,
+          functionName: "transferOwnership",
+          args: [k.addr(to)],
+        }),
+      );
+      await k.mined(
+        await k.wallet(to).writeContract({ address: event, abi: presenceEventAbi, functionName: "acceptOwnership" }),
+      );
+    };
+    await hand(handed.event, 0, 3);
+    // an event of another factory, handed to the same wallet: same log signature, not this factory's
+    const other = await deployLocalEvent({ walletClient: k.wallet(1), publicClient: k.client });
+    await hand(other.event, 1, 3);
+
+    const of3 = await core.eventsOwnedBy(k.client, ev.factory, k.addr(3));
+    expect(of3).toEqual([handed.event]);
+    const of0 = await core.eventsOwnedBy(k.client, ev.factory, k.addr(0));
+    expect(of0).toContain(ev.event);
+    expect(of0).not.toContain(handed.event);
+
+    // handed on again: it leaves the second wallet's list
+    await hand(handed.event, 3, 4);
+    expect(await core.eventsOwnedBy(k.client, ev.factory, k.addr(3))).toEqual([]);
+    expect(await core.eventsOwnedBy(k.client, ev.factory, k.addr(4))).toEqual([handed.event]);
+  });
+});
+
 describe("attendance from a check-in CSV", () => {
   const a = getAddress("0x00000000000000000000000000000000000000aa");
   const b = getAddress("0x00000000000000000000000000000000000000bb");
@@ -103,6 +145,30 @@ describe("attendance from a check-in CSV", () => {
     ]);
   });
 
+  test("with a wallet column, an address typed in another answer does not count", () => {
+    const csv = ["name,checked_in_at,eth_address,notes", `Ana,2026-11-04T18:02:00Z,,${b}`].join("\n");
+    const plan = core.attendanceFromCsv(csv, [a, b, c]);
+    expect(plan.attending).toEqual([]);
+    expect(plan.skipped.map((s) => s.reason)).toEqual(["no-wallet"]);
+  });
+
+  test("a turned-away wallet that checked in is told apart from one that never deposited", () => {
+    const d = "0x90F79bf6EB2c4f870365E785982E1f101E93b906" as const;
+    const csv = [
+      "name,checked_in_at,eth_address",
+      `Dave,2026-11-04T18:02:00Z,${d}`,
+      `Ben,,${d}`,
+      `Ana,2026-11-04T18:00:00Z,${a}`,
+    ].join("\n");
+    const plan = core.attendanceFromCsv(csv, [a, b], {}, [d]);
+    expect(plan.skipped.map((s) => [s.name, s.reason])).toEqual([
+      ["Dave", "turned-away"],
+      ["Ben", "not-checked-in"],
+    ]);
+    expect(plan.attending).toEqual([a]);
+    expect(plan.noShows).toEqual([b]);
+  });
+
   test("a plain list of wallets counts every staker in it", () => {
     expect(core.attendanceFromCsv(`wallet\n${b}\n${c}`, [a, b, c]).attending).toEqual([b, c]);
     expect(core.batches([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
@@ -117,8 +183,9 @@ describe("errorText", () => {
       cause: new ContractFunctionRevertedError({ abi: presenceEventAbi, functionName: "deposit", data }),
     });
     expect(core.errorText(err)).toBe("The event is full (40 spots).");
+    expect(core.revertName(err)).toBe("EventFull");
     expect(core.errorText({ code: 4001, message: "User rejected the request." })).toBe(
-      "You cancelled in the wallet. Nothing was sent.",
+      "Cancelled in your wallet. Nothing was sent.",
     );
   });
 });

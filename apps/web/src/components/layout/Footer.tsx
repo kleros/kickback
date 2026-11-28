@@ -31,11 +31,11 @@ export function Footer() {
               <Link href={paths.organiseNew.getHref()}>Create an event</Link>
             </li>
             <li>
-              <Link href={paths.organise.getHref()}>Organise</Link>
+              <Link href={paths.organise.getHref()}>Manage your events</Link>
             </li>
             <li>
               <a href={siteConfig.repo} {...out}>
-                GitHub
+                Source code
               </a>
             </li>
           </ul>
@@ -93,10 +93,17 @@ export function Footer() {
       </div>
       <div className="kb-page kb-footer-base">
         <span>
-          {siteConfig.name} · Proof of Presence protocol · Powered by{" "}
-          <a href="https://kleros.io" {...out}>
-            Kleros
-          </a>
+          <span className="whitespace-nowrap">{siteConfig.name} · Proof of Presence protocol</span>
+          {/* on a phone the line breaks here: no separator left hanging at its end */}
+          <span className="hidden sm:inline" aria-hidden="true">
+            {" · "}
+          </span>
+          <span className="block whitespace-nowrap sm:inline">
+            Powered by{" "}
+            <a href="https://kleros.io" {...out}>
+              Kleros
+            </a>
+          </span>
         </span>
         <span>
           Open source,{" "}

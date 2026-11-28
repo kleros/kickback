@@ -1,8 +1,19 @@
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
-import { getAddress, isAddressEqual, zeroAddress, type Address, type PublicClient } from "viem";
+import {
+  AbiDecodingDataSizeTooSmallError,
+  AbiDecodingZeroDataError,
+  BaseError,
+  ContractFunctionRevertedError,
+  ContractFunctionZeroDataError,
+  getAddress,
+  isAddressEqual,
+  zeroAddress,
+  type Address,
+  type PublicClient,
+} from "viem";
 
 import { KickbackError, shortMessage } from "./kickbackError";
-import { isContractCode } from "./logs";
+import { getLogsChunked, isContractCode } from "./logs";
 import { isAddressStrict } from "./text";
 
 /** The Proof of Presence contracts on one network. */
@@ -107,6 +118,17 @@ export async function readEvent(
       FIELDS.map((functionName) => client.readContract({ address: contract, abi: presenceEventAbi, functionName })),
     );
   } catch (e) {
+    // only an answer from the contract itself is a verdict on it; network trouble is passed on as it is
+    const verdict =
+      e instanceof BaseError &&
+      !!e.walk(
+        (x) =>
+          x instanceof ContractFunctionZeroDataError ||
+          x instanceof ContractFunctionRevertedError ||
+          x instanceof AbiDecodingZeroDataError ||
+          x instanceof AbiDecodingDataSizeTooSmallError,
+      );
+    if (!verdict) throw e;
     throw new KickbackError(
       `The contract at ${contract} is not a Proof of Presence event (${shortMessage(e)}).`,
       "NOT_KICKBACK",
@@ -291,6 +313,72 @@ export async function eventsOf(client: Pick<PublicClient, "readContract">, facto
     args: [organiser],
   });
   return [...list].reverse();
+}
+
+const OWNERSHIP_TRANSFERRED = {
+  type: "event",
+  name: "OwnershipTransferred",
+  inputs: [
+    { name: "previousOwner", type: "address", indexed: true },
+    { name: "newOwner", type: "address", indexed: true },
+  ],
+} as const;
+
+export type OwnedReadClient = Pick<PublicClient, "readContract" | "getLogs" | "getBlockNumber">;
+
+/**
+ * The events `wallet` organises now, newest first: the ones it created (factory.eventsOf) plus the ones
+ * handed to it (OwnershipTransferred logs with it as the new owner, kept only when the emitter is one of
+ * the factory's events, so an Ownable look-alike is ignored), each checked against its current owner().
+ * A failed owner() read keeps the row.
+ */
+export async function eventsOwnedBy(
+  client: OwnedReadClient,
+  factory: Address,
+  wallet: Address,
+  fromBlock: number | bigint = 0,
+  step?: number,
+): Promise<Address[]> {
+  const created = (await eventsOf(client, factory, wallet)) as Address[];
+  const logs = await getLogsChunked(
+    {
+      getLogs: (range) => client.getLogs({ event: OWNERSHIP_TRANSFERRED, args: { newOwner: wallet }, ...range }),
+      getBlockNumber: () => client.getBlockNumber(),
+    },
+    fromBlock,
+    "latest",
+    step,
+  );
+  // newest handover first
+  const received = [...logs]
+    .sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)) || (b.logIndex ?? 0) - (a.logIndex ?? 0))
+    .map((l) => getAddress(l.address));
+  // a creation also logs OwnershipTransferred(0, organiser), so both lists sort by their newest log;
+  // a created event whose log is older than fromBlock keeps the factory's order, after the rest
+  const mine = new Set(created.map((c) => c.toLowerCase()));
+  const seen = new Set<string>();
+  const candidates: { contract: Address; created: boolean }[] = [];
+  for (const contract of [...received, ...created]) {
+    const key = contract.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ contract, created: mine.has(key) });
+  }
+  const kept = await Promise.all(
+    candidates.map(async ({ contract, created: isCreated }) => {
+      if (!isCreated) {
+        const isEvent = await client
+          .readContract({ address: factory, abi: presenceFactoryAbi, functionName: "isEvent", args: [contract] })
+          .catch(() => false);
+        if (!isEvent) return null;
+      }
+      const owner = await client
+        .readContract({ address: contract, abi: presenceEventAbi, functionName: "owner" })
+        .catch(() => null);
+      return !owner || isAddressEqual(owner, wallet) ? contract : null;
+    }),
+  );
+  return kept.filter((c): c is Address => c !== null);
 }
 
 /** The `limit` newest events of the factory. */

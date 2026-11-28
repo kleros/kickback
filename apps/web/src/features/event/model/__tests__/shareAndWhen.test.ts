@@ -29,6 +29,71 @@ describe("shareExample", () => {
 
   it("falls back to ten deposits under two registered", () => {
     expect(shareExample(parseEther("0.01"), 0)).toMatchObject({ deposits: 10, attend: 8, real: false });
+    // the illustration never shows more deposits than the event has spots
+    const d = parseEther("0.01");
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 0)).toMatchObject({ deposits: 10, attend: 8 });
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 1)).toMatchObject({ deposits: 1, attend: 1, noShows: 0 });
+    expect(shareExample(d, 1, undefined, undefined, 0, 0, 1).back).toBe(d);
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 2)).toMatchObject({ deposits: 2, attend: 1, noShows: 1 });
+    expect(shareExample(d, 0, undefined, undefined, 0, 0, 5)).toMatchObject({ deposits: 5, attend: 4, noShows: 1 });
+  });
+
+  it("uses the posted list once there is one, and never divides by zero", () => {
+    expect(shareExample(parseEther("0.01"), 4, undefined, 2)).toMatchObject({
+      deposits: 4,
+      attend: 2,
+      noShows: 2,
+      basis: "list",
+    });
+    expect(shareExample(parseEther("0.01"), 4, 1n, 3).basis).toBe("paid");
+    expect(shareExample(parseEther("0.01"), 4, undefined, 0).basis).toBe("estimate");
+  });
+
+  it("a challenge past its answer time counts as one more share, not as waiting or a no-show", () => {
+    const d = parseEther("0.01");
+    expect(shareExample(d, 4, undefined, 2, 0, 0, 0, 0, 1)).toMatchObject({
+      attend: 2,
+      lapsed: 1,
+      pending: 0,
+      noShows: 1,
+      back: (d * 4n) / 3n,
+    });
+  });
+
+  it("after the payout, a guest still with Kleros is neither an attendee nor a no-show", () => {
+    const share = (parseEther("0.01") * 4n) / 3n;
+    expect(shareExample(parseEther("0.01"), 4, share, 2, 1)).toMatchObject({
+      attend: 2,
+      noShows: 1,
+      held: 1,
+      pool: parseEther("0.01"),
+    });
+    // before the payout an open case already takes a share: the release holds one for it
+    expect(shareExample(parseEther("0.01"), 4, undefined, 2, 1)).toMatchObject({ noShows: 1, held: 1 });
+  });
+
+  it("counts waiting challenges and open cases as the release will", () => {
+    const pool = parseEther("0.01") * 8n;
+    // 2 listed, 5 challenges waiting for an answer
+    expect(shareExample(parseEther("0.01"), 8, undefined, 2, 0, 5)).toMatchObject({
+      attend: 2,
+      pending: 5,
+      held: 0,
+      noShows: 1,
+      back: pool / 7n,
+    });
+    // 3 listed, 3 cases with Kleros, 1 challenge waiting
+    expect(shareExample(parseEther("0.01"), 8, undefined, 3, 3, 1)).toMatchObject({
+      attend: 3,
+      pending: 1,
+      held: 3,
+      noShows: 1,
+      back: pool / 7n,
+    });
+    // after the windows: 4 listed and 2 cases, the contract's release share
+    expect(shareExample(parseEther("0.01"), 8, undefined, 4, 2, 0).back).toBe(pool / 6n);
+    // after the release nothing waits
+    expect(shareExample(parseEther("0.01"), 8, pool / 6n, 4, 2, 3).pending).toBe(0);
   });
 });
 
@@ -56,7 +121,7 @@ describe("dates on the event's clock", () => {
   it("says a time cannot be shown instead of crashing", () => {
     for (const bad of [1e15, Number.NaN])
       for (const text of [eventDateText(bad, IST), dayText(bad, null), visitorText(bad, "UTC")])
-        expect(text).toBe("date out of range");
+        expect(text).toBe("Date not available");
     expect(sameClock(1e15, IST, "UTC")).toBe(true);
   });
 });

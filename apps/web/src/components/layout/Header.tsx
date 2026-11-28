@@ -29,7 +29,7 @@ export function Header() {
         <Link
           href={paths.home.getHref()}
           className="kb-wordmark"
-          aria-label={`${siteConfig.name}, powered by Kleros: home`}
+          aria-label="Proof of Presence, powered by Kleros: home"
         >
           <span className="kb-brand-logo" role="img" aria-label="Kleros" />
           <span className="kb-brand-sep" aria-hidden />
@@ -41,9 +41,6 @@ export function Header() {
               Sepolia test
             </span>
           )}
-          <Link href={paths.organise.getHref()} className="kb-link text-sm">
-            Organise
-          </Link>
           <a
             className="kb-icon-link"
             href={siteConfig.repo}

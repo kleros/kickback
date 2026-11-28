@@ -3,8 +3,6 @@
   display: flex;
   flex-direction: column;
   gap: 56px;
-  max-width: 1040px;
-  margin-inline: auto;
 }
 
 .home-hero {
@@ -68,6 +66,7 @@
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-wrap: balance;
 }
 .home-h2 {
   font-size: 22px;
@@ -75,11 +74,23 @@
   font-weight: 600;
   letter-spacing: -0.02em;
 }
-.home-note,
-.home-empty {
+.home-note {
   color: var(--kb-text-3);
   font-size: 13px;
   line-height: 19px;
+}
+.home-empty {
+  color: var(--kb-text-2);
+  font-size: 15px;
+  line-height: 22px;
+  max-width: 40rem;
+  text-wrap: pretty;
+}
+.home-mine {
+  margin-top: 8px;
+}
+.nowrap {
+  white-space: nowrap;
 }
 
 /* worked example */
@@ -104,6 +115,8 @@
 .home-rows dd {
   font-weight: 600;
   text-align: right;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .home-rows dd.is-ok {
   color: var(--kb-ok);
@@ -152,11 +165,16 @@
   align-items: flex-end;
   flex-shrink: 0;
 }
+/* a long name wraps to two lines, so similar names can be told apart */
 .home-event-name {
+  display: -webkit-box;
   overflow: hidden;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .home-event-when {
   color: var(--kb-text-2);
@@ -178,11 +196,11 @@
   color: var(--kb-text-2);
   font-weight: 500;
 }
-.home-status[data-status="booking"] {
+.home-status[data-status="live"],
+.home-status[data-status="ok"] {
   color: var(--kb-ok);
 }
-.home-status[data-status="overdue"],
-.home-status[data-status="cancelled"] {
+.home-status[data-status="warn"] {
   color: var(--kb-warn);
 }
 @media (max-width: 479px) {
@@ -252,6 +270,7 @@
 .home-court p:not(.home-note) {
   color: var(--kb-text-2);
   line-height: 22px;
+  text-wrap: pretty;
 }
 
 .home-court {

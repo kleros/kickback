@@ -1,18 +1,69 @@
 "use client";
 
-import { useAccount } from "wagmi";
+import { useEffect } from "react";
+
+import { Button, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
+import { useAccount, useDisconnect, useSwitchChain } from "wagmi";
 
 import { shortenAddress } from "@/utils/address";
 
-/** The connected wallet in the header; nothing while disconnected. */
+import { switchErrorText } from "@/lib/web3/chainErrors";
+
+import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
+
+/** The connected wallet in the header; tap it to disconnect. Nothing while disconnected. */
 export function WalletChip() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, chainId } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { switchChain, error, reset } = useSwitchChain();
+  // an old switch error belongs to the wallet and network it happened on
+  useEffect(() => {
+    reset();
+  }, [address, chainId, reset]);
   if (!isConnected || !address) return null;
+  const wrongNet = chainId !== DEFAULT_CHAIN_ID;
 
   return (
-    <span className="kb-wallet-chip" title={address} data-testid="wallet-chip">
-      <span className="dot" aria-hidden />
-      <span className="kb-mono">{shortenAddress(address)}</span>
-    </span>
+    <MenuTrigger>
+      <Button
+        className="kb-wallet-chip"
+        aria-label={wrongNet ? `Wallet ${address} on another network: open menu` : `Wallet ${address}: open menu`}
+        data-testid="wallet-chip"
+        data-wrong-net={wrongNet || undefined}
+        data-switch-failed={(wrongNet && !!error) || undefined}
+      >
+        <span className="dot" aria-hidden />
+        <span className="kb-mono kb-wallet-long">{shortenAddress(address)}</span>
+        <span className="kb-mono kb-wallet-short">{address.slice(0, 6)}</span>
+        <span className="kb-wallet-caret" aria-hidden>
+          ▾
+        </span>
+      </Button>
+      <Popover placement="bottom end" className="kb-wallet-pop">
+        <p className="kb-wallet-full kb-mono">{address}</p>
+        {wrongNet && (
+          <p className={error ? "og-err" : "og-note"}>
+            {error ? switchErrorText(error, DEFAULT_CHAIN.name) : "Your wallet is on another network."}
+          </p>
+        )}
+        <Menu className="kb-wallet-menu" aria-label="Wallet">
+          {wrongNet && (
+            <MenuItem
+              className="kb-wallet-item"
+              data-testid="switch-chain"
+              onAction={() => {
+                reset();
+                switchChain({ chainId: DEFAULT_CHAIN_ID });
+              }}
+            >
+              {`Switch to ${DEFAULT_CHAIN.name}`}
+            </MenuItem>
+          )}
+          <MenuItem className="kb-wallet-item" data-testid="disconnect" onAction={() => disconnect()}>
+            Disconnect
+          </MenuItem>
+        </Menu>
+      </Popover>
+    </MenuTrigger>
   );
 }

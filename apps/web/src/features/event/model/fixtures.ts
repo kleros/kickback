@@ -36,6 +36,14 @@ export const GALLERY_STATES = [
   "not-attended",
   "withdrawn",
   "checking",
+  "restoring",
+  "full-visitor",
+  "addchain-failed",
+  "resolve",
+  "release",
+  "ruled",
+  "organiser",
+  "execute",
 ] as const;
 
 export type GalleryState = (typeof GALLERY_STATES)[number];
@@ -52,6 +60,7 @@ export function baseInput(): DepositInput {
   return {
     amount: parseEther("0.01"),
     asset: { symbol: "ETH", decimals: 18 },
+    eventStart: NOW_MS / 1000 + 4 * 86_400,
     eventEnd: NOW_MS / 1000 + 5 * 86_400,
     phase: 0,
     challengeDeposit: parseEther("0.03"),
@@ -89,7 +98,7 @@ export function galleryInput(state: GalleryState): DepositInput {
     claimable: 0n,
     claimableEth: 0n,
     sharePaid: 0n,
-    challenge: { state: 0, matchEndsAt: 0, arbitratorDisputeID: 0n },
+    challenge: { state: 0, matchEndsAt: 0, arbitratorDisputeID: 0n, deposit: 0n, localDisputeID: 0n },
     ...over,
   });
   const listed = { ...b, phase: 1, challengeEndsAt: b.chainNow! + 86_400 };
@@ -111,6 +120,47 @@ export function galleryInput(state: GalleryState): DepositInput {
       return { ...b, phase: 2, guest: guest() };
     case "on-list":
       return { ...listed, guest: guest({ attended: true }) };
+    case "release":
+      return {
+        ...listed,
+        challengeEndsAt: b.chainNow! - 60,
+        release: { expired: [], blocked: false },
+        guest: guest({ attended: true }),
+      };
+    case "ruled":
+      return {
+        ...listed,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+            isRuled: true,
+            ruling: 1,
+          },
+        }),
+      };
+    case "organiser":
+      return { ...b, organiser: true, organiserHref: "/organise/0x6c2d4D1bC2B0aCe3F2A9f0f1b7f4f4a1d9e3B2a1" };
+    case "execute":
+      return {
+        ...listed,
+        canExecute: true,
+        caseUrl: (id) => `https://court.kleros.io/cases/${id}`,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+            isRuled: false,
+            appeal: { ruling: 1, start: 0, end: 0, loserEnd: 0, costAttended: 0n, costAbsent: 0n, final: true },
+          },
+        }),
+      };
     case "listing":
       return { ...listed, challengeEndsAt: 0, guest: guest() };
     case "challenge":
@@ -118,13 +168,43 @@ export function galleryInput(state: GalleryState): DepositInput {
     case "challenged":
       return {
         ...listed,
-        guest: guest({ challenge: { state: 1, matchEndsAt: b.chainNow! + 86_400, arbitratorDisputeID: 0n } }),
+        guest: guest({
+          challenge: {
+            state: 1,
+            matchEndsAt: b.chainNow! + 86_400,
+            arbitratorDisputeID: 0n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 0n,
+          },
+        }),
+      };
+    case "resolve":
+      return {
+        ...listed,
+        guest: guest({
+          challenge: {
+            state: 1,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 0n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 0n,
+          },
+        }),
       };
     case "disputed":
       return {
         ...listed,
         caseUrl: (id) => `https://court.kleros.io/cases/${id}`,
-        guest: guest({ challenge: { state: 2, matchEndsAt: b.chainNow! - 60, arbitratorDisputeID: 1712n } }),
+        evidenceUrl: (id) => `https://resolve.kleros.io/cases/${id}`,
+        guest: guest({
+          challenge: {
+            state: 2,
+            matchEndsAt: b.chainNow! - 60,
+            arbitratorDisputeID: 1712n,
+            deposit: parseEther("0.03"),
+            localDisputeID: 31n,
+          },
+        }),
       };
     case "withdrawn":
       return { ...b, guest: guest({ status: 3 }) };
@@ -166,6 +246,12 @@ export function galleryInput(state: GalleryState): DepositInput {
       return { ...b, wallet: { ...b.wallet, ...disconnected }, chainNow: b.eventEnd + 60, history: undefined };
     case "full":
       return { ...b, capacity: 40, stakerCount: 40 };
+    case "full-visitor":
+      return { ...b, wallet: { ...b.wallet, ...disconnected }, capacity: 40, stakerCount: 40, history: undefined };
+    case "restoring":
+      return { ...b, wallet: { ...b.wallet, ...disconnected, restoring: true }, history: undefined };
+    case "addchain-failed":
+      return { ...b, wallet: { ...b.wallet, chainId: 42161, needsChain: true, chainFailed: true } };
     case "already":
       return { ...b, guest: guest(), history: { txHash: TX, at: NOW_MS / 1000 - 2 * 86_400 } };
     case "earlier":
@@ -193,6 +279,10 @@ export function galleryInput(state: GalleryState): DepositInput {
     case "replaced":
       return { ...b, send: { account: WALLET, status: "error", errorKind: "replaced", hash: TX } };
     case "refunded":
-      return { ...b, guest: guest({ status: 2 }), history: { txHash: TX, refundedAt: NOW_MS / 1000 - 86_400 } };
+      return {
+        ...b,
+        guest: guest({ status: 2 }),
+        history: { txHash: TX, refundedAt: NOW_MS / 1000 - 86_400, paidTx: TX },
+      };
   }
 }

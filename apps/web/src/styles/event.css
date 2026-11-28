@@ -9,6 +9,8 @@
   font-weight: 600;
   letter-spacing: -0.03em;
   text-wrap: balance;
+  /* a long name without spaces wraps inside the gutters instead of widening the page */
+  overflow-wrap: anywhere;
 }
 .ev-when {
   margin-top: 6px;
@@ -85,7 +87,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  height: 52px;
+  min-height: 52px;
   color: var(--kb-text-2);
   font-size: 14px;
   line-height: 20px;
@@ -94,10 +96,14 @@
   height: auto;
   min-height: 52px;
 }
+/* the note after the receipt is its own message, not a third receipt row */
+.tk-slot.has-receipt-note .tk-rcpt + p {
+  margin-top: 6px;
+}
+/* lines wrap only between words, and only on phones too narrow for them (under about 360px) */
 .tk-slot p {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
   font-variant-numeric: tabular-nums;
 }
 .tk-slot .pri {
@@ -110,9 +116,16 @@
   color: var(--kb-err);
 }
 .tk-inline {
-  margin-left: 4px;
+  position: relative;
+  margin-left: 0;
   padding: 0;
   font-size: inherit;
+}
+/* a phone-sized tap area around the inline action; the button box and its focus ring stay text-sized */
+.tk-inline::after {
+  content: "";
+  position: absolute;
+  inset: -12px -6px;
 }
 .tk-rcpt {
   display: grid;
@@ -130,12 +143,33 @@
   text-overflow: ellipsis;
   font-size: 13.5px;
 }
+.tk-rcpt .v.tk-select {
+  overflow-x: auto;
+  text-overflow: clip;
+  user-select: all;
+  -webkit-user-select: all;
+}
 .tk-rcpt .acts {
   display: flex;
   gap: 2px;
 }
 .tk-btn {
   margin-top: 18px;
+}
+/* a state with nothing to press: the same 52px as the button, read as a status */
+.tk-status {
+  display: grid;
+  place-items: center;
+  height: 52px;
+  padding: 0 16px;
+  overflow: hidden;
+  border-radius: var(--kb-r-btn);
+  box-shadow: inset 0 0 0 1px var(--kb-hair);
+  color: var(--kb-text-2);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .tk-foot {
   display: flex;
@@ -149,6 +183,21 @@
   line-height: 20px;
   text-align: center;
   white-space: nowrap;
+}
+@media (max-width: 359px) {
+  .tk-foot {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 20px;
+    row-gap: 2px;
+    white-space: normal;
+  }
+  .tk-foot .tk-sep {
+    display: none;
+  }
+  .tk-foot .kb-link {
+    white-space: nowrap;
+  }
 }
 .tk-verified {
   margin-top: 14px;
@@ -178,7 +227,7 @@
   justify-content: space-between;
   gap: 12px;
   min-height: 30px;
-  padding: 0 10px;
+  padding: 4px 10px;
   border-radius: var(--kb-r-row);
   background: var(--kb-sunken);
   font-size: 13px;
@@ -188,10 +237,17 @@
 }
 .tk-vrow > span:last-child {
   display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 2px;
+  column-gap: 6px;
   min-width: 0;
   text-align: right;
+}
+/* an address never splits: a long row wraps before it instead */
+.tk-vrow .kb-mono {
+  white-space: nowrap;
 }
 
 /* skeleton while the event loads: the card's own footprint */
@@ -217,8 +273,8 @@
 /* ---------- how it works: its own band below the card ---------- */
 .kb-how {
   position: relative;
-  margin-top: 88px;
-  padding-top: 64px;
+  margin-top: 64px;
+  padding-top: 48px;
 }
 .kb-how::before {
   content: "";
@@ -271,8 +327,14 @@
     gap: 20px;
   }
 }
+/* a panel stretched to its row's height keeps its body together, centred under the title */
 .how-panel {
+  display: flex;
+  flex-direction: column;
   padding: 24px 24px 22px;
+}
+.how-body {
+  margin-block: auto;
 }
 .how-panel h3 {
   font-size: 17px;
@@ -293,6 +355,7 @@
   font-size: 13px;
   line-height: 18px;
   color: var(--kb-text-2);
+  text-wrap: balance;
 }
 .how-caps.three {
   grid-template-columns: repeat(3, 1fr);
@@ -304,8 +367,19 @@
 .how-caps.two > :last-child {
   text-align: right;
 }
+/* equal columns, so each caption stays under its dot on the timeline */
 .how-caps.four {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  column-gap: 6px;
+  text-align: center;
+}
+.how-caps.four > span {
+  padding: 0;
+  overflow-wrap: anywhere;
+}
+.how-caps .nowrap,
+.how-note .nowrap {
+  white-space: nowrap;
 }
 .how-caps b {
   display: block;
@@ -329,11 +403,25 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.how-sum-date {
+  text-align: right;
+}
+@media (max-width: 480px) {
+  .how-sum.is-stack {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+  .how-sum.is-stack .how-sum-date {
+    text-align: left;
+  }
+}
 .how-note {
   margin-top: 12px;
   color: var(--kb-text-3);
   font-size: 13px;
   line-height: 18px;
+  text-wrap: pretty;
 }
 .how-when {
   display: block;
@@ -378,6 +466,15 @@
   fill: color-mix(in oklab, var(--kb-blue) 14%, transparent);
   stroke-width: 2;
 }
+/* a guest whose challenge is still open: neither ticked nor pooled */
+.how-fig .held {
+  fill: color-mix(in oklab, var(--kb-blue) 6%, transparent);
+}
+.how-fig text.q {
+  fill: var(--kb-text-2);
+  font-size: 13px;
+  font-weight: 600;
+}
 .how-fig .muted {
   fill: var(--kb-sunken);
   stroke: var(--kb-text-3);
@@ -406,6 +503,16 @@
 .how-fig text.dim {
   fill: var(--kb-text-2);
   font-weight: 400;
+}
+/* on a phone the figure draws at about 0.72 scale: larger type keeps the labels readable */
+@media (max-width: 479px) {
+  .how-fig text {
+    font-size: 16px;
+  }
+  .how-caps.four {
+    font-size: 12px;
+    line-height: 16px;
+  }
 }
 .how-fig .pop {
   transform-box: fill-box;
@@ -476,9 +583,8 @@
 }
 
 .ed-section {
-  margin-top: 48px;
-  padding: 40px 0;
-  border-top: 1px solid var(--kb-hair);
+  margin-top: 24px;
+  padding: 0;
 }
 .ed-content {
   display: flex;
@@ -516,6 +622,9 @@
   overflow-wrap: anywhere;
   line-height: 1.65;
 }
+.ed-more {
+  margin-top: 8px;
+}
 .ed-hosts,
 .ed-links {
   display: flex;
@@ -543,6 +652,16 @@
   flex-direction: column;
   overflow: hidden;
   border-radius: inherit;
+}
+.ed-preview:hover strong,
+.ed-preview:focus-visible strong {
+  text-decoration: underline;
+}
+/* preflight makes svg a block: keep the external-link icon after the title's last word */
+.ed-preview-text strong svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-left: 2px;
 }
 .ed-preview img {
   width: 100%;
@@ -593,18 +712,27 @@
   display: grid;
   gap: 16px;
 }
+/* the 4px padding keeps the focus ring; the negative margin lines the buttons up with the card edge */
 .receipt-share {
   display: flex;
   flex-wrap: nowrap;
-  gap: 12px;
-  max-width: 100%;
+  gap: 8px;
+  max-width: calc(100% + 8px);
   overflow-x: auto;
+  margin: 0 -4px;
   padding: 4px;
 }
 .receipt-share .kb-icon-btn {
   flex: 0 0 44px;
   width: 44px;
   height: 44px;
+  background: var(--kb-chip);
+  box-shadow: inset 0 0 0 1px var(--kb-glass-ring);
+  color: var(--kb-text);
+}
+.receipt-share .kb-icon-btn[data-hovered],
+.receipt-share .kb-icon-btn:hover {
+  box-shadow: inset 0 0 0 1px var(--kb-accent, currentColor);
 }
 .receipt-stub {
   padding: 20px;
@@ -650,4 +778,11 @@
   .receipt-stub.kb-rise {
     animation: none;
   }
+}
+
+.receipt-share-label {
+  padding: 0 0 6px;
+  color: var(--kb-text-2);
+  font-size: 13px;
+  font-weight: 500;
 }

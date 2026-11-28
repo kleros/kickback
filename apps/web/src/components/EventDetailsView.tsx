@@ -1,10 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import type { CSSProperties } from "react";
+import { useState, type CSSProperties } from "react";
 
-import { Disclosure } from "@/components/ui/Disclosure";
 import { GlassCard } from "@/components/ui/GlassCard";
+import { ExternalIcon } from "@/components/ui/icons";
 
 import {
   venueMap,
@@ -21,6 +21,8 @@ export interface EventDetailsProps {
   links: EventLink[];
   preview?: RegistrationPreview;
   tint?: string;
+  /** The event is over: the Luma card points to the event page, not to registration. */
+  ended?: boolean;
 }
 
 function Venue({ where }: { where: string }) {
@@ -42,9 +44,14 @@ function Venue({ where }: { where: string }) {
   );
 }
 
-export function EventDetailsView({ details, description, coverUrl, links, preview, tint }: EventDetailsProps) {
+export function EventDetailsView({ details, description, coverUrl, links, preview, tint, ended }: EventDetailsProps) {
   const registration = visibleLink(details.link);
+  const isLuma = !!registration && /^(?:www\.)?(?:lu\.ma|luma\.com)$/.test(registration.domain);
   const title = details.title ?? details.name;
+  // a long description is cut at the last space before 240 characters, then shown whole on "Read more"
+  const [more, setMore] = useState(false);
+  const cut = description.length > 240 ? description.slice(0, 241).search(/\s\S*$/) : -1;
+  const long = cut > 0;
   if (
     !title &&
     !details.when &&
@@ -64,7 +71,7 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
       style={{ "--ed-tint": tint } as CSSProperties}
     >
       <div className="kb-narrow ed-content">
-        {(title || coverUrl) && (
+        {coverUrl && (
           <GlassCard as="header" className="ed-poster">
             {coverUrl && <Image className="ed-cover" src={coverUrl} alt="" width={800} height={1000} unoptimized />}
             <div className="ed-poster-text">
@@ -76,11 +83,11 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
         {!title && !coverUrl && details.when && <p>{details.when}</p>}
         {description && (
           <div className="ed-description">
-            <p>{description.length > 240 ? `${description.slice(0, 240).trimEnd()}…` : description}</p>
-            {description.length > 240 && (
-              <Disclosure title="Read more">
-                <p>{description.slice(240)}</p>
-              </Disclosure>
+            <p>{long && !more ? `${description.slice(0, cut).trimEnd()}…` : description}</p>
+            {long && (
+              <button type="button" className="kb-link ed-more" aria-expanded={more} onClick={() => setMore((v) => !v)}>
+                {more ? "Show less" : "Read more"}
+              </button>
             )}
           </div>
         )}
@@ -96,11 +103,20 @@ export function EventDetailsView({ details, description, coverUrl, links, previe
         )}
         {registration && (
           <GlassCard className="ed-registration" interactive>
-            <a href={registration.href} target="_blank" rel="noopener noreferrer" className="ed-preview">
+            <a
+              href={registration.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ed-preview"
+              aria-label={`${preview?.title || (isLuma ? "Luma event page" : "Event page")} ${isLuma ? "(opens Luma in a new tab)" : "(opens in a new tab)"}`}
+            >
               {preview?.image && <Image src={preview.image} alt="" width={960} height={540} unoptimized />}
               <span className="ed-preview-text">
-                <span className="ed-label">{preview?.siteName || "Registration"}</span>
-                <strong>{preview?.title || "Open registration"}</strong>
+                <span className="ed-label">{preview?.siteName || (ended ? "Event" : "Registration")}</span>
+                <strong>
+                  {preview?.title || (isLuma ? "Luma event page" : "Event page")}{" "}
+                  <ExternalIcon size={14} aria-hidden="true" />
+                </strong>
                 <span className="ed-domain">{registration.domain}</span>
               </span>
             </a>

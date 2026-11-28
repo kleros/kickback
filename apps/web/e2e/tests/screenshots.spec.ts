@@ -1,8 +1,10 @@
+import { writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { GALLERY_STATES } from "@/features/event/model/fixtures";
 
 import { expect, test } from "../fixtures";
+import { pageWords } from "../utils/pageWords";
 import { suiteEvent } from "../utils/suiteEvent";
 
 // eslint-disable-next-line turbo/no-undeclared-env-vars -- a local opt-in, never set in CI
@@ -19,8 +21,11 @@ test.describe("screenshots", () => {
       test(`${theme} at ${width}`, async ({ page }) => {
         await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
         await page.setViewportSize({ width, height: width === 375 ? 812 : 800 });
-        const shot = (name: string, fullPage = false) =>
-          page.screenshot({ path: path.join(DIR!, `${name}-${width}-${theme}.png`), fullPage });
+        const shot = async (name: string, fullPage = false) => {
+          await page.screenshot({ path: path.join(DIR!, `${name}-${width}-${theme}.png`), fullPage });
+          if (width === 1280 && theme === "light")
+            await writeFile(path.join(DIR!, `${name}.txt`), await pageWords(page));
+        };
 
         for (const state of GALLERY_STATES) {
           await page.goto(`/dev/deposit-states?state=${state}`);

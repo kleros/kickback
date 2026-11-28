@@ -5,10 +5,12 @@ import type { Address } from "viem";
 
 import { OrganiserShell } from "@/features/organise";
 
+import { cleanEventParam } from "@/lib/eventParam";
+
 export const metadata: Metadata = {
-  title: "Organise | Kickback",
+  title: "Manage event | Kickback",
 };
 
 export default function OrganiserLayout({ params, children }: { params: { contract: string }; children: ReactNode }) {
-  return <OrganiserShell address={decodeURIComponent(params.contract) as Address}>{children}</OrganiserShell>;
+  return <OrganiserShell address={cleanEventParam(params.contract) as Address}>{children}</OrganiserShell>;
 }

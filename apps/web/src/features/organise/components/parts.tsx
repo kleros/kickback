@@ -3,20 +3,23 @@
 import { useId, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "react-aria-components";
+import { getAddress, isAddress } from "viem";
 
 import { Dialog } from "@/components/ui/Dialog";
 import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { FileIcon, LockIcon } from "@/components/ui/icons";
 
-import type { Phase } from "../model/phase";
-import type { Gate } from "../model/shared";
-import { PHASE_TONE } from "../model/view";
+import { DEFAULT_CHAIN } from "@/config/chains";
 
-export function PhasePill({ phase }: { phase: Phase }) {
+import { phaseLabel, type Phase } from "../model/phase";
+import type { Gate } from "../model/shared";
+import { PHASE_TONE, shortHex } from "../model/view";
+
+export function PhasePill({ phase, event }: { phase: Phase; event?: { capacity: number; stakerCount: number } }) {
   return (
     <span className="og-phase" data-tone={PHASE_TONE[phase]} data-testid="phase">
-      {phase}
+      {event ? phaseLabel(phase, event) : phase}
     </span>
   );
 }
@@ -30,8 +33,8 @@ export interface Figure {
 export function Figures({ rows, big, testId }: { rows: readonly Figure[]; big?: boolean; testId?: string }) {
   return (
     <dl className={big ? "og-figs og-fig-big" : "og-figs"} data-testid={testId}>
-      {rows.map((row) => (
-        <div key={row.label} className={big ? "og-fig og-fig-big" : "og-fig"}>
+      {rows.map((row, i) => (
+        <div key={`${row.label}-${i}`} className={big ? "og-fig og-fig-big" : "og-fig"}>
           <dt>{row.label}</dt>
           <dd className="kb-num">
             {row.value}
@@ -85,6 +88,10 @@ export function Primary({
   );
 }
 
+/** Shown for any CSV the parser cannot read: never the parser's own message, which can quote raw cells. */
+export const CSV_ERROR =
+  "This file could not be read as a CSV. Export the guest list from Luma again and choose that file.";
+
 export function ErrorLine({ error }: { error: { text: string; at: number } | string | null }) {
   if (!error) return null;
   const text = typeof error === "string" ? error : error.text;
@@ -116,7 +123,9 @@ export function FilePick({
       <FileIcon />
       <div className="og-file-text">
         <span className="og-file-name">{file ? file.name : label}</span>
-        <span className="og-note">{file ? `${file.rows} rows` : (hint ?? "A CSV file")}</span>
+        <span className="og-note">
+          {file ? `${file.rows} ${file.rows === 1 ? "row" : "rows"}` : (hint ?? "A CSV file")}
+        </span>
       </div>
       <input
         ref={input}
@@ -130,7 +139,7 @@ export function FilePick({
           event.currentTarget.value = "";
         }}
       />
-      <Button className="kb-link" onPress={() => input.current?.click()}>
+      <Button className="kb-link kb-tap" onPress={() => input.current?.click()}>
         {file ? "Replace" : "Choose"}
       </Button>
     </GlassCard>
@@ -212,5 +221,49 @@ function ConfirmForm({ intro, figures, words, action, busy, error, gate, onConfi
         </GradientButton>
       </div>
     </form>
+  );
+}
+
+/** A transaction, short: an explorer link when the chain has one, else the short hash. */
+export function TxLink({ tx, testId }: { tx: string; testId?: string }) {
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  return explorer ? (
+    <a
+      className="kb-link og-mono og-nowrap"
+      href={`${explorer}/tx/${tx}`}
+      target="_blank"
+      rel="noreferrer"
+      title={tx}
+      data-testid={testId}
+    >
+      {shortHex(tx)} ↗
+    </a>
+  ) : (
+    <span className="og-mono og-nowrap" title={tx} data-testid={testId}>
+      {shortHex(tx)}
+    </span>
+  );
+}
+
+/** A wallet, short: an explorer link when the chain has one, else the short address (the full one on hover). */
+export function Addr({ address, testId }: { address: string; testId?: string }) {
+  const explorer = DEFAULT_CHAIN.blockExplorers?.default.url;
+  // a sender read from a transaction can come in lower case: show it checksummed, like every other address
+  const shown = isAddress(address, { strict: false }) ? getAddress(address) : address;
+  return explorer ? (
+    <a
+      className="kb-link og-mono og-nowrap"
+      href={`${explorer}/address/${address}`}
+      target="_blank"
+      rel="noreferrer"
+      title={address}
+      data-testid={testId}
+    >
+      {shortHex(shown)} ↗
+    </a>
+  ) : (
+    <span className="og-mono og-nowrap" title={address} data-testid={testId}>
+      {shortHex(shown)}
+    </span>
   );
 }

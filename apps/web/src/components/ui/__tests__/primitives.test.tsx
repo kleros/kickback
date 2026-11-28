@@ -67,6 +67,17 @@ describe("CopyButton", () => {
     expect(screen.getByRole("button", { name: "Copy wallet address" })).not.toHaveAttribute("data-copied");
     vi.useRealTimers();
   });
+
+  it("says Could not copy when the browser blocks the clipboard", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, "writeText").mockRejectedValue(new Error("blocked"));
+    const exec = vi.fn().mockReturnValue(false);
+    Object.defineProperty(document, "execCommand", { value: exec, configurable: true });
+    render(<CopyButton value="0xabc" label="Copy wallet address" />);
+    await user.click(screen.getByRole("button", { name: "Copy wallet address" }));
+    expect(exec).toHaveBeenCalledWith("copy");
+    expect(screen.getByRole("button", { name: "Could not copy" })).toHaveAttribute("data-failed");
+  });
 });
 
 describe("Dialog", () => {

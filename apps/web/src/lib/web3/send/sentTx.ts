@@ -28,15 +28,16 @@ export type SentTxOutcome = "pending" | "mined" | "failed" | "replaced" | "dropp
 /** How long a transaction the network has never seen is still given to show up. */
 export const DROPPED_AFTER_MS = 30 * 60_000;
 
-export const sentTxKey = (chainId: number, contract: Address) =>
-  `kickback:sent-tx:${chainId}:${contract.toLowerCase()}`;
+/** One record per wallet: another account's send to the same event must not hide this one's pending deposit. */
+export const sentTxKey = (chainId: number, contract: Address, account: Address) =>
+  `kickback:sent-tx:${chainId}:${contract.toLowerCase()}:${account.toLowerCase()}`;
 
 type KeyValue = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export interface SentTxStore {
   save(record: SentTx): void;
   /** Forgets the record only while it is still `hash`: a newer send keeps its own. */
-  forget(chainId: number, contract: Address, hash: Hash): void;
+  forget(chainId: number, contract: Address, account: Address, hash: Hash): void;
   read(chainId: number, contract: Address, account: Address): SentTx | null;
 }
 
@@ -75,7 +76,7 @@ export function createSentTxStore(storage: KeyValue | undefined): SentTxStore {
 
   return {
     save(record) {
-      const key = sentTxKey(record.chainId, record.contract);
+      const key = sentTxKey(record.chainId, record.contract, record.account);
       memory.set(key, record);
       try {
         storage?.setItem(key, JSON.stringify(record));
@@ -83,8 +84,8 @@ export function createSentTxStore(storage: KeyValue | undefined): SentTxStore {
         // memory still has it
       }
     },
-    forget(chainId, contract, hash) {
-      const key = sentTxKey(chainId, contract);
+    forget(chainId, contract, account, hash) {
+      const key = sentTxKey(chainId, contract, account);
       if (memory.get(key)?.hash === hash) memory.delete(key);
       try {
         const stored = readStored(key);
@@ -94,7 +95,7 @@ export function createSentTxStore(storage: KeyValue | undefined): SentTxStore {
       }
     },
     read(chainId, contract, account) {
-      const key = sentTxKey(chainId, contract);
+      const key = sentTxKey(chainId, contract, account);
       const mine = (record: SentTx | null | undefined): record is SentTx =>
         !!record &&
         record.chainId === chainId &&
@@ -193,7 +194,7 @@ export async function reconcileSentTx(
   const outcome = await checkSentTx(client, record, now);
   if (outcome === "pending" && record.txNonce === null) await learnTxNonce(client, store, record);
   if (outcome === "failed" || outcome === "replaced" || outcome === "dropped") {
-    store.forget(record.chainId, record.contract, record.hash);
+    store.forget(record.chainId, record.contract, record.account, record.hash);
   }
   return { record, outcome };
 }

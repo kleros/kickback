@@ -1,6 +1,8 @@
 import { readableUnits } from "@kickback/core";
 import { isAddress, type Address } from "viem";
 
+import { isShowableTime } from "@/utils/time";
+
 import type { Phase } from "./phase";
 import type { Gate } from "./shared";
 
@@ -11,17 +13,39 @@ export const assetText = (
 ) => (units === null || units === undefined ? "—" : `${readableUnits(units, asset.decimals)} ${asset.symbol}`);
 export const ethText = (units: bigint | null | undefined) => assetText(units);
 
+/**
+ * A deadline as the organiser reads it, on this device's clock with its time zone: "Thu 26 Nov, 07:50 GMT".
+ * The date and the time are each kept on one line; the line can break only after the comma.
+ */
+export const when = (unix: number) =>
+  isShowableTime(unix)
+    ? new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+        timeZoneName: "short",
+      })
+        .format(new Date(unix * 1000))
+        .replace(/ (?!\d{2}:)/g, "\u00a0")
+    : "Date not available";
+
 export type Tone = "live" | "ok" | "warn" | "end";
 
 export const PHASE_TONE: Record<Phase, Tone> = {
-  "Booking open": "live",
+  "Deposits open": "live",
+  "Live now": "live",
   "Attendance due": "warn",
-  "Adding names": "warn",
+  "List not closed": "warn",
   "Challenge window": "live",
+  "Challenges pending": "warn",
   "Payouts ready": "ok",
-  "Paid out": "end",
+  "Payouts released": "end",
   Cancelled: "end",
   "Past the deadline": "warn",
+  Ended: "end",
 };
 
 /**
@@ -40,7 +64,10 @@ export function openAddress(input: string): { address: Address | null; error: st
   const text = input.trim();
   if (!text) return { address: null, error: "Paste the event's contract address." };
   if (!isAddress(text, { strict: false }))
-    return { address: null, error: "That is not a contract address: 0x and 40 hex characters." };
+    return {
+      address: null,
+      error: "That is not a valid address: it starts with 0x, followed by 40 letters and numbers.",
+    };
   return { address: text as Address, error: null };
 }
 
@@ -56,7 +83,7 @@ export function statusTone(status: string): "ok" | "warn" | "err" | "end" {
 }
 
 export const TYPED_WORDS = {
-  post: "POST",
+  close: "CLOSE",
   noShow: "NOSHOW",
   pay: "PAY",
   sweep: "SWEEP",

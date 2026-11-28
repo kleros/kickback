@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 
+import { Refusal } from "@/components/Refusal";
+
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
 import { HOW_IT_WORKS_ID } from "@/config/paths";
 import { courtName } from "@/config/protocol";
@@ -10,10 +12,16 @@ import { EventDetails } from "./EventDetails";
 import { EventHead } from "./EventHead";
 import { HowItWorks } from "./HowItWorks";
 import { ReceiptExtras } from "./ReceiptExtras";
-import { Refusal } from "./Refusal";
 import { TicketCard } from "./TicketCard";
 import { TicketSkeleton } from "./TicketSkeleton";
-import { EventRefused, useEvent, type KickbackEvent } from "../api/useEvent";
+import {
+  EventRefused,
+  useBlockTime,
+  useCreatedBlock,
+  useEvent,
+  useReleasedBlock,
+  type KickbackEvent,
+} from "../api/useEvent";
 import { useDepositState } from "../hooks/useDepositState";
 import { useReceiptShare } from "../hooks/useReceiptShare";
 import { unitsText } from "../model/depositState";
@@ -24,9 +32,30 @@ const COURT = courtName(DEFAULT_CHAIN_ID);
 function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
   const ticket = useRef<HTMLElement>(null);
   const share = useReceiptShare(event, from);
-  const controller = useDepositState(event);
+  const controller = useDepositState(event, from);
+  // when payouts were released: the PayoutsReleased log's block time (left out while unknown, never guessed)
+  const created = useCreatedBlock(event.contract, from === undefined ? undefined : Number(from));
+  const releasedBlock = useReleasedBlock(event.contract, created.data, event.phase === 2).data;
+  const releasedAt = useBlockTime(releasedBlock ?? undefined).data;
   const amount = unitsText(event.depositAmount, event.decimals);
-  const example = shareExample(event.depositAmount, event.stakerCount);
+  // once the list is posted, the example uses it; once paid, the real share
+  const listed = event.phase === 1 || event.phase === 2 ? event.attendeeCount : undefined;
+  // open cases and challenges still waiting each take a share at the release, as the Payout tab counts them; a
+  // waiting challenge past its answer time is decided (added at the release), so it is told apart
+  const chainNow = controller.now;
+  const ends = event.phase === 1 && chainNow !== undefined ? event.waitingAnswerEnds : undefined;
+  const lapsed = ends ? ends.filter((t) => chainNow! > t).length : 0;
+  const example = shareExample(
+    event.depositAmount,
+    event.stakerCount,
+    event.phase === 2 ? event.payoutShare : undefined,
+    listed,
+    event.phase === 1 || event.phase === 2 ? event.openCases : 0,
+    event.phase === 1 ? (ends ? ends.length - lapsed : event.waitingChallenges) : 0,
+    event.capacity,
+    event.phase === 1 || event.phase === 2 ? (event.ruledCases ?? 0) : 0,
+    lapsed,
+  );
 
   // the fragment is set before the page has height; land on it once the section exists
   useEffect(() => {
@@ -59,9 +88,9 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
             court: COURT,
           }}
         />
-        <ReceiptExtras view={controller.view} name={event.eventName} amount={`${amount} ${event.symbol}`} {...share} />
+        <ReceiptExtras view={controller.view} {...share} />
       </div>
-      <EventDetails key={event.contract} event={event} />
+      <EventDetails key={event.contract} event={event} ended={controller.ended} />
       <HowItWorks
         amount={amount}
         unit={event.symbol}
@@ -74,8 +103,18 @@ function LoadedEvent({ event, from }: { event: KickbackEvent; from?: string }) {
         clock={event.clock}
         court={COURT}
         challengeFee={event.challengeDeposit}
+        matchPeriod={event.matchPeriod}
+        now={controller.now}
+        phase={event.phase}
+        openCases={event.openCases}
+        ruledCases={event.ruledCases}
+        challengeCount={event.challengeCount}
+        casesSent={event.casesSent}
+        releasedAt={releasedAt}
         onDeposit={backToCard}
-        depositOpen={controller.depositOpen}
+        depositOpen={
+          controller.depositOpen && ["rest", "nowallet", "connect", "approve", "ready"].includes(controller.view.key)
+        }
       />
     </>
   );

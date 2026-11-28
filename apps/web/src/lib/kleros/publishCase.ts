@@ -15,7 +15,12 @@ export async function uploadToKleros(text: string, filename: string, fetcher: ty
     );
   }
   if (!res.ok) throw new Error(`Kleros's IPFS service answered with error ${res.status}. Nothing was sent. Try again.`);
-  const body = (await res.json()) as { cids?: string[]; data?: { cids?: string[] } };
+  let body: { cids?: string[]; data?: { cids?: string[] } };
+  try {
+    body = await res.json();
+  } catch {
+    throw new Error("Kleros's IPFS service gave an answer that could not be read. Nothing was sent. Try again.");
+  }
   const path = (body.cids?.[0] ?? body.data?.cids?.[0] ?? "").replace(/^ipfs:\/\//, "/ipfs/");
   if (!path.startsWith("/ipfs/")) throw new Error("Kleros's IPFS service gave no address. Nothing was sent.");
   return path;

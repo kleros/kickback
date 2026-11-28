@@ -111,8 +111,7 @@ describe("useSend", () => {
     const { result } = renderHook(() => useSend(), { wrapper });
     await expect(act(() => result.current.mutateAsync(deposit))).rejects.toMatchObject({
       kind: "refused",
-      message:
-        "This would fail, so nothing was sent: Too early: this is not possible yet. Check the times on the page.",
+      message: "Too early: this is not possible yet. Check the times on the page. Nothing was sent.",
     });
     expect(rpc).toHaveBeenCalledWith(expect.objectContaining({ method: "eth_call" }), undefined);
     expect(wagmiCore.sendTransaction).not.toHaveBeenCalled();
@@ -126,7 +125,9 @@ describe("useSend", () => {
 
     const recorded = renderHook(() => useSend({ record: true }), { wrapper });
     await act(() => recorded.result.current.mutateAsync(deposit));
-    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}`)).toContain(HASH);
+    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}:${ALICE.toLowerCase()}`)).toContain(
+      HASH,
+    );
   });
 
   it("on a mainnet fork, refuses a wallet other than the dev wallet", async () => {
@@ -145,6 +146,18 @@ describe("useSend", () => {
 });
 
 describe("useSentTx", () => {
+  it("marks a recorded send mined as soon as its receipt is in, without waiting for the next poll", async () => {
+    const { useSend, useSentTx, client, wrapper } = await load("hardhat");
+    const watcher = renderHook(() => useSentTx(EVENT), { wrapper });
+    await vi.waitFor(() => expect(watcher.result.current.data).toBeNull());
+    const sender = renderHook(() => useSend({ record: true }), { wrapper });
+    await act(() => sender.result.current.mutateAsync(deposit));
+    expect(client.getTransactionReceipt).not.toHaveBeenCalled();
+    await vi.waitFor(() =>
+      expect(watcher.result.current.data).toMatchObject({ record: { hash: HASH }, outcome: "mined" }),
+    );
+  });
+
   it("starts watching a newly saved send and stays pending after receipt waiting times out", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { useSend, useSentTx, useSendBusy, client, wrapper } = await load("hardhat");
@@ -155,7 +168,7 @@ describe("useSentTx", () => {
           timeout = reject;
         }),
     );
-    const watcher = renderHook(() => ({ sent: useSentTx(EVENT), busy: useSendBusy() }), { wrapper });
+    const watcher = renderHook(() => ({ sent: useSentTx(EVENT), busy: useSendBusy(ALICE) }), { wrapper });
     await vi.waitFor(() => expect(watcher.result.current.sent.data).toBeNull());
     const sender = renderHook(() => useSend({ record: true }), { wrapper });
     let sending!: Promise<unknown>;
@@ -163,7 +176,9 @@ describe("useSentTx", () => {
       sending = sender.result.current.mutateAsync(deposit).catch((error: unknown) => error);
     });
     await vi.waitFor(() => expect(client.waitForTransactionReceipt).toHaveBeenCalled());
-    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}`)).toContain(HASH);
+    expect(localStorage.getItem(`kickback:sent-tx:31337:${EVENT.toLowerCase()}:${ALICE.toLowerCase()}`)).toContain(
+      HASH,
+    );
     await act(() => vi.advanceTimersByTimeAsync(12_000));
     expect(watcher.result.current.sent.data).toMatchObject({ record: { hash: HASH }, outcome: "pending" });
     await act(async () => {

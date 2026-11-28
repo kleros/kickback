@@ -1,12 +1,13 @@
 import { eventDateText, type EventClock } from "../model/when";
 
-/** "Wed 4 Nov 2026, 18:00 GMT+5:30 – 22:00", or both dates when it runs past midnight. */
+/** "Wed 4 Nov 2026, 18:00 – 22:00 GMT+5:30", or both dates when it runs past midnight. */
 function rangeText(start: number, end: number, clock: EventClock | null) {
   const a = eventDateText(start, clock);
   const b = eventDateText(end, clock);
   const day = (t: string) => t.split(",")[0];
   const time = (t: string) => t.split(", ")[1] ?? t;
-  return day(a) === day(b) ? `${a} – ${time(b).split(" ")[0]}` : `${a} – ${b}`;
+  // every date text ends with its zone: show it once, after the end time
+  return day(a) === day(b) ? `${a.replace(/ \S+$/, "")} – ${time(b)}` : `${a} – ${b}`;
 }
 
 export function EventHead({

@@ -48,6 +48,7 @@ export function SegmentedNav({
         <Link
           key={item.href}
           href={item.href}
+          prefetch
           className="kb-seg-item"
           aria-current={item.href === current ? "page" : undefined}
         >

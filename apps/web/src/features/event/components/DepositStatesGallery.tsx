@@ -3,7 +3,7 @@
 import { EventHead } from "./EventHead";
 import { ReceiptExtras } from "./ReceiptExtras";
 import { TicketCard, type TicketActions } from "./TicketCard";
-import { depositState } from "../model/depositState";
+import { depositState, unitsText } from "../model/depositState";
 import { GALLERY_STATES, galleryInput, type GalleryState } from "../model/fixtures";
 
 const noop = () => {};
@@ -16,6 +16,10 @@ const ACTIONS: TicketActions = {
   claim: noop,
   challenge: noop,
   approve: noop,
+  resolve: noop,
+  release: noop,
+  execute: noop,
+  settle: noop,
   recheck: noop,
 };
 const VERIFIED = {
@@ -36,7 +40,7 @@ function Card({ state }: { state: GalleryState }) {
     <>
       <TicketCard
         view={view}
-        amount="0.01"
+        amount={unitsText(input.amount, input.asset.decimals)}
         unit={input.asset.symbol}
         actions={ACTIONS}
         verified={VERIFIED}
@@ -44,9 +48,7 @@ function Card({ state }: { state: GalleryState }) {
       />
       <ReceiptExtras
         view={view}
-        name="Builders' Dinner"
-        amount="0.01 ETH"
-        text="I just locked my spot at Builders' Dinner with a refundable deposit. Join: https://luma.com/example"
+        text="I just put down a refundable deposit for Builders' Dinner. Join me: https://luma.com/example"
         luma="https://luma.com/example"
         guestLink={`/event/${VERIFIED.contract}`}
       />

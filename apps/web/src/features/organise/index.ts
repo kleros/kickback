@@ -5,4 +5,6 @@ export { OverviewScreen } from "./components/OverviewView";
 export { GuestsScreen } from "./components/GuestsView";
 export { AttendanceScreen } from "./components/AttendanceView";
 export { PayoutScreen } from "./components/PayoutView";
-export { useBrowserEvents, useMyEvents } from "./hooks/useMyEvents";
+export { useMyEvents } from "./hooks/useMyEvents";
+export { phaseLabel, phaseOf } from "./model/phase";
+export { PHASE_TONE } from "./model/view";

@@ -1,4 +1,4 @@
-export const DEFAULT_SHARE_TEMPLATE = "I just locked my spot at {event} with a refundable deposit. Join: {luma}";
+export const DEFAULT_SHARE_TEMPLATE = "I just put down a refundable deposit for {event}. Join me: {luma}";
 export const SHARE_LIMIT = 280;
 export interface ShareDetails {
   event: string;

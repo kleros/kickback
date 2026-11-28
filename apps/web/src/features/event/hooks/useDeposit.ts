@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { encodeFunctionData, type Address } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
-import { useSend } from "@/lib/web3/send";
+import { SendError, useSend } from "@/lib/web3/send";
 
 import { DEFAULT_CHAIN_ID } from "@/config/chains";
 
@@ -26,11 +26,16 @@ export function useDeposit(contract: Address, token: Address, shownAmount: bigin
   const queryClient = useQueryClient();
   const [startedAt, setStartedAt] = useState<number | undefined>(undefined);
 
+  const refresh = () => {
+    for (const queryKey of [depositsKey(contract), moneyKey(contract), eventKey(contract)])
+      void queryClient.invalidateQueries({ queryKey });
+  };
   const send = useSend({
     record: true,
-    onSuccess: () => {
-      for (const queryKey of [depositsKey(contract), moneyKey(contract), eventKey(contract)])
-        void queryClient.invalidateQueries({ queryKey });
+    onSuccess: refresh,
+    // a refused deposit (event just filled, wallet turned away, deposits closed): let the card's own states take over
+    onError: (error) => {
+      if (error instanceof SendError && error.kind === "refused") refresh();
     },
   });
 

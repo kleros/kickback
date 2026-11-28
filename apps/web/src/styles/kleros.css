@@ -5,7 +5,6 @@
 .ev-title,
 .home-title,
 .og-title,
-.og-hero-phase,
 .how-title,
 .kb-refusal h1 {
   font-family: var(--kb-font-display);
@@ -27,6 +26,18 @@
   white-space: nowrap;
   text-wrap: nowrap;
 }
+/* home section headings: the display face, wrapping (the long court heading needs two lines on a phone) */
+.home-h2 {
+  font-family: var(--kb-font-display);
+  font-weight: 400;
+  letter-spacing: 0;
+  font-size: 2rem;
+  line-height: 1.15;
+  text-wrap: balance;
+}
+.home-court .home-h2 {
+  font-size: 1.6rem;
+}
 .home-title span {
   font-style: italic;
 }
@@ -35,11 +46,6 @@
   font-size: 2rem;
   line-height: 1.15;
 }
-.og-hero-phase {
-  font-size: 2.4rem;
-  line-height: 1.1;
-}
-
 /* header: Kleros logo | Kickback */
 .kb-header {
   background: color-mix(in srgb, var(--kb-band) 82%, transparent);
@@ -58,6 +64,10 @@
   -webkit-mask: url(/img/kleros-logo.svg) center / contain no-repeat;
   mask: url(/img/kleros-logo.svg) center / contain no-repeat;
 }
+/* the footer's mark has room: large enough for its lettering to read on a phone */
+.kb-footer .kb-brand-logo {
+  height: 32px;
+}
 .kb-brand-sep {
   width: 1px;
   height: 20px;
@@ -75,15 +85,36 @@
   border-radius: var(--kb-r-btn);
   border: 1px solid var(--kb-hair);
   color: var(--kb-text);
+  flex: none;
 }
 .kb-icon-link:hover {
   border-color: var(--kb-violet);
 }
+/* the theme toggle wears the same frame as the GitHub link */
+.kb-header-right .kb-icon-btn {
+  border: 1px solid var(--kb-hair);
+  border-radius: var(--kb-r-btn);
+  color: var(--kb-text);
+}
+.kb-header-right .kb-icon-btn[data-hovered] {
+  border-color: var(--kb-violet);
+  background: transparent;
+}
 @media (max-width: 520px) {
   .kb-brand-name {
     font-size: 1.1rem;
+    white-space: nowrap;
   }
-  .kb-icon-link {
+  /* GitHub stays on phones: with a wallet chip in the header, the wordmark takes its compact form instead */
+  .kb-header-row:has(.kb-wallet-chip) .kb-brand-sep {
+    display: none;
+  }
+  .kb-header-row:has(.kb-wallet-chip) .kb-brand-logo {
+    aspect-ratio: 1;
+    -webkit-mask-image: url(/img/kleros-symbol.svg);
+    mask-image: url(/img/kleros-symbol.svg);
+  }
+  .kb-header-row:has(.kb-wallet-chip) .kb-test-pill {
     display: none;
   }
 }
@@ -121,7 +152,20 @@
 }
 .kb-footer ul {
   display: grid;
-  gap: 4px;
+  gap: 0;
+}
+/* tap targets: a one-letter link ("X") still gets a thumb-sized box, without moving the rows */
+.kb-footer li a {
+  display: inline-flex;
+  align-items: center;
+  min-width: 44px;
+  min-height: 36px;
+  padding: 8px 0;
+}
+.kb-footer-base a {
+  display: inline-block;
+  padding: 3px 6px;
+  margin: -3px -6px;
 }
 .kb-footer a {
   color: var(--kb-text-2);
@@ -166,6 +210,106 @@
 }
 
 .home-lede {
-  text-align: justify;
-  hyphens: auto;
+  text-wrap: pretty;
+}
+
+html,
+body {
+  overflow-x: clip;
+}
+@media (max-width: 400px) {
+  .kb-brand-name {
+    font-size: 0.95rem;
+  }
+  .kb-header-right .kb-icon-link,
+  .kb-header-right .kb-icon-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .kb-wallet-chip {
+    padding: 0 10px;
+    gap: 6px;
+  }
+  /* with a wallet chip in the header, keep the 16px gutter: drop what the page offers elsewhere */
+  .kb-header-right {
+    gap: 4px;
+  }
+  .kb-wordmark {
+    gap: 6px;
+  }
+  .kb-brand-logo {
+    height: 20px;
+  }
+  .kb-wallet-caret {
+    display: none;
+  }
+  .kb-header-right:has(.kb-wallet-chip) > a.kb-link,
+  .kb-header-right > .kb-test-pill {
+    display: none;
+  }
+  .kb-header-right > a.kb-link {
+    white-space: nowrap;
+  }
+  /* the wordmark gives up its lettering and separator so the link and toggle fit on one row */
+  .kb-brand-sep {
+    display: none;
+  }
+  .kb-header .kb-brand-logo {
+    aspect-ratio: 1;
+    -webkit-mask-image: url(/img/kleros-symbol.svg);
+    mask-image: url(/img/kleros-symbol.svg);
+  }
+}
+
+.kb-wallet-short {
+  display: none;
+}
+@media (max-width: 520px) {
+  .kb-wallet-long {
+    display: none;
+  }
+  .kb-wallet-short {
+    display: inline;
+  }
+}
+
+/* wallet menu: tap the chip to see the full address and disconnect */
+button.kb-wallet-chip {
+  cursor: pointer;
+}
+.kb-wallet-caret {
+  color: var(--kb-text-3);
+  font-size: 11px;
+}
+.kb-wallet-pop {
+  min-width: 220px;
+  max-width: calc(100vw - 32px);
+  padding: 10px;
+  border-radius: var(--kb-r-row);
+  background: var(--kb-bg, var(--kb-sunken));
+  box-shadow:
+    inset 0 0 0 1px var(--kb-glass-ring),
+    0 12px 32px rgb(0 0 0 / 0.25);
+}
+.kb-wallet-full {
+  padding: 4px 6px 8px;
+  color: var(--kb-text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.kb-wallet-menu {
+  outline: none;
+}
+.kb-wallet-item {
+  padding: 10px 8px;
+  border-radius: 8px;
+  color: var(--kb-err);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+}
+.kb-wallet-item[data-focused],
+.kb-wallet-item[data-hovered] {
+  background: var(--kb-chip);
 }
