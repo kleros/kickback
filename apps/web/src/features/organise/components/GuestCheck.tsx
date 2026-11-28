@@ -137,13 +137,27 @@ export function GuestCheck({
         text: "This wallet did not deposit.",
         wallet,
       };
-    if (status === 2)
+    if (status === 2) {
+      // turned away after being approved on Luma: their Luma registration still works, so it must be declined there
+      const luma = lumaOf?.(wallet);
+      const marked = approvedAt(wallet);
+      if (!ended && luma !== "declined" && (marked !== undefined || luma === "approved"))
+        return {
+          tone: "err",
+          title: "Turned away: decline them on Luma",
+          text:
+            marked !== undefined
+              ? `You marked them approved here on ${when(Math.floor(marked / 1000))}, so their Luma registration still works. Their deposit was refunded.`
+              : "The Luma export shows them as approved, so their Luma registration still works. Their deposit was refunded.",
+          wallet,
+        };
       return {
         tone: "err",
         title: ended ? "Turned away" : "Turned away: do not approve",
         text: "Their deposit was refunded.",
         wallet,
       };
+    }
     if (status === 3)
       return {
         tone: "err",
@@ -372,9 +386,11 @@ export function GuestCheck({
           {!busy && result?.text && (
             <p className="og-verdict-text">
               {/* the name is read now, not kept in the verdict: it disappears at once on Disconnect */}
-              {result.tone !== "err" && result.wallet && nameOf(result.wallet)
-                ? `Luma name: ${nameOf(result.wallet)}. `
-                : ""}
+              {(() => {
+                const n = result.tone !== "err" && result.wallet ? nameOf(result.wallet)?.trim() : undefined;
+                // a name that already ends a sentence ("Frank, Jr.") gets no second full stop
+                return n ? `Luma name: ${n}${/[.!?…]$/.test(n) ? "" : "."} ` : "";
+              })()}
               {result.text}
             </p>
           )}

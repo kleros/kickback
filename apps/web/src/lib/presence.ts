@@ -26,6 +26,8 @@ export interface KickbackEvent extends EventInfo {
   casesSent?: number;
   /** Open Kleros cases the jurors have ruled on (ruling 0, 1 or 2) but nobody has settled yet; undefined when unknown. */
   ruledCases?: number;
+  /** The answer deadline (matchEndsAt) of each challenge still waiting for the organiser; undefined when unknown. */
+  waitingAnswerEnds?: number[];
 }
 
 export class EventRefused extends Error {
@@ -73,6 +75,7 @@ export async function loadEvent(
   let challengeCount: number | undefined;
   let casesSent: number | undefined;
   let ruledCases: number | undefined;
+  let waitingAnswerEnds: number[] | undefined;
   if (info.challengeEndsAt > 0)
     try {
       const c = { address: info.contract, abi: presenceEventAbi } as const;
@@ -84,6 +87,8 @@ export async function loadEvent(
       // a matched challenge has a matcher: with Kleros (2), or settled by Kleros (3)
       const all = raw.map(challengeOf);
       casesSent = all.filter((ch) => ch.state === 2 || (ch.state === 3 && !/^0x0{40}$/i.test(ch.matcher))).length;
+      // past its answer time a waiting challenge can no longer be answered: it is added at the release
+      waitingAnswerEnds = all.filter((ch) => ch.state === 1).map((ch) => ch.matchEndsAt);
       // a case Kleros has ruled on still counts as open until someone settles it
       try {
         const open = all.filter((ch) => ch.state === 2);
@@ -109,6 +114,7 @@ export async function loadEvent(
     challengeCount,
     casesSent,
     ruledCases,
+    waitingAnswerEnds,
     eventName: info.name,
     clock: null,
     lumaUrl: LUMA_URL.test(info.url) ? info.url : undefined,

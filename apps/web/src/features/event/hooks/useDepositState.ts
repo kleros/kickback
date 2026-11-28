@@ -106,6 +106,7 @@ export interface DepositController {
   resolve: () => void;
   release: () => void;
   execute: () => void;
+  settle: () => void;
   /** The latest block's time, unix seconds; undefined while loading. */
   now?: number;
   depositOpen: boolean;
@@ -223,6 +224,8 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     capacity: event.capacity,
     stakerCount: event.stakerCount,
     openCases: event.openCases,
+    // nothing of the pool is owed any more (reservedPool also counts open Kleros cases)
+    allPaid: event.phase === 2 && event.reservedPool === 0n,
     guest: money.query.data,
     guestUnknown: connected && money.query.data === undefined,
     allowance: money.query.data?.allowance,
@@ -288,6 +291,7 @@ export function useDepositState(event: KickbackEvent, from?: string): DepositCon
     resolve: money.resolve,
     release: money.release,
     execute: money.execute,
+    settle: money.settle,
     now,
     connect: () => {
       // a session being restored is already connecting: a second connect() would race it

@@ -6,8 +6,12 @@ export interface LumaMatchRow {
   ticket: string;
   wallet: string | null;
   luma: LumaDecision;
-  /** "deposit": this wallet booked; "none": no deposit from it; "no-wallet": the row has no wallet. */
-  match: "deposit" | "none" | "no-wallet";
+  /**
+   * "deposit": this wallet has a deposit; "turned-away": it deposited and the organiser turned it away (refunded,
+   * and it can never deposit again); "refunded": it deposited and took the deposit back (a cancellation or a missed
+   * deadline); "none": no deposit from it; "no-wallet": the row has no wallet.
+   */
+  match: "deposit" | "turned-away" | "refunded" | "none" | "no-wallet";
   /** Another registration with the same wallet is the main one (approved first, then pending, then declined;
    * CSV order on a tie): one deposit is one ticket. */
   dupOf?: string;
@@ -21,7 +25,12 @@ const verifiedWalletColumn = (headers: readonly string[]) =>
  * Luma registrations against the event's deposits, by the wallet Luma verified ("Require Ethereum
  * wallet"). Booked guests first, then the rest, so the organiser can approve the matches in one go.
  */
-export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow[] {
+export function matchLuma(
+  text: string,
+  booked: readonly string[],
+  /** Every guest who deposited, by lower-case wallet, with their status (2 turned away, 3 refunded). */
+  statuses?: ReadonlyMap<string, number>,
+): LumaMatchRow[] {
   const rows = parseCsv(text);
   const headers = rows[0] ? Object.keys(rows[0]) : [];
   const cols = detectColumns(headers);
@@ -36,7 +45,15 @@ export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow
       ticket: (cols.ticket && r[cols.ticket]) || "",
       wallet,
       luma: lumaDecision(cols.approval && r[cols.approval]),
-      match: !wallet ? "no-wallet" : paid.has(wallet.toLowerCase()) ? "deposit" : "none",
+      match: !wallet
+        ? "no-wallet"
+        : paid.has(wallet.toLowerCase())
+          ? "deposit"
+          : statuses?.get(wallet.toLowerCase()) === 2
+            ? "turned-away"
+            : statuses?.get(wallet.toLowerCase()) === 3
+              ? "refunded"
+              : "none",
     };
   });
   const rank = { approved: 0, pending: 1, declined: 2 } as const;
@@ -51,7 +68,7 @@ export function matchLuma(text: string, booked: readonly string[]): LumaMatchRow
     const b = r.wallet ? best.get(r.wallet.toLowerCase()) : undefined;
     if (b && b !== r) r.dupOf = b.name;
   }
-  const order = { deposit: 0, none: 1, "no-wallet": 2 } as const;
+  const order = { deposit: 0, "turned-away": 1, refunded: 2, none: 3, "no-wallet": 4 } as const;
   return out.sort((a, b) => order[a.match] - order[b.match]);
 }
 

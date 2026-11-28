@@ -12,7 +12,7 @@ export interface LumaPerson {
 export type LumaBook = Record<string, LumaPerson>;
 export type CheckedBook = Record<string, number>;
 
-const key = (contract: string, kind: "names" | "checked" | "export" | "checkin") =>
+const key = (contract: string, kind: "names" | "checked" | "export" | "checkin" | "ticks") =>
   `kb:luma:${kind}:${contract.toLowerCase()}`;
 
 function read<T>(k: string): T | null {
@@ -21,6 +21,14 @@ function read<T>(k: string): T | null {
     return raw ? (JSON.parse(raw) as T) : null;
   } catch {
     return null;
+  }
+}
+
+function remove(k: string) {
+  try {
+    window.localStorage.removeItem(k);
+  } catch {
+    // storage blocked: nothing was kept
   }
 }
 
@@ -93,13 +101,24 @@ export function writeCheckin(contract: string, value: SavedCheckin) {
   write(key(contract, "checkin"), value);
 }
 
+/**
+ * The organiser's ticks on the Attendance tab (lower-case wallets), kept on their own: ticks made by hand with no
+ * export loaded are remembered too, and never look like a loaded file.
+ */
+export const readTicks = (contract: string): string[] | null => {
+  const t = read<unknown>(key(contract, "ticks"));
+  return Array.isArray(t) ? t.filter((w): w is string => typeof w === "string") : null;
+};
+
+export function writeTicks(contract: string, ticks: readonly string[] | null) {
+  if (ticks) write(key(contract, "ticks"), ticks);
+  else remove(key(contract, "ticks"));
+}
+
 /** Forgets the saved check-in export and its ticks (names already added to the guest list stay). */
 export function forgetCheckin(contract: string) {
-  try {
-    window.localStorage.removeItem(key(contract, "checkin"));
-  } catch {
-    // storage blocked: nothing was kept
-  }
+  remove(key(contract, "checkin"));
+  remove(key(contract, "ticks"));
   window.dispatchEvent(new Event("kb-luma"));
 }
 
@@ -108,6 +127,7 @@ export function forgetLuma(contract: string) {
   try {
     window.localStorage.removeItem(key(contract, "export"));
     window.localStorage.removeItem(key(contract, "checkin"));
+    window.localStorage.removeItem(key(contract, "ticks"));
     window.localStorage.removeItem(key(contract, "names"));
   } catch {
     // storage blocked: nothing was kept

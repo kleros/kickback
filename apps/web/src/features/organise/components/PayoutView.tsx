@@ -94,15 +94,23 @@ export function PayoutScreen() {
   const counting = pending + deciding;
   // a ruling other than "came" (1) splits the held share among the attendees once it is settled
   const ruledWho = (r: number | undefined) => (r === 1 ? "it goes to the guest" : "it is split among the attendees");
+  // before the release nothing is held yet: a share is set aside only for a case still open when payouts are released
+  const beforeRelease = info.phase === 1;
   const heldNote =
     info.openCases > 0
       ? [
           deciding > 0 &&
-            `${deciding === 1 ? `a share is held for ${info.openCases === 1 ? "the open Kleros case" : "the case still with Kleros"} (it goes` : `${deciding} shares are held for the ${deciding} cases still with Kleros (each goes`} to the guest if they win, or is split among the attendees if they lose)`,
+            (beforeRelease
+              ? `${deciding === 1 ? `a share will be held for ${info.openCases === 1 ? "the open Kleros case" : "the case still with Kleros"} if it is still open when payouts are released (it goes` : `${deciding} shares will be held for the ${deciding} cases still with Kleros if they are still open when payouts are released (each goes`} to the guest if they win, or is split among the attendees if they lose)`
+              : `${deciding === 1 ? `a share is held for ${info.openCases === 1 ? "the open Kleros case" : "the case still with Kleros"} (it goes` : `${deciding} shares are held for the ${deciding} cases still with Kleros (each goes`} to the guest if they win, or is split among the attendees if they lose)`),
           ruledCount > 0 &&
-            (ruledCount === 1
-              ? `a share is held for 1 ruled case until it is settled (then ${ruledWho(ruledCases[0]?.ruling)})`
-              : `a share is held for each of the ${ruledCount} ruled cases until it is settled`),
+            (beforeRelease
+              ? ruledCount === 1
+                ? `1 ruled case still counts in the split until it is settled (then ${ruledWho(ruledCases[0]?.ruling)}); settle it before releasing, or a share will be held for it`
+                : `the ${ruledCount} ruled cases still count in the split until they are settled; settle them before releasing, or a share will be held for each`
+              : ruledCount === 1
+                ? `a share is held for 1 ruled case until it is settled (then ${ruledWho(ruledCases[0]?.ruling)})`
+                : `a share is held for each of the ${ruledCount} ruled cases until it is settled`),
         ]
           .filter(Boolean)
           .join("; ") + (deciding > 0 ? ", so this can still rise" : "")
@@ -147,6 +155,12 @@ export function PayoutScreen() {
   return (
     <div className="flex flex-col gap-5" data-testid="payout">
       <h2 className="kb-h1">Payout</h2>
+      {/* after a wallet switch away and back the row a send came from is forgotten: still say it is confirming */}
+      {target === null && event.pending && (
+        <p className="og-note" role="status" data-testid="pending">
+          {event.pending.text}
+        </p>
+      )}
       {info.phase === 0 && !missed ? (
         <GlassCard className="og-card">
           <h3 className="og-h2">Confirm who came first</h3>
@@ -676,7 +690,9 @@ export function PayoutScreen() {
                   {info.openCases > 0 && " A share is held for each Kleros case until it is decided or settled."}
                 </p>
               )}
-              {target === "tab" && <Messages event={event.done === RELEASED ? { ...event, done: null } : event} />}
+              {target === "tab" && (
+                <Messages event={event.done === RELEASED ? { ...event, done: null, doneTx: null } : event} />
+              )}
             </GlassCard>
           )}
         </>

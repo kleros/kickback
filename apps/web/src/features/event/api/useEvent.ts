@@ -139,3 +139,30 @@ export function useBlockTime(block: bigint | undefined) {
     queryFn: async () => Number((await client!.getBlock({ blockNumber: block! })).timestamp),
   });
 }
+
+const RELEASED = getAbiItem({ abi: presenceEventAbi, name: "PayoutsReleased" });
+
+/** The block of the event's PayoutsReleased log (once released), read from the event's creation; null when none. */
+export function useReleasedBlock(contract: Address | undefined, fromBlock: number | undefined, enabled: boolean) {
+  const client = usePublicClient({ chainId: DEFAULT_CHAIN_ID });
+  return useQuery({
+    queryKey: ["released-block", DEFAULT_CHAIN_ID, contract?.toLowerCase(), fromBlock],
+    enabled: enabled && client !== undefined && contract !== undefined && fromBlock !== undefined,
+    staleTime: STALE_TIME.immutable,
+    retry: 1,
+    queryFn: async () => {
+      const logs = await getLogsChunked(
+        {
+          getLogs: ({ fromBlock: a, toBlock: b }) =>
+            client!.getLogs({ address: contract!, event: RELEASED, fromBlock: a, toBlock: b }),
+          getBlockNumber: () => client!.getBlockNumber({ cacheTime: 0 }),
+        },
+        fromBlock!,
+        "latest",
+        undefined,
+        { stopWhen: (found) => found.length > 0 },
+      );
+      return logs[0]?.blockNumber ?? null;
+    },
+  });
+}

@@ -2,12 +2,21 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { presenceEventAbi, presenceFactoryAbi } from "@kickback/contracts";
 import { eventConfig, LUMA_URL, lumaLinkProblem, MAX_SETTLEMENT_WINDOW, MIN_SETTLEMENT_WINDOW } from "@kickback/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { erc20Abi, formatEther, isAddress, parseEventLogs, parseUnits, type Address, type Hash } from "viem";
+import {
+  erc20Abi,
+  formatEther,
+  formatUnits,
+  isAddress,
+  parseEventLogs,
+  parseUnits,
+  type Address,
+  type Hash,
+} from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 
 import { GlassCard } from "@/components/ui/GlassCard";
@@ -15,7 +24,7 @@ import { ConnectWallet } from "@/components/wallet/ConnectWallet";
 
 import { isShowableTime, zonedDateText } from "@/utils/time";
 
-import { sentTxStore, useSend, useSentTx } from "@/lib/web3/send";
+import { sendLock, sentTxStore, useSend, useSentTx } from "@/lib/web3/send";
 import { useRestoringWallet } from "@/lib/web3/useRestoringWallet";
 
 import { DEFAULT_CHAIN, DEFAULT_CHAIN_ID } from "@/config/chains";
@@ -24,7 +33,7 @@ import { PROTOCOL } from "@/config/protocol";
 
 import { ErrorLine, Primary, TxLink } from "./parts";
 import { gate } from "../model/shared";
-import { browserZone, zonedUnix, zoneLabel, zoneList } from "../model/zone";
+import { browserZone, eventZone, zonedUnix, zoneLabel, zoneList } from "../model/zone";
 import { tx } from "../operations/tx";
 
 /** "2026-11-24T18:00" in the browser's zone, for a datetime-local input. */
@@ -48,18 +57,27 @@ function normaliseLuma(raw: string): string {
   }
 }
 
-function initialForm(now = new Date()) {
+/** A week from now at 18:00 on the device's clock, for 4 hours: set in the browser only, after the first render. */
+function defaultDates(now = new Date()) {
   const start = new Date(now.getTime() + 7 * 86_400_000);
   start.setHours(18, 0, 0, 0);
   const end = new Date(start.getTime() + 4 * 3_600_000);
+  return { start: local(start), end: local(end) };
+}
+
+/** A thousands separator ("1,000", "12,500"): never read as a decimal comma, which could be off by 1000 times. */
+const THOUSANDS = /^[1-9]\d{0,2}(,\d{3})+$/;
+
+function initialForm() {
   return {
     name: "",
     url: "",
     asset: "ETH",
     token: "",
     deposit: "0.01",
-    start: local(start),
-    end: local(end),
+    // the dates depend on the device's clock: empty on the server and in the first render, so both match
+    start: "",
+    end: "",
     // set to the device's zone once in the browser (the server would render its own)
     zone: "UTC",
     deadlineDays: "7",
@@ -131,12 +149,15 @@ export function CreateScreen() {
   // wagmi is restoring a saved session: no Connect prompt yet
   const restoring = useRestoringWallet();
   const [form, setForm] = useState<Form>(() => initialForm());
-  // the server renders in its own zone: take the device's once in the browser
+  // the server renders in its own zone and on its own clock: take the device's once in the browser
   const [deviceZone, setDeviceZone] = useState("UTC");
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
     const zone = browserZone();
     setDeviceZone(zone);
-    setForm((f) => ({ ...f, zone }));
+    setMounted(true);
+    // never over anything already typed
+    setForm((f) => ({ ...f, zone, ...(f.start || f.end ? {} : defaultDates()) }));
   }, []);
   const [error, setError] = useState<{ text: string; at: number } | null>(null);
   // a message belongs to the wallet that sent it: drop it on Disconnect or an account switch
@@ -173,8 +194,11 @@ export function CreateScreen() {
   });
   const earlierContract = earlierEvent.data;
   useEffect(() => {
-    if (earlierContract) void queryClient.invalidateQueries({ queryKey: ["organise", "mine"] });
-  }, [earlierContract, queryClient]);
+    if (!earlierContract) return;
+    void queryClient.invalidateQueries({ queryKey: ["organise", "mine"] });
+    // a create confirmed while the page was reloading: its zone goes to the event it created
+    if (address) eventZone.settle(DEFAULT_CHAIN_ID, address, earlierContract);
+  }, [earlierContract, queryClient, address]);
   // the notice shows once: leaving the page forgets the mined record
   useEffect(() => {
     if (!earlierMined || !factory || !address) return;
@@ -184,8 +208,10 @@ export function CreateScreen() {
     setForm({ ...form, [key]: e.currentTarget.value });
 
   const asset = form.asset === "ETH" ? { symbol: "ETH", decimals: 18 } : token.data ? token.data : null;
-  // many phone keyboards type a decimal comma: "0,01"
-  const deposit = form.deposit.trim().replace(",", ".");
+  // many phone keyboards type a decimal comma: "0,01"; a thousands separator ("1,000") is refused instead
+  const rawDeposit = form.deposit.trim();
+  const thousands = THOUSANDS.test(rawDeposit);
+  const deposit = rawDeposit.replace(",", ".");
   const [minDays, maxDays] = [MIN_SETTLEMENT_WINDOW / 86_400, MAX_SETTLEMENT_WINDOW / 86_400];
 
   // the reasons follow the order of the fields on the form: name, Luma link, deposit, dates, days, capacity
@@ -206,6 +232,10 @@ export function CreateScreen() {
     if (lumaProblem?.kind === "manage" || lumaProblem?.kind === "other") throw new Error(lumaProblem.text);
     const url = normaliseLuma(form.url);
     if (!LUMA_URL.test(url)) throw new Error("Paste the event's Luma link, such as https://luma.com/abc123.");
+    if (thousands)
+      throw new Error(
+        "Write the deposit without a thousands separator, such as 1000, or use a dot for decimals, such as 1.5.",
+      );
     if (!/^\d+(\.\d+)?$/.test(deposit)) throw new Error("Enter the deposit as a number, such as 0.01 or 25.");
     if (!asset) throw new Error("Paste the token's contract address and wait for its name to load.");
     // parseUnits would round extra decimals silently, and the deposit cannot change once the event exists
@@ -261,14 +291,20 @@ export function CreateScreen() {
         : earlierPending
           ? "Wait for the event you already created to confirm."
           : check;
+  const plainDeposit = !thousands && /^\d+(\.\d+)?$/.test(deposit);
+  // the amount as it will be stored, once it is a valid number for this asset (so parseUnits never rounds)
+  const depositShown =
+    plainDeposit && asset && (deposit.split(".")[1] ?? "").length <= asset.decimals
+      ? `Guests will deposit ${formatUnits(parseUnits(deposit, asset.decimals), asset.decimals)} ${asset.symbol}.`
+      : undefined;
   const feeHint =
     fee === undefined
       ? undefined
-      : form.asset === "ETH" && /^\d+(\.\d+)?$/.test(deposit) && parseUnits(deposit, 18) < fee
+      : form.asset === "ETH" && plainDeposit && parseUnits(deposit, 18) < fee
         ? `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH. To send their case to Kleros, you pay the same fee, and you lose it if the jurors side with the guest, so mark everyone who came.`
         : `A guest you leave off can challenge by paying the Kleros fee, currently ${formatEther(fee)} ETH.`;
   const zoneName = form.zone.replace(/_/g, " ");
-  /** The picked time as the event page will show it: "Thu 3 Dec 2026, 18:00 GMT". */
+  /** The picked time in the event's zone: "Thu 3 Dec 2026, 18:00 GMT" (each visitor sees it in their own zone). */
   const shown = (value: string) => {
     const unix = zonedUnix(value, form.zone);
     return Number.isFinite(unix) && isShowableTime(unix) ? zonedDateText(unix, form.zone) : "";
@@ -276,14 +312,20 @@ export function CreateScreen() {
   const startUnix = zonedUnix(form.start, form.zone);
   const startPassed = Number.isFinite(startUnix) && startUnix > 0 && startUnix < Date.now() / 1000;
 
+  // set synchronously on the first press: a double press in the same tick never sends a second create (the
+  // second mutate would also drop the first one's callbacks, so the page would never open the new event)
+  const inFlight = useRef(false);
   const create = () => {
-    if (created || send.isPending || earlierPending) return;
+    if (inFlight.current || created || send.isPending || earlierPending || sendLock.getState().busy) return;
+    inFlight.current = true;
     setError(null);
+    // the zone is not on chain: kept in this browser, so the organiser pages can show the event's own times
+    if (address) eventZone.saveCreate(DEFAULT_CHAIN_ID, address, form.zone);
     send.mutate(
       { expectedAccount: address, prepare: async () => tx.create(PROTOCOL!.factory, build()) },
       {
         onSuccess: (receipt) => {
-          // locked from here: a second press would create a second event
+          // locked from here: a second press would create a second event (the ref stays set too)
           setCreated(true);
           if (factory && address) sentTxStore.forget(DEFAULT_CHAIN_ID, factory, address, receipt.transactionHash);
           // the lists of this wallet's events (home and Manage your events) must show the new one
@@ -295,9 +337,13 @@ export function CreateScreen() {
               text: "The event was created, but its address could not be read. Open “Manage your events” (link below): it is listed there.",
               at: Date.now(),
             });
+          if (address) eventZone.settle(DEFAULT_CHAIN_ID, address, created);
           router.push(paths.organiseEvent.getHref(created));
         },
-        onError: (e) => setError({ text: e.message, at: Date.now() }),
+        onError: (e) => {
+          inFlight.current = false;
+          setError({ text: e.message, at: Date.now() });
+        },
       },
     );
   };
@@ -345,6 +391,11 @@ export function CreateScreen() {
           </Field>
           <Field label={`Deposit${asset ? ` (${asset.symbol})` : ""}`}>
             <input className="og-input" inputMode="decimal" value={form.deposit} onChange={set("deposit")} />
+            {depositShown && (
+              <span className="og-note" data-testid="deposit-shown">
+                {depositShown}
+              </span>
+            )}
           </Field>
           {feeHint && <p className="og-note is-full -mt-2.5">{feeHint}</p>}
           {form.asset === "token" && (
@@ -368,7 +419,8 @@ export function CreateScreen() {
             hint={`${zoneLabel(form.zone, zonedUnix(form.start, form.zone) || 0)}. Use the event's own time zone, as set on Luma. Your device is set to ${deviceZone.startsWith("Etc/") ? zoneLabel(deviceZone, Date.now() / 1000) : `${deviceZone.replace(/_/g, " ")} (${zoneLabel(deviceZone, Date.now() / 1000)})`}.`}
           >
             <select className="og-input" value={form.zone} onChange={set("zone")}>
-              {zoneList(form.zone).map((z) => (
+              {/* the zone list differs between the server and some browsers: the full list only once mounted */}
+              {(mounted ? zoneList(form.zone) : [form.zone]).map((z) => (
                 <option key={z} value={z}>
                   {z.replace(/_/g, " ")}
                 </option>
@@ -381,7 +433,7 @@ export function CreateScreen() {
               startPassed
                 ? "This start time has already passed. Guests can still deposit until the event ends, but you will not be able to turn anyone away."
                 : shown(form.start)
-                  ? `${shown(form.start)}, in the event's time zone (${zoneName})`
+                  ? `${shown(form.start)}, in the event's time zone (${zoneName}). The guest page shows each visitor this time in their own time zone.`
                   : `In the event's time zone (${zoneName})`
             }
           >

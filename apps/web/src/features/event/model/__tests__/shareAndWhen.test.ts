@@ -49,6 +49,17 @@ describe("shareExample", () => {
     expect(shareExample(parseEther("0.01"), 4, undefined, 0).basis).toBe("estimate");
   });
 
+  it("a challenge past its answer time counts as one more share, not as waiting or a no-show", () => {
+    const d = parseEther("0.01");
+    expect(shareExample(d, 4, undefined, 2, 0, 0, 0, 0, 1)).toMatchObject({
+      attend: 2,
+      lapsed: 1,
+      pending: 0,
+      noShows: 1,
+      back: (d * 4n) / 3n,
+    });
+  });
+
   it("after the payout, a guest still with Kleros is neither an attendee nor a no-show", () => {
     const share = (parseEther("0.01") * 4n) / 3n;
     expect(shareExample(parseEther("0.01"), 4, share, 2, 1)).toMatchObject({

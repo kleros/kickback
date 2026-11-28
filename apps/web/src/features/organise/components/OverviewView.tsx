@@ -8,6 +8,9 @@ import { GlassCard } from "@/components/ui/GlassCard";
 import { GradientButton } from "@/components/ui/GradientButton";
 import { NumberPop } from "@/components/ui/NumberPop";
 
+import { zonedDateText } from "@/utils/time";
+
+import { DEFAULT_CHAIN_ID } from "@/config/chains";
 import { paths } from "@/config/paths";
 
 import { Messages } from "./Messages";
@@ -17,6 +20,7 @@ import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
 import { unpaidLede } from "../model/payout";
 import { isFull, NEXT_STEP, type NextStep } from "../model/phase";
 import { assetText, TYPED_WORDS, when } from "../model/view";
+import { browserZone, eventZone, zoneLabel } from "../model/zone";
 import { tx } from "../operations/tx";
 
 const LUMA_SETUP = [
@@ -34,12 +38,18 @@ export function OverviewScreen({ court }: { court: string }) {
   // the dialog belongs to the wallet that opened it: close it on Disconnect, an account or a network switch
   const accountKey = event.account?.toLowerCase();
   useEffect(() => setCancel(false), [accountKey, event.onChain]);
+  // the zone picked at create time, kept in this browser only (read after mount: the server has none)
+  const [zones, setZones] = useState<{ event: string | null; device: string } | null>(null);
+  useEffect(() => setZones({ event: eventZone.read(DEFAULT_CHAIN_ID, address), device: browserZone() }), [address]);
   const data = overview.data;
   if (!data || !phase) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
-  const open = data.challenges.filter((c) => c.state === 1 || c.state === 2).length;
   // a late challenge can still be inside its answer time after the window: releasePayouts waits for it
   const now = event.now ?? data.now;
+  // open: a challenge that can still be answered, or a case with Kleros (one whose answer time ran out is decided)
+  const open = data.challenges.filter((c) => (c.state === 1 && now <= c.matchEndsAt) || c.state === 2).length;
+  // not answered in time: added to the list when payouts are released (the Payout tab's own rule)
+  const lapsed = info.phase === 1 ? data.challenges.filter((c) => c.state === 1 && now > c.matchEndsAt).length : 0;
   const waiting = data.challenges.filter((c) => c.state === 1 && now <= c.matchEndsAt);
   const lastAnswer = Math.max(0, ...waiting.map((c) => c.matchEndsAt));
   const full = isFull(info);
@@ -116,7 +126,11 @@ export function OverviewScreen({ court }: { court: string }) {
           : phase === "Challenge window" && open === 0
             ? {
                 title: "Release payouts after the challenge window",
-                detail: `${data.challenges.length ? "No open challenges." : "No challenges so far."} After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
+                detail: `${data.challenges.length ? "No open challenges." : "No challenges so far."}${
+                  lapsed
+                    ? ` ${lapsed === 1 ? "1 guest who challenged was" : `${lapsed} guests who challenged were`} not answered in time and will be added when payouts are released.`
+                    : ""
+                } After ${when(info.challengeEndsAt)}, release payouts on the Payout tab.`,
                 tab: null,
                 action: null,
               }
@@ -129,7 +143,14 @@ export function OverviewScreen({ court }: { court: string }) {
                 }
               : phase === "Payouts released" && info.openCases > 0
                 ? {
-                    title: readyToSettle > 0 ? "Settle the Kleros cases" : "Wait for the Kleros rulings",
+                    title:
+                      readyToSettle > 0
+                        ? readyToSettle === 1
+                          ? "Settle the Kleros case"
+                          : "Settle the Kleros cases"
+                        : info.openCases === 1
+                          ? "Wait for the Kleros ruling"
+                          : "Wait for the Kleros rulings",
                     detail: casesText + payText,
                     tab: "payout",
                     action: "Open Payout",
@@ -175,6 +196,11 @@ export function OverviewScreen({ court }: { court: string }) {
               ? `Answer by ${when(lastAnswer)}`
               : null;
 
+  // the pages show times in the device's zone: say so when the event was created for another one
+  const zoneNote =
+    zones?.event && zoneLabel(zones.event, info.eventStart) !== zoneLabel(zones.device, info.eventStart)
+      ? `Times on these pages are in your device's time zone (${zones.device.replace(/_/g, " ")}, ${zoneLabel(zones.device, info.eventStart)}). You created this event in ${zones.event.replace(/_/g, " ")}, where it starts ${zonedDateText(info.eventStart, zones.event)}.`
+      : null;
   const cancelled = info.phase === 3;
   const hasDeposits = info.stakerCount > 0;
   const cancelNote = hasDeposits
@@ -263,11 +289,17 @@ export function OverviewScreen({ court }: { court: string }) {
               ),
           },
           { label: "Open challenges", value: <NumberPop value={String(open)} still /> },
+          ...(lapsed > 0 ? [{ label: "To be added at release", value: String(lapsed) }] : []),
           { label: "Deposits held", value: assetText(info.reservedPool, info) },
         ]}
       />
       <section className="flex flex-col gap-2">
         <h2 className="og-h2">Event details</h2>
+        {zoneNote && (
+          <p className="og-note" data-testid="zone-note">
+            {zoneNote}
+          </p>
+        )}
         <Figures
           rows={[
             { label: "Deposit", value: assetText(info.depositAmount, info) },

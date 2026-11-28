@@ -152,6 +152,23 @@ describe("attendance from a check-in CSV", () => {
     expect(plan.skipped.map((s) => s.reason)).toEqual(["no-wallet"]);
   });
 
+  test("a turned-away wallet that checked in is told apart from one that never deposited", () => {
+    const d = "0x90F79bf6EB2c4f870365E785982E1f101E93b906" as const;
+    const csv = [
+      "name,checked_in_at,eth_address",
+      `Dave,2026-11-04T18:02:00Z,${d}`,
+      `Ben,,${d}`,
+      `Ana,2026-11-04T18:00:00Z,${a}`,
+    ].join("\n");
+    const plan = core.attendanceFromCsv(csv, [a, b], {}, [d]);
+    expect(plan.skipped.map((s) => [s.name, s.reason])).toEqual([
+      ["Dave", "turned-away"],
+      ["Ben", "not-checked-in"],
+    ]);
+    expect(plan.attending).toEqual([a]);
+    expect(plan.noShows).toEqual([b]);
+  });
+
   test("a plain list of wallets counts every staker in it", () => {
     expect(core.attendanceFromCsv(`wallet\n${b}\n${c}`, [a, b, c]).attending).toEqual([b, c]);
     expect(core.batches([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);

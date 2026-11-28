@@ -19,8 +19,8 @@ import { ConfirmDialog, CSV_ERROR, ErrorLine, FilePick, Figures, Locked, TxLink 
 import { useEventRecord } from "../hooks/useEventRecord";
 import { useLumaBook } from "../hooks/useLumaBook";
 import { useOrganiserEvent } from "../hooks/useOrganiserEvent";
-import { forgetCheckin, readCheckin, writeCheckin } from "../model/lumaBook";
-import { matchLuma } from "../model/lumaMatch";
+import { forgetCheckin, readCheckin, readTicks, writeCheckin, writeTicks } from "../model/lumaBook";
+import { hasWalletColumn, matchLuma } from "../model/lumaMatch";
 import { projectedShare } from "../model/payout";
 import { gate } from "../model/shared";
 import { assetText, shortHex, TYPED_WORDS, when } from "../model/view";
@@ -29,6 +29,7 @@ import { tx } from "../operations/tx";
 const SKIP_TEXT = {
   "no-wallet": "No wallet in the row",
   "not-a-guest": "No deposit from this wallet",
+  "turned-away": "Turned away before the event (deposit refunded)",
   "not-checked-in": "Not checked in on Luma",
   duplicate: "Listed twice",
 } as const;
@@ -46,7 +47,9 @@ export function AttendanceScreen() {
   const emptyId = useId();
   const data = event.overview.data;
   const booked = useMemo(() => data?.booked ?? [], [data]);
-  const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked) : null), [csv, booked]);
+  // turned away before the event: a checked-in row for one says so, not "no deposit"
+  const rejected = useMemo(() => (data?.guests ?? []).filter((g) => g.status === 2).map((g) => g.wallet), [data]);
+  const plan = useMemo(() => (csv ? attendanceFromCsv(csv.text, booked, {}, rejected) : null), [csv, booked, rejected]);
   // the loaded check-in export and its ticks are kept per event in this browser, like the Guests tab's export:
   // shown only while the organiser's wallet is connected, hidden (not deleted) for any other wallet or none
   const accountKey = event.account?.toLowerCase();
@@ -58,7 +61,9 @@ export function AttendanceScreen() {
     const load = () => {
       const saved = isOwner ? readCheckin(contract) : null;
       setCsv(saved ? { name: saved.name, text: saved.text, at: saved.at } : null);
-      setPicked(saved?.picked ? new Set(saved.picked) : null);
+      // ticks are kept on their own (also ticks made by hand with no export); older ones were kept with the export
+      const ticks = isOwner ? (readTicks(contract) ?? saved?.picked ?? null) : null;
+      setPicked(ticks ? new Set(ticks) : null);
     };
     load();
     // a forget on another tab (or "Forget this export" on the Guests tab) clears it here too
@@ -69,12 +74,10 @@ export function AttendanceScreen() {
       window.removeEventListener("kb-luma", load);
     };
   }, [accountKey, isOwner, contract]);
-  /** Saves the organiser's ticks with the loaded export (null: back to the export's own check-ins). */
+  /** Saves the organiser's ticks for this event in this browser (null: back to the export's own check-ins). */
   const savePicked = (next: Set<string> | null) => {
-    if (!event.isOwner || !csv) return;
-    const saved = readCheckin(event.address);
-    if (!saved) return;
-    writeCheckin(event.address, { ...saved, picked: next ? [...next] : undefined });
+    if (!event.isOwner) return;
+    writeTicks(event.address, next ? [...next] : null);
   };
   if (!data) return <p className="og-note">Loading the event…</p>;
   const info = data.event;
@@ -94,6 +97,8 @@ export function AttendanceScreen() {
   const inWindow = info.phase === 0 && now >= info.eventEnd && now <= info.claimDeadline;
   const canAdd = event.isOwner && event.onChain && !event.busy && (inWindow || (listed && now <= info.challengeEndsAt));
   const total = booked.filter(isOn).length;
+  // on the list on the blockchain, not counting ticks that are not sent yet
+  const onChain = booked.filter((w) => already.has(w.toLowerCase())).length;
   // a guest whose challenge is waiting or with Kleros is neither on the list nor a no-show yet
   const isChallenging = (c: { wallet: Address; state: number }) => (c.state === 1 || c.state === 2) && !isOn(c.wallet);
   const challenging = data.challenges.filter(isChallenging).length;
@@ -110,6 +115,21 @@ export function AttendanceScreen() {
   ).length;
   const final = confirm === "close" && !batched;
   const isBooked = new Set(booked.map((w) => w.toLowerCase()));
+  // a guest who already challenged (waiting, with Kleros, or ruled on) is handled on the Payout tab
+  const challenged = new Set(data.challenges.filter((c) => c.state !== 0).map((c) => c.wallet.toLowerCase()));
+  const windowOpen = listed && now <= info.challengeEndsAt;
+  // after the window: every guest who deposited, did not check in and is not on the list (the facts, no advice)
+  const notCheckedIn = new Set(
+    (plan?.skipped ?? [])
+      .filter(
+        (s) =>
+          s.reason === "not-checked-in" &&
+          s.wallet &&
+          isBooked.has(s.wallet.toLowerCase()) &&
+          !already.has(s.wallet.toLowerCase()),
+      )
+      .map((s) => s.wallet!.toLowerCase()),
+  ).size;
   const unscanned = new Set(
     (plan?.skipped ?? [])
       .filter(
@@ -117,6 +137,7 @@ export function AttendanceScreen() {
           s.reason === "not-checked-in" &&
           s.wallet &&
           isBooked.has(s.wallet.toLowerCase()) &&
+          !challenged.has(s.wallet.toLowerCase()) &&
           // a second, checked-in registration or a hand tick already counts this guest
           !isOn(s.wallet as Address),
       )
@@ -164,11 +185,11 @@ export function AttendanceScreen() {
           <p className="og-lede">
             {allPaid && open === 0
               ? n === 1
-                ? "Payouts are released and the attendee has been paid."
-                : `Payouts are released and all ${who} have been paid.`
+                ? "Payouts have been released and the attendee has been paid."
+                : `Payouts have been released and all ${who} have been paid.`
               : n === 1
-                ? "Payouts are released: 1 attendee gets the deposits."
-                : `Payouts are released: ${who} share the deposits.`}
+                ? "Payouts have been released: 1 attendee gets the deposits."
+                : `Payouts have been released: ${who} share the deposits.`}
           </p>
         </div>
         <Figures
@@ -308,6 +329,7 @@ export function AttendanceScreen() {
           TooLate: "The time to add guests ended before your list was sent. Nothing was recorded.",
           NotListed: "The list changed before your send. Nothing was recorded.",
         },
+        { pending: `Adding ${guests(sent.length)} to the list… Waiting for confirmation.`, wallets: sent },
       );
       return;
     }
@@ -327,6 +349,12 @@ export function AttendanceScreen() {
         TooEarly: "The event has not ended yet, so attendance cannot be sent. Nothing was recorded.",
         NotOpen:
           "The event is no longer open for attendance (it was cancelled or the list was already closed). Nothing was recorded.",
+      },
+      {
+        pending: closeNow
+          ? "Closing the list… Waiting for confirmation."
+          : `Saving ${guests(sent.length)}… Waiting for confirmation.`,
+        wallets: sent,
       },
     );
   };
@@ -386,12 +414,25 @@ export function AttendanceScreen() {
           file={csv && plan ? { name: csv.name, rows: plan.attending.length + plan.skipped.length } : null}
           onFile={(name, text) => {
             let rows: ReturnType<typeof matchLuma>;
+            let loaded: ReturnType<typeof attendanceFromCsv>;
             try {
-              attendanceFromCsv(text, booked);
+              loaded = attendanceFromCsv(text, booked, {}, rejected);
               rows = matchLuma(text, booked);
             } catch {
               // keep the list already loaded
               setErr({ text: CSV_ERROR, at: Date.now() });
+              return;
+            }
+            // an empty file, or one with no wallet anywhere, is not a check-in list: refused, the last list kept
+            const anyRow = loaded.attending.length + loaded.skipped.length > 0;
+            const anyWallet = loaded.attending.length > 0 || loaded.skipped.some((s) => s.reason !== "no-wallet");
+            if (!anyRow || !anyWallet) {
+              setErr({
+                text: !anyRow
+                  ? "This file has no guest rows. On Luma, open Guests, export the list (CSV) and choose that file."
+                  : "This file has no guest wallets, so it is not a Luma guest export with wallets. On the Luma ticket, turn on “Require Ethereum wallet”, then open Guests, export the list and choose that file.",
+                at: Date.now(),
+              });
               return;
             }
             setErr(null);
@@ -400,7 +441,9 @@ export function AttendanceScreen() {
             setPicked(null);
             // kept in this browser for this event (a new file clears the ticks saved with the last one)
             writeCheckin(event.address, { name, text, at });
-            luma.add(rows);
+            writeTicks(event.address, null);
+            // names only from a real Luma export (its verified wallet column), as on the Guests tab
+            if (hasWalletColumn(text)) luma.add(rows);
           }}
           testId="checkin-csv"
         />
@@ -425,10 +468,14 @@ export function AttendanceScreen() {
         <details className="og-skipped" open>
           <summary>
             {`${plan.skipped.length} ${plan.skipped.length === 1 ? "row" : "rows"} not used`}
-            {unscanned > 0 &&
-              (listed
-                ? ` · ${guests(unscanned)} deposited but did not check in. Add any you saw at the door before ${when(info.challengeEndsAt)}, or they may challenge.`
-                : ` · ${guests(unscanned)} deposited but did not check in. Tick any you saw at the door, or they may challenge.`)}
+            {listed && !windowOpen
+              ? notCheckedIn > 0
+                ? ` · ${guests(notCheckedIn)} deposited but did not check in.`
+                : ""
+              : unscanned > 0 &&
+                (listed
+                  ? ` · ${guests(unscanned)} deposited but did not check in. Add any you saw at the door before ${when(info.challengeEndsAt)}, or they may challenge.`
+                  : ` · ${guests(unscanned)} deposited but did not check in. Tick any you saw at the door, or they may challenge.`)}
           </summary>
           <ul>
             {plan.skipped.map((s) => (
@@ -450,7 +497,10 @@ export function AttendanceScreen() {
         big
         rows={[
           { label: "Deposits", value: String(booked.length) },
-          { label: "On the list", value: String(total) },
+          { label: "On the list", value: String(onChain) },
+          ...(toAdd.length > 0
+            ? [{ label: listed ? "Ticked, not added yet" : "Ticked, not saved yet", value: String(toAdd.length) }]
+            : []),
           { label: undecided ? "Not ticked" : "No-shows", value: String(noShows) },
           ...(challenging > 0 ? [{ label: "Challenging", value: String(challenging) }] : []),
           {
@@ -503,9 +553,7 @@ export function AttendanceScreen() {
                         : on
                           ? "Already on the list"
                           : isOn(w)
-                            ? csv
-                              ? "Came (from Luma)"
-                              : "Came"
+                            ? `${csv ? "Came (from Luma)" : "Came"} · ${listed ? "not added yet" : "not saved yet"}`
                             : listed
                               ? "Not on the list"
                               : csv
@@ -579,10 +627,11 @@ export function AttendanceScreen() {
                 >
                   {batched ? `Save ${first.length} of ${toAdd.length} first` : "Confirm and close"}
                 </GradientButton>
-                <Locked gate={emptyGate} id={emptyId} />
               </>
             )}
           </div>
+          {/* on its own full-width line under the buttons, so the bar grows to fit it */}
+          {!listed && <Locked gate={emptyGate} id={emptyId} />}
         </GlassCard>
       )}
       {confirm && canAdd && (
@@ -610,7 +659,11 @@ export function AttendanceScreen() {
           figures={[
             { label: "Adding now", value: String(first.length) },
             { label: "On the list after", value: String(afterSend) },
-            { label: "No-shows", value: String(booked.length - afterSend - challengingAfter) },
+            {
+              // before the list is closed nobody is a no-show yet: more can still be added
+              label: final || listed ? "No-shows" : "Not on the list yet",
+              value: String(booked.length - afterSend - challengingAfter),
+            },
             ...(challengingAfter > 0 ? [{ label: "Challenging", value: String(challengingAfter) }] : []),
           ]}
           action={final ? "Confirm and close" : listed ? `Add ${first.length}` : `Save ${first.length}`}

@@ -82,13 +82,18 @@ describe("depositState", () => {
     expect(blocked.button).toBe("Waiting for payouts");
   });
 
-  it("offers to settle a case Kleros has ruled on, and only a read-only card when it ruled against the guest", () => {
+  it("offers to settle a case Kleros has ruled on, also when it ruled against the guest", () => {
     const won = depositState(galleryInput("ruled"));
     expect(won.action).toBe("resolve");
     expect(won.button).toBe("Join the list");
     const g = galleryInput("ruled");
     const lost = depositState({ ...g, guest: { ...g.guest!, challenge: { ...g.guest!.challenge, ruling: 2 } } });
-    expect(lost.action).toBe("none");
+    // anyone can settle it: never "the organiser still has to"; nothing comes back to the guest
+    expect(lost.action).toBe("resolve");
+    expect(lost.button).toBe("Settle the ruling");
+    expect(lost.amount).toBe("0");
+    expect(lost.lines[1]!.text).toBe("Anyone can settle it to end the challenge.");
+    expect(lost.lines.map((l) => l.text).join(" ")).not.toContain("organiser still has to");
     const unruled = depositState({
       ...g,
       guest: { ...g.guest!, challenge: { ...g.guest!.challenge, isRuled: false } },
@@ -333,9 +338,38 @@ describe("depositState: round 2 fixes", () => {
       "Challenges have closed. Release payouts on the organiser page.",
     );
     expect(line({ phase: 2, chainNow: end + 3 * 86_400 })).toBe(
-      "Payouts are released. Track them on the organiser page.",
+      "Payouts have been released. Track them on the organiser page.",
+    );
+    expect(line({ phase: 2, chainNow: end + 3 * 86_400, allPaid: true })).toBe(
+      "Payouts have been released and every attendee has been paid.",
     );
     expect(line({ phase: 3 })).toBe("You cancelled this event. Guests can withdraw their full deposits.");
+    // no deposit left (all refunded, or none made): nothing promised
+    expect(line({ phase: 3, stakerCount: 0 })).toBe(
+      "You cancelled this event. No guest has a deposit left to withdraw.",
+    );
+    expect(line({ chainNow: end + 8 * 86_400, stakerCount: 0 })).toBe(
+      "Attendance was not confirmed in time. No guest has a deposit left to withdraw.",
+    );
+  });
+
+  it("offers an attendee to settle another guest's ruled case that holds a share", () => {
+    const b = baseInput();
+    const view = depositState({
+      ...b,
+      phase: 2,
+      openCases: 1,
+      guest: {
+        ...guest({ attended: true, sharePaid: 1n }),
+        ruledCase: { wallet: "0x00000000000000000000000000000000000000ee", ruling: 2 },
+      },
+    });
+    expect(view.action).toBe("settle");
+    expect(view.button).toBe("Settle the ruling");
+    expect(view.lines.map((l) => l.text)).toEqual([
+      "Kleros has ruled on a case. Anyone can settle it.",
+      "Then its held share is split among attendees.",
+    ]);
   });
 
   it("an organiser who deposited keeps the guest views for their own money", () => {

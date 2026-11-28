@@ -15,7 +15,7 @@ import { EventRefused } from "@/lib/presence";
 
 import { paths } from "@/config/paths";
 
-import { PhasePill } from "./parts";
+import { PhasePill, TxLink } from "./parts";
 import {
   isEventAddress,
   OrganiserEventContext,
@@ -183,6 +183,12 @@ export function ShellView({
             <p className="og-note">Your wallet is on another network.</p>
             <ConnectWallet className="is-quiet" />
           </div>
+        )}
+        {event.isOwner && event.earlier && (
+          <p className="og-note" role="status" data-testid="earlier-pending">
+            A transaction you sent from this wallet is still confirming (<TxLink tx={event.earlier.hash} />
+            ). The buttons are locked until it is confirmed.
+          </p>
         )}
         {children}
       </div>

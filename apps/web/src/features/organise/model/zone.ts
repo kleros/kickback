@@ -16,7 +16,43 @@ export function browserZone(): string {
   return normalZone(zone);
 }
 
+/** Old zone names some browsers (Chrome, Node) still list, with today's IANA name. */
+const LEGACY: Record<string, string> = {
+  "Africa/Asmera": "Africa/Asmara",
+  "America/Buenos_Aires": "America/Argentina/Buenos_Aires",
+  "America/Catamarca": "America/Argentina/Catamarca",
+  "America/Cordoba": "America/Argentina/Cordoba",
+  "America/Jujuy": "America/Argentina/Jujuy",
+  "America/Mendoza": "America/Argentina/Mendoza",
+  "America/Coral_Harbour": "America/Atikokan",
+  "America/Godthab": "America/Nuuk",
+  "America/Indianapolis": "America/Indiana/Indianapolis",
+  "America/Louisville": "America/Kentucky/Louisville",
+  "Asia/Calcutta": "Asia/Kolkata",
+  "Asia/Katmandu": "Asia/Kathmandu",
+  "Asia/Rangoon": "Asia/Yangon",
+  "Asia/Saigon": "Asia/Ho_Chi_Minh",
+  "Atlantic/Faeroe": "Atlantic/Faroe",
+  "Europe/Kiev": "Europe/Kyiv",
+  "Pacific/Enderbury": "Pacific/Kanton",
+  "Pacific/Ponape": "Pacific/Pohnpei",
+  "Pacific/Truk": "Pacific/Chuuk",
+};
+
+/** Today's name for a renamed zone ("Asia/Calcutta" is "Asia/Kolkata"), when this browser knows the new name. */
+export function currentZoneName(zone: string): string {
+  const next = LEGACY[zone];
+  if (!next) return zone;
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: next });
+    return next;
+  } catch {
+    return zone;
+  }
+}
+
 export function normalZone(zone: string, now = Date.now()): string {
+  zone = currentZoneName(zone);
   if (zone === "UTC" || (NAMED_ZONE.test(zone) && !/^Etc\/Unknown$/i.test(zone))) return zone;
   let offset: number;
   try {
@@ -37,9 +73,47 @@ export function zoneList(keep: string): string[] {
   } catch {
     zones = [];
   }
+  // one entry per zone, under its current name (Chrome lists "Asia/Calcutta", Firefox "Asia/Kolkata")
+  zones = [...new Set(zones.map(currentZoneName))].sort();
+  keep = currentZoneName(keep);
   if (!zones.includes("UTC")) zones = ["UTC", ...zones];
   return zones.includes(keep) ? zones : [keep, ...zones];
 }
+
+const zoneKey = (chainId: number, where: string) => `kb-zone:${chainId}:${where.toLowerCase()}`;
+
+/**
+ * The time zone the organiser picked when creating an event, kept in this browser only (the contract has no zone):
+ * saved under the factory and wallet before the create is sent, then under the new event's contract.
+ */
+export const eventZone = {
+  saveCreate(chainId: number, account: string, zone: string) {
+    try {
+      localStorage.setItem(zoneKey(chainId, `create:${account}`), zone);
+    } catch {
+      /* storage refused: the pages fall back to the device's zone */
+    }
+  },
+  /** Moves the zone saved at create time to the event it created. */
+  settle(chainId: number, account: string, contract: string) {
+    try {
+      const zone = localStorage.getItem(zoneKey(chainId, `create:${account}`));
+      if (zone) localStorage.setItem(zoneKey(chainId, contract), zone);
+    } catch {
+      /* as above */
+    }
+  },
+  read(chainId: number, contract: string): string | null {
+    try {
+      const zone = localStorage.getItem(zoneKey(chainId, contract));
+      if (!zone) return null;
+      new Intl.DateTimeFormat("en", { timeZone: zone });
+      return zone;
+    } catch {
+      return null;
+    }
+  },
+};
 
 /** Minutes the zone is ahead of UTC at that instant. */
 function offsetMinutes(zone: string, ms: number): number {

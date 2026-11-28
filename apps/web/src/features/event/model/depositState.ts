@@ -46,7 +46,16 @@ export type DepositStateKey = (typeof DEPOSIT_STATES)[number];
 export type WalletStatus = "disconnected" | "connecting" | "connected";
 
 /** The calls a guest makes besides the deposit: all money comes out through withdraw(to). */
-export type MoneyAction = "withdraw" | "claim" | "challenge" | "approve" | "resolve" | "release" | "execute";
+export type MoneyAction =
+  | "withdraw"
+  | "claim"
+  | "challenge"
+  | "approve"
+  | "resolve"
+  | "release"
+  | "execute"
+  /** Settles another guest's ruled Kleros case (resolveChallenge(that guest)): anyone may. */
+  | "settle";
 
 /** The deposit() selector: the same for ETH and token events. */
 export const DEPOSIT_DATA = "0xd0e30db0";
@@ -77,6 +86,8 @@ export interface GuestState {
     /** A case with Kleros, not final yet: the jurors' current ruling and its appeal window (end 0 = none yet). */
     appeal?: AppealInfo;
   };
+  /** An attendee only: the first other guest's Kleros case that is ruled and not settled yet (anyone can settle it). */
+  ruledCase?: { wallet: Address; ruling: number };
 }
 
 /** The contract's appealStatus(staker): the current ruling, the appeal window and what each side pays to appeal. */
@@ -122,6 +133,8 @@ export interface DepositInput {
   stakerCount?: number;
   /** Kleros cases not settled yet: after the release, a lost case's held share raises every attendee's share. */
   openCases?: number;
+  /** Phase 2: nothing of the pool is still owed (`reservedPool` is 0): every attendee has been paid. */
+  allPaid?: boolean;
   guest?: GuestState;
   /** True while the connected wallet's booking has not been read yet (loading, or the read failed). */
   guestUnknown?: boolean;
@@ -256,7 +269,8 @@ export type DepositAction =
   | "challenge"
   | "resolve"
   | "release"
-  | "execute";
+  | "execute"
+  | "settle";
 
 export interface DepositView {
   key: DepositStateKey;
@@ -289,8 +303,16 @@ export interface DepositView {
 /** The first line of the organiser's own card on the guest page: what the event's step asks of them now. */
 function organiserLine(input: DepositInput): string {
   const now = input.chainNow ?? 0;
-  if (input.phase === 3) return "You cancelled this event. Guests can withdraw their full deposits.";
-  if (input.phase === 2) return "Payouts are released. Track them on the organiser page.";
+  // stakerCount counts the deposits still held: none left means none to withdraw (refunded, or never made)
+  const nobodyLeft = !input.stakerCount;
+  if (input.phase === 3)
+    return nobodyLeft
+      ? "You cancelled this event. No guest has a deposit left to withdraw."
+      : "You cancelled this event. Guests can withdraw their full deposits.";
+  if (input.phase === 2)
+    return input.allPaid
+      ? "Payouts have been released and every attendee has been paid."
+      : "Payouts have been released. Track them on the organiser page.";
   if (input.phase === 1) {
     if (input.challengeEndsAt && now <= input.challengeEndsAt)
       return (input.waitingChallenges ?? 0) > 0
@@ -304,7 +326,9 @@ function organiserLine(input: DepositInput): string {
   }
   if (now < input.eventEnd) return "You organise this event. Guests deposit here.";
   if (input.claimDeadline !== undefined && now > input.claimDeadline)
-    return "Attendance was not confirmed in time. Guests can withdraw their full deposits.";
+    return nobodyLeft
+      ? "Attendance was not confirmed in time. No guest has a deposit left to withdraw."
+      : "Attendance was not confirmed in time. Guests can withdraw their full deposits.";
   if (!input.stakerCount) return "The event ended with no deposits: there is nothing to confirm.";
   return (input.attendeeCount ?? 0) > 0
     ? "Deposits are closed. Close the list on the organiser page."
@@ -358,11 +382,14 @@ const SHORT_ERRORS: Partial<Record<SendErrorKind, string>> = {
   network: "Network did not answer. Try again.",
 };
 
-/** What settling a ruled case pays the guest: what is left of both fees, or half of it when Kleros refused to rule. */
+/**
+ * What settling a ruled case pays the guest: what is left of both fees when Kleros ruled they came, half of it when
+ * it refused to rule, nothing when it ruled they did not come (the rest goes to whoever sent the case to Kleros).
+ */
 export function resolveRefund(c: { deposit?: bigint; arbitrationPaid?: bigint; ruling?: number }): bigint {
   const deposit = c.deposit ?? 0n;
   const left = 2n * deposit - (c.arbitrationPaid ?? deposit);
-  return c.ruling === 1 ? left : left / 2n;
+  return c.ruling === 1 ? left : c.ruling === 2 ? 0n : left / 2n;
 }
 
 /** A wallet-side failure: only a rejection is the guest's own cancel. */
@@ -536,7 +563,7 @@ export function depositState(input: DepositInput): DepositView {
                 ? "Releasing payouts"
                 : moneySend.action === "execute"
                   ? "Recording the ruling"
-                  : moneySend.action === "resolve"
+                  : moneySend.action === "resolve" || moneySend.action === "settle"
                     ? moneySend.joins
                       ? "Joining the list"
                       : "Settling the ruling"
@@ -660,6 +687,29 @@ export function depositState(input: DepositInput): DepositView {
   const openCases = input.openCases ?? 0;
   const payoutProof = [proofLine("Payout") ?? paidLine("Payout transaction")[0]].filter((l): l is StatusLine => !!l);
   // a Kleros case still holds a share: unless Kleros rules that guest came, part of it comes to the attendees
+  // a case Kleros has ruled on still holds its share until someone settles it: anyone can, so the attendee can too
+  const ruledOther = guest?.ruledCase;
+  if (guest && input.phase === 2 && guest.attended && openCases > 0 && ruledOther) {
+    const error = errorFor("settle");
+    return switchOr({
+      key: "resolve",
+      label: "Paid so far",
+      amount: owed(guest.sharePaid),
+      lines: error
+        ? [error]
+        : [
+            { text: "Kleros has ruled on a case. Anyone can settle it.", tone: "pri" },
+            ruledOther.ruling === 1
+              ? { text: "Then its held share goes to that guest." }
+              : { text: "Then its held share is split among attendees." },
+          ],
+      action: "settle",
+      button: "Settle the ruling",
+      disabled: input.busy,
+      foot: null,
+      shake: error !== undefined,
+    });
+  }
   if (guest && input.phase === 2 && guest.attended && openCases > 0)
     return readOnly(
       "paid-out",
@@ -744,19 +794,26 @@ export function depositState(input: DepositInput): DepositView {
   // Kleros has ruled but nobody has settled the case yet: anyone can, so the guest can too
   const ruledCase = (c: NonNullable<typeof challenge>): DepositView | undefined => {
     if (!c.isRuled || c.ruling === undefined || c.ruling > 2) return undefined;
-    if (c.ruling === 2)
-      return readOnly(
-        "disputed",
-        "Kleros has ruled",
-        [
-          { text: "Kleros jurors ruled you did not come.", tone: "pri", link: caseLink(c) },
-          { text: "The organiser still has to settle it." },
-        ],
-        amount,
-        undefined,
-        "Waiting for the ruling to be settled",
-      );
     const error = errorFor("resolve");
+    // ruled "did not come": nothing comes back to the guest, but anyone can settle it, so the guest can too
+    if (c.ruling === 2)
+      return switchOr({
+        key: "resolve",
+        label: "Kleros has ruled",
+        amount: ethText(resolveRefund(c)),
+        unit: "ETH",
+        lines: error
+          ? [error]
+          : [
+              { text: "Kleros jurors ruled you did not come.", tone: "pri", link: caseLink(c) },
+              { text: "Anyone can settle it to end the challenge." },
+            ],
+        action: "resolve",
+        button: "Settle the ruling",
+        disabled: input.busy,
+        foot: "The fee left goes to whoever sent it to Kleros.",
+        shake: error !== undefined,
+      });
     return switchOr({
       key: "resolve",
       label: "Kleros has ruled",

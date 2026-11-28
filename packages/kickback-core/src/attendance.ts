@@ -6,7 +6,8 @@ import { detectColumns, normAddress, parseCsv, type Columns } from "./text";
 export interface SkippedRow {
   row: number;
   name: string;
-  reason: "no-wallet" | "not-a-guest" | "not-checked-in" | "duplicate";
+  /** "turned-away": the wallet deposited and the organiser turned it away (refunded); it is not a staker. */
+  reason: "no-wallet" | "not-a-guest" | "turned-away" | "not-checked-in" | "duplicate";
   wallet?: Address;
 }
 
@@ -25,10 +26,17 @@ export interface AttendancePlan {
  * optionally, a check-in column) and the event's current stakers. A row counts when its wallet is a
  * staker and, if the CSV has a check-in column, that cell is filled.
  */
-export function attendanceFromCsv(text: string, stakers: readonly Address[], overrides: Columns = {}): AttendancePlan {
+export function attendanceFromCsv(
+  text: string,
+  stakers: readonly Address[],
+  overrides: Columns = {},
+  /** Wallets the organiser turned away: a checked-in row for one is told apart from a wallet that never deposited. */
+  rejected: readonly Address[] = [],
+): AttendancePlan {
   const rows = parseCsv(text);
   const columns = detectColumns(rows[0] ? Object.keys(rows[0]) : [], overrides);
   const isStaker = new Set(stakers.map((s) => s.toLowerCase()));
+  const wasRejected = new Set(rejected.map((w) => w.toLowerCase()));
   const seen = new Set<string>();
   const attending: Address[] = [];
   const skipped: SkippedRow[] = [];
@@ -42,6 +50,7 @@ export function attendanceFromCsv(text: string, stakers: readonly Address[], ove
     if (!wallet) return skipped.push({ row: i + 2, name, reason: "no-wallet" });
     if (columns.checkedIn && !String(r[columns.checkedIn] ?? "").trim())
       return skipped.push({ row: i + 2, name, reason: "not-checked-in", wallet });
+    if (wasRejected.has(wallet.toLowerCase())) return skipped.push({ row: i + 2, name, reason: "turned-away", wallet });
     if (!isStaker.has(wallet.toLowerCase())) return skipped.push({ row: i + 2, name, reason: "not-a-guest", wallet });
     if (seen.has(wallet.toLowerCase())) return skipped.push({ row: i + 2, name, reason: "duplicate", wallet });
     seen.add(wallet.toLowerCase());

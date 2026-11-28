@@ -29,12 +29,12 @@ export default defineConfig({
     launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /organiser\.spec\.ts/ },
+    { name: "chromium", use: { ...devices["Desktop Chrome"] }, testIgnore: /organiser(-regressions)?\.spec\.ts/ },
     // warps the shared node's clock for good, so it runs after every spec that needs the suite event open
     {
       name: "organiser",
       use: { ...devices["Desktop Chrome"] },
-      testMatch: /organiser\.spec\.ts/,
+      testMatch: /organiser(-regressions)?\.spec\.ts/,
       dependencies: ["chromium"],
     },
   ],

@@ -19,6 +19,7 @@ const ACTIONS: TicketActions = {
   resolve: noop,
   release: noop,
   execute: noop,
+  settle: noop,
   recheck: noop,
 };
 const VERIFIED = {

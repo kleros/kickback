@@ -49,7 +49,12 @@ describe("revert decoding through nested error data", () => {
 describe("LUMA_URL and lumaLinkProblem", () => {
   it("accepts only public Luma event pages", async () => {
     const { LUMA_URL } = await import("../src/text");
-    for (const ok of ["https://luma.com/abc123", "https://lu.ma/abc123", "https://luma.com/event/evt-AbC12", "https://www.luma.com/my-dinner/"])
+    for (const ok of [
+      "https://luma.com/abc123",
+      "https://lu.ma/abc123",
+      "https://luma.com/event/evt-AbC12",
+      "https://www.luma.com/my-dinner/",
+    ])
       expect(LUMA_URL.test(ok), ok).toBe(true);
     for (const bad of [
       "https://luma.com/abc123?tk=xyz",

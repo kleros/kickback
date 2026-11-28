@@ -27,6 +27,7 @@ export interface TicketActions {
   resolve: () => void;
   release: () => void;
   execute: () => void;
+  settle: () => void;
   recheck: () => void;
 }
 
@@ -148,6 +149,7 @@ export const TicketCard = forwardRef<HTMLElement, TicketCardProps>(function Tick
     resolve: actions.resolve,
     release: actions.release,
     execute: actions.execute,
+    settle: actions.settle,
     copy: () => {},
     none: () => {},
   }[view.action];

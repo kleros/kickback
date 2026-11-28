@@ -27,17 +27,20 @@ import { tx } from "../operations/tx";
 const TURN_AWAY_SLACK = 15;
 
 /** Numbers the payments of one kind only when there are several: "Payout", or "Payout 1", "Payout 2". */
-const numbered = (label: string, list: readonly { tx: string }[]) =>
-  list.map((p, i) => ({ label: list.length > 1 ? `${label} ${i + 1}` : label, tx: p.tx }));
+const numbered = (label: string, list: readonly { tx: string; block: bigint }[]) =>
+  list.map((p, i) => ({ label: list.length > 1 ? `${label} ${i + 1}` : label, tx: p.tx, block: p.block }));
 
-/** The transactions behind one guest: their deposit, their challenge, then each payment by what it was for. */
-function txLinks(rec: WalletRecord | undefined) {
+/**
+ * The transactions behind one guest, in the order they happened (by block): their deposit, their challenge, being
+ * put on the list, each payment by what it was for. Links in the same block keep the order below.
+ */
+export function txLinks(rec: WalletRecord | undefined) {
   if (!rec) return [];
-  const links: { label: string; tx: string }[] = [];
-  if (rec.deposit) links.push({ label: "Deposit", tx: rec.deposit.tx });
+  const links: { label: string; tx: string; block: bigint }[] = [];
+  if (rec.deposit) links.push({ label: "Deposit", tx: rec.deposit.tx, block: rec.deposit.block });
   const c = rec.challenge;
   if (c) {
-    links.push({ label: "Challenge", tx: c.tx });
+    links.push({ label: "Challenge", tx: c.tx, block: c.block });
     if (c.answer)
       links.push({
         label:
@@ -49,14 +52,24 @@ function txLinks(rec: WalletRecord | undefined) {
                 ? "Accepted (no answer in time)"
                 : "Accepted",
         tx: c.answer.tx,
+        block: c.answer.block,
       });
   }
+  // put on the list by the organiser (not as a challenge's answer, which is linked above)
+  const added = rec.added;
+  if (added && added.how !== "challenge" && !links.some((l) => l.tx === added.tx))
+    links.push({
+      label: added.how === "saved" ? "Attendance saved" : added.how === "late" ? "Added to the list" : "Listed",
+      tx: added.tx,
+      block: added.block,
+    });
   // a Kleros fee this wallet paid to send someone else's challenge to Kleros
   links.push(
     ...rec.klerosFees
       .filter((f) => !links.some((l) => l.tx === f.tx))
-      .map((f) => ({ label: `Kleros fee (case ${f.caseId})`, tx: f.tx })),
+      .map((f) => ({ label: `Kleros fee (case ${f.caseId})`, tx: f.tx, block: f.block })),
   );
+  // numbered in chain order before the sort, so "Payout 1" is the first payout
   links.push(
     ...numbered(
       "Refund",
@@ -65,29 +78,35 @@ function txLinks(rec: WalletRecord | undefined) {
   );
   links.push(
     ...numbered(
-      "Payout",
-      rec.payments.filter((p) => p.kind === "payout"),
-    ),
-  );
-  links.push(
-    ...numbered(
       "Challenge money back",
       rec.payments.filter((p) => p.kind === "challenge"),
     ),
   );
-  // put on the list by the organiser (not as a challenge's answer, which is linked above)
-  const added = rec.added;
-  if (added && added.how !== "challenge" && !links.some((l) => l.tx === added.tx))
-    links.push({
-      label: added.how === "saved" ? "Attendance saved" : added.how === "late" ? "Added to the list" : "Listed",
-      tx: added.tx,
-    });
+  links.push(
+    ...numbered(
+      "Payout",
+      rec.payments.filter((p) => p.kind === "payout"),
+    ),
+  );
   // the settlement and the held-share split, unless a payment above already links the same transaction
-  if (c?.resolved && !links.some((l) => l.tx === c.resolved!.tx)) links.push({ label: "Settled", tx: c.resolved.tx });
+  if (c?.resolved && !links.some((l) => l.tx === c.resolved!.tx))
+    links.push({ label: "Settled", tx: c.resolved.tx, block: c.resolved.block });
   if (c?.heldSplit && !links.some((l) => l.tx === c.heldSplit!.tx))
-    links.push({ label: "Share split", tx: c.heldSplit.tx });
-  return links;
+    links.push({ label: "Share split", tx: c.heldSplit.tx, block: c.heldSplit.block });
+  // a stable sort: links in one block keep the order they were added in
+  return links
+    .sort((a, b) => (a.block < b.block ? -1 : a.block > b.block ? 1 : 0))
+    .map(({ label, tx }) => ({ label, tx }));
 }
+
+/** A file name from an event name in any script: letters, marks and digits kept, every other run one dash. */
+export const recordFileName = (eventName: string) =>
+  `${
+    (eventName || "")
+      .normalize("NFC")
+      .replace(/[^\p{L}\p{M}\p{N}_-]+/gu, "-")
+      .replace(/^-+|-+$/g, "") || "event"
+  }-record.csv`;
 
 const guestsText = (n: number) => `${n} ${n === 1 ? "guest" : "guests"}`;
 
@@ -106,6 +125,11 @@ export function GuestsScreen() {
   const data = event.overview.data;
   const guests = useMemo(() => data?.guests ?? [], [data]);
   const booked = useMemo(() => guests.filter((g) => g.status === 1).map((g) => g.wallet), [guests]);
+  // every guest who ever deposited, with their status (1 deposited, 2 turned away, 3 refunded), for the Luma match
+  const statusByWallet = useMemo(
+    () => new Map(guests.map((g) => [g.wallet.toLowerCase(), g.status] as const)),
+    [guests],
+  );
   // a search or a selection belongs to the wallet that made it: drop both on Disconnect or an account switch
   const accountKey = event.account?.toLowerCase();
   useEffect(() => {
@@ -238,11 +262,13 @@ export function GuestsScreen() {
       return `${exact(p.amount, p.eth)} to ${p.to}, ${how}: ${txUrl(p.tx)}`;
     };
     const money = (rec: WalletRecord | undefined, wallet: string) => {
-      const asset = rec?.payments.filter((p) => p.kind !== "challenge") ?? [];
+      const refunds = rec?.payments.filter((p) => p.kind === "refund") ?? [];
+      const payouts = rec?.payments.filter((p) => p.kind === "payout") ?? [];
       const back = rec?.payments.filter((p) => p.kind === "challenge") ?? [];
       return {
-        paid: asset.length ? exact(sum(asset)) : "",
-        paymentTxs: asset.map((p) => paymentCell(p, wallet, rec)).join(" | "),
+        refunded: refunds.length ? exact(sum(refunds)) : "",
+        paid: payouts.length ? exact(sum(payouts)) : "",
+        paymentTxs: [...refunds, ...payouts].map((p) => paymentCell(p, wallet, rec)).join(" | "),
         challengeBack: back.length ? `${formatUnits(sum(back), 18)} ETH` : "",
         challengeTxs: back.map((p) => paymentCell(p, wallet, rec)).join(" | "),
       };
@@ -267,6 +293,12 @@ export function GuestsScreen() {
       const live = g.challenge;
       const lapsed = live?.state === 1 && now > live.matchEndsAt;
       const ruledLive = live?.state === 2 && live.isRuled === true && (live.ruling ?? 99) <= 2;
+      // the jurors have ruled on Kleros (appeal open, appeal time over, or final) but it is not recorded yet
+      const jurors =
+        live?.state === 2 && live.isRuled !== true && live.appeal && (live.appeal.end > 0 || live.appeal.final)
+          ? live.appeal
+          : undefined;
+      const word = (r: number | undefined) => (r === 1 ? "Came" : r === 2 ? "Did not come" : "Did not rule either way");
       const added = rec?.added && rec.added.how !== "challenge" ? rec.added : undefined;
       return {
         name: luma.nameOf(g.wallet),
@@ -300,8 +332,16 @@ export function GuestsScreen() {
               : "Did not rule either way (fees split)"
           : answer?.kind === "kleros"
             ? ruledLive
-              ? `${live.ruling === 1 ? "Came" : live.ruling === 2 ? "Did not come" : "Did not rule either way"} (ruled, not settled yet)`
-              : "Not ruled yet"
+              ? `${word(live.ruling)} (ruled, not settled yet)`
+              : jurors
+                ? `${word(jurors.ruling)} (jurors' ruling, ${
+                    jurors.final
+                      ? "final, not recorded on Kleros yet"
+                      : now <= jurors.end
+                        ? "appeal open"
+                        : "appeal time ended, not final yet"
+                  })`
+                : "Not ruled yet"
             : undefined,
         settledTx: c?.resolved ? txUrl(c.resolved.tx) : undefined,
         // the case's own match transaction, under the same header as on the matcher's row
@@ -346,14 +386,13 @@ export function GuestsScreen() {
         };
       });
     // anyone can release: name the wallet in full (closing the list and cancelling are the organiser's alone)
-    const releasedBy = (w?: string) =>
-      !w
-        ? undefined
-        : sameWallet(w, info.owner)
-          ? "the organiser"
-          : isGuest.has(w.toLowerCase())
-            ? `the guest ${getAddress(w)}`
-            : getAddress(w);
+    const releasedBy = (w?: string) => {
+      if (!w) return undefined;
+      if (sameWallet(w, info.owner)) return "the organiser";
+      if (!isGuest.has(w.toLowerCase())) return getAddress(w);
+      const name = luma.nameOf(w);
+      return `the guest ${name ? `${name} ` : ""}${getAddress(w)}`;
+    };
     const raised = !!r.released && info.payoutShare !== r.released.share;
     const splits = [...r.wallets.entries()].filter(([, rec]) => rec.challenge?.heldSplit);
     const listedNames = (wallets: readonly string[]) => wallets.map((w) => luma.nameOf(w) || getAddress(w)).join(", ");
@@ -406,7 +445,7 @@ export function GuestsScreen() {
     const blob = new Blob([recordCsv([...rows, ...others], steps)], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `${(info.eventName || "event").replace(/[^\w-]+/g, "-")}-record.csv`;
+    a.download = recordFileName(info.eventName);
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -443,6 +482,8 @@ export function GuestsScreen() {
   const fresh = guests.filter((g) => isNew(g.wallet)).length;
   const turnedAway = guests.filter((g) => g.status === 2).length;
   const refunded = guests.filter((g) => g.status === 3).length;
+  // a turn-away from this wallet still confirming (also after a wallet switch away and back, which remounts the tab)
+  const turning = new Set(event.pending?.wallets.map((w) => w.toLowerCase()) ?? []);
   const toggle = (wallet: string, on: boolean) => {
     const next = new Set(ticked);
     if (on) next.add(wallet.toLowerCase());
@@ -484,7 +525,14 @@ export function GuestsScreen() {
       </GlassCard>
       {event.isOwner && (
         <GlassCard className="og-card">
-          <LumaMatch contract={event.address} booked={booked} onRows={luma.add} ended={ended} />
+          <LumaMatch
+            contract={event.address}
+            booked={booked}
+            statuses={statusByWallet}
+            closed={closed}
+            onRows={luma.add}
+            ended={ended}
+          />
         </GlassCard>
       )}
 
@@ -623,7 +671,9 @@ export function GuestsScreen() {
                       )}
                     </span>
                     {(() => {
-                      const st = statusOfRow(row);
+                      const st = turning.has(row.wallet.toLowerCase())
+                        ? { tone: "warn", text: "Turning away" }
+                        : statusOfRow(row);
                       return (
                         <span className="og-cell-status">
                           <span className="og-dot" data-tone={st.tone} aria-hidden />
@@ -636,8 +686,8 @@ export function GuestsScreen() {
                         <label className="og-tick">
                           <input
                             type="checkbox"
-                            checked={ticked.has(row.wallet.toLowerCase())}
-                            disabled={!canAct}
+                            checked={ticked.has(row.wallet.toLowerCase()) || turning.has(row.wallet.toLowerCase())}
+                            disabled={!canAct || turning.has(row.wallet.toLowerCase())}
                             aria-label={`Turn away ${row.wallet}`}
                             onChange={(e) => toggle(row.wallet, e.currentTarget.checked)}
                           />
@@ -708,12 +758,25 @@ export function GuestsScreen() {
           onConfirm={() => {
             const wallets = first.map((g) => g.wallet);
             const left = chosen.length - wallets.length;
+            // a guest already approved on Luma keeps a working Luma registration: say to decline them there
+            const approved = wallets.filter(
+              (w) =>
+                luma.lumaOf(w) !== "declined" && (luma.approvedAt(w) !== undefined || luma.lumaOf(w) === "approved"),
+            ).length;
+            const lumaReminder =
+              approved === 0
+                ? ""
+                : wallets.length === 1
+                  ? " They were approved on Luma, so decline them there."
+                  : approved === 1
+                    ? " 1 of them was approved on Luma, so decline them there."
+                    : ` ${approved} of them were approved on Luma, so decline them there.`;
             setConfirm(false);
             // the ticks stay until the refund is confirmed: a cancel in the wallet keeps the selection
             event.run(
               `Turn away ${wallets.length}`,
               () => tx.reject(info.contract, wallets),
-              `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.${
+              `${wallets.length} ${wallets.length === 1 ? "guest" : "guests"} turned away and refunded.${lumaReminder}${
                 left > 0 ? ` Send the next ${Math.min(BATCH_SIZE, left)}.` : ""
               }`,
               () =>
@@ -723,6 +786,7 @@ export function GuestsScreen() {
                   return next;
                 }),
               { TooLate: "The event has started, so guests can no longer be turned away. Nothing was sent." },
+              { pending: `Turning away ${guestsText(wallets.length)}… Waiting for confirmation.`, wallets },
             );
           }}
         />

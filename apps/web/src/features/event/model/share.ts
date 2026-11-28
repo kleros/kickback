@@ -15,6 +15,11 @@ export interface ShareExample {
   pending: number;
   /** Of the `held` cases, those Kleros has ruled on that nobody has settled yet (their share is still held). */
   ruled: number;
+  /**
+   * Challenges the organiser did not answer in time (before the release): they can no longer go to Kleros, and the
+   * release adds them to the list, so each takes one share as an attendee.
+   */
+  lapsed: number;
   /** The no-shows' deposits, in wei. */
   pool: bigint;
   /** What each attendee gets back, deposit included: the contract's share. */
@@ -45,22 +50,26 @@ export function shareExample(
   capacity = 0,
   /** Open cases Kleros has ruled on but nobody has settled yet. */
   ruledCases = 0,
+  /** Waiting challenges past their answer time (not counted in `waiting`). */
+  lapsedChallenges = 0,
 ): ShareExample {
   const fromList = listed !== undefined && listed >= 1 && listed <= stakerCount;
   const held = fromList ? Math.max(0, Math.min(openCases, stakerCount - listed)) : 0;
   // after the release no challenge waits (the release needs none waiting)
   const pending = fromList && back === undefined ? Math.max(0, Math.min(waiting, stakerCount - listed - held)) : 0;
+  const lapsed =
+    fromList && back === undefined ? Math.max(0, Math.min(lapsedChallenges, stakerCount - listed - held - pending)) : 0;
   const real = fromList || stakerCount >= 2;
   const deposits = real ? stakerCount : capacity > 0 ? Math.min(10, capacity) : 10;
   // a one-spot illustration has nobody to stay home: its one guest attends and gets the deposit back
   const noShows = fromList
-    ? deposits - listed - pending - held
+    ? deposits - listed - pending - held - lapsed
     : !real && deposits === 1
       ? 0
       : Math.max(1, Math.round(deposits / 5));
-  const attend = Math.max(1, deposits - noShows - pending - held);
+  const attend = Math.max(1, deposits - noShows - pending - held - lapsed);
   // the release: depositAmount * stakerCount / (attendees + open cases), rounded down
-  const share = back ?? (amount * BigInt(deposits)) / BigInt(attend + pending + held);
+  const share = back ?? (amount * BigInt(deposits)) / BigInt(attend + lapsed + pending + held);
   const basis: ShareBasis = fromList ? (back !== undefined ? "paid" : "list") : real ? "estimate" : "illustration";
   return {
     deposits,
@@ -69,6 +78,7 @@ export function shareExample(
     held,
     pending,
     ruled: Math.max(0, Math.min(ruledCases, held)),
+    lapsed,
     pool: amount * BigInt(noShows),
     back: share,
     bonus: share - amount,

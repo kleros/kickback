@@ -54,7 +54,52 @@ export async function readGuestMoney(
     guest.challenge.state === 2 && isRuled !== true
       ? await readAppeal(client, contract, wallet, guest.challenge.arbitratorDisputeID)
       : undefined;
-  return { ...guest, challenge: { ...guest.challenge, ruling, isRuled, appeal }, allowance, tokenBalance };
+  // an attendee's held share can wait on another guest's ruled case: find one anyone can settle now
+  const ruledCase = guest.attended ? await readRuledCase(client, contract, wallet) : undefined;
+  return {
+    ...guest,
+    challenge: { ...guest.challenge, ruling, isRuled, appeal },
+    ...(ruledCase ? { ruledCase } : {}),
+    allowance,
+    tokenBalance,
+  };
+}
+
+/** The first other guest's Kleros case that is ruled (0, 1 or 2) and not settled yet, or undefined. */
+export async function readRuledCase(
+  client: PublicClient,
+  contract: Address,
+  wallet: Address,
+): Promise<{ wallet: Address; ruling: number } | undefined> {
+  try {
+    const c = { address: contract, abi: presenceEventAbi } as const;
+    const open = await client.readContract({ ...c, functionName: "openCases" });
+    if (open === 0n) return undefined;
+    const challengers = (await client.readContract({ ...c, functionName: "challengers" })).filter(
+      (s) => s.toLowerCase() !== wallet.toLowerCase(),
+    );
+    const raw = await Promise.all(
+      challengers.map((s) => client.readContract({ ...c, functionName: "challenges", args: [s] })),
+    );
+    const disputed = challengers
+      .map((s, i) => ({ wallet: s, ...challengeOf(raw[i]!) }))
+      .filter((ch) => ch.state === 2 && ch.matcher !== zeroAddress);
+    if (disputed.length === 0) return undefined;
+    const resolver = await client.readContract({ ...c, functionName: "disputeResolver" });
+    for (const ch of disputed) {
+      const d = await client.readContract({
+        address: resolver,
+        abi: RESOLVER_ABI,
+        functionName: "disputes",
+        args: [ch.localDisputeID],
+      });
+      if (d[1] && Number(d[2]) <= 2) return { wallet: ch.wallet, ruling: Number(d[2]) };
+    }
+    return undefined;
+  } catch {
+    // unknown: the card keeps the plain wording
+    return undefined;
+  }
 }
 
 /** appealStatus(staker), or undefined when it cannot be read (the page keeps the plain wording). */
@@ -134,7 +179,17 @@ export async function prepareGuestMoney(
   action: MoneyAction,
   shownAmount: bigint,
   token?: Address,
+  /** "settle" only: the guest whose ruled case is settled (never the connected wallet's own). */
+  staker?: Address,
 ) {
+  if (action === "settle") {
+    if (!staker) throw new Error("No ruled case to settle. Reload the page.");
+    return {
+      to: contract,
+      value: 0n,
+      data: encodeFunctionData({ abi: presenceEventAbi, functionName: "resolveChallenge", args: [staker] }),
+    };
+  }
   if (action === "challenge") {
     const cost = await client.readContract({
       address: contract,

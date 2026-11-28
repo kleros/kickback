@@ -224,7 +224,9 @@ function SplitFigure({ example }: { example: ShareExample }) {
       : Math.min(shown - 1, Math.max(1, Math.round((shown * example.noShows) / example.deposits)));
   // a guest with Kleros, or with a challenge still waiting for an answer: neither ticked nor pooled, each takes a share
   const shownHeld = example.deposits <= 10 ? example.held + example.pending : 0;
-  const ways = example.attend + example.pending + example.held;
+  // a challenge the organiser did not answer in time is added at the release: drawn and counted as an attendee
+  const ways = example.attend + example.lapsed + example.pending + example.held;
+  const attendees = example.attend + example.lapsed;
   // a case Kleros has ruled on still holds its share until someone settles it
   const ruled = example.ruled;
   const deciding = example.held - ruled;
@@ -240,6 +242,10 @@ function SplitFigure({ example }: { example: ShareExample }) {
   const counted = [
     example.pending > 0 &&
       `${example.pending} ${example.pending === 1 ? "challenge" : "challenges"} still waiting for the organiser's answer`,
+    example.lapsed > 0 &&
+      (example.lapsed === 1
+        ? "1 challenger who will be added because the organiser did not answer in time"
+        : `${example.lapsed} challengers who will be added because the organiser did not answer in time`),
     deciding > 0 && `${deciding} ${caseWord(deciding)} with Kleros`,
     ruled > 0 && `${ruled} ruled ${caseWord(ruled)} waiting to be settled`,
   ].filter((x): x is string => !!x);
@@ -383,10 +389,10 @@ function SplitFigure({ example }: { example: ShareExample }) {
       <div className={`how-caps ${inWait > 0 ? "three" : "two"}`}>
         <span>
           <b>
-            {example.attend} {example.attend === 1 ? "attendee" : "attendees"}
+            {attendees} {attendees === 1 ? "attendee" : "attendees"}
           </b>
           +{bonus} {unit}
-          {example.attend === 1 ? "" : " each"}
+          {attendees === 1 ? "" : " each"}
         </span>
         {inWait > 0 && (
           <span data-testid="how-held">
@@ -544,9 +550,12 @@ function TimelinePanel({
   clock,
   now,
   phase,
+  releasedAt,
 }: {
   eventEnd: number;
   claimDeadline: number;
+  /** Unix seconds of the block that released payouts; undefined until known (never guessed). */
+  releasedAt?: number;
   /** The contract's phase: 0 open, 1 list posted, 2 paid out, 3 cancelled. */
   phase: number;
   challengePeriod: number;
@@ -571,6 +580,7 @@ function TimelinePanel({
           ["Deposits closed", eventEnd],
           ["Attendance confirmed", challengeEndsAt - challengePeriod],
           [now !== undefined && now > challengeEndsAt ? "Challenges closed" : "Challenges close", challengeEndsAt],
+          ...(done && releasedAt ? [["Payouts released", releasedAt] as const] : []),
         ]
       : [
           [now !== undefined && now >= eventEnd ? "Deposits closed" : "Deposits close", eventEnd],
@@ -674,10 +684,10 @@ function TimelinePanel({
       {!challengeEndsAt && (
         <p className="how-note">
           {cancelled
-            ? "The organiser cancelled this event. Every guest gets their full deposit back."
+            ? "The organiser cancelled this event, so every guest who still has a deposit can withdraw it in full."
             : missed
-              ? "Attendance was not confirmed in time. You can withdraw your full deposit."
-              : "Attendance not confirmed by the deadline? You can withdraw your full deposit."}
+              ? "Attendance was not confirmed in time, so every guest who still has a deposit can withdraw it in full."
+              : "If attendance is not confirmed by the deadline, every guest can withdraw their full deposit."}
         </p>
       )}
     </Panel>
@@ -713,6 +723,8 @@ export interface HowItWorksProps {
   challengeCount?: number;
   /** Challenges sent to Kleros; undefined when unknown. */
   casesSent?: number;
+  /** Unix seconds of the block that released payouts, once read. */
+  releasedAt?: number;
   /** The closing button: back up to the card. */
   onDeposit: () => void;
   depositOpen: boolean;
@@ -740,6 +752,7 @@ export function HowItWorks({
   casesSent,
   onDeposit,
   depositOpen,
+  releasedAt,
 }: HowItWorksProps) {
   const refundOnly: RefundOnly =
     phase === 3 ? "cancelled" : phase === 0 && now !== undefined && now > claimDeadline ? "missed" : null;
@@ -774,6 +787,7 @@ export function HowItWorks({
             clock={clock}
             now={now}
             phase={phase}
+            releasedAt={releasedAt}
           />
         </div>
         {depositOpen && (

@@ -21,6 +21,9 @@ vi.mock("../../api/useEvent", () => ({
     },
   }),
   usePreviewShare: () => ({}),
+  useCreatedBlock: () => ({ data: undefined }),
+  useReleasedBlock: () => ({ data: undefined }),
+  useBlockTime: () => ({ data: undefined }),
 }));
 vi.mock("../../hooks/useReceiptShare", () => ({ useReceiptShare: () => ({ text: "", luma: "", guestLink: "" }) }));
 vi.mock("../../hooks/useDepositState", () => ({ useDepositState: () => controller }));

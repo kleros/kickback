@@ -288,6 +288,7 @@ export const RECORD_COLUMNS = [
   ["deposit", "Deposit"],
   ["depositTx", "Deposit transaction"],
   ["listedTx", "Put on the list transaction"],
+  ["refunded", "Refunded"],
   ["paid", "Paid out"],
   ["paymentTxs", "Payment transactions"],
   ["challengeFee", "Challenge fee paid"],

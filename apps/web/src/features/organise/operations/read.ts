@@ -10,8 +10,8 @@ export interface GuestRow {
   /** 0 None, 1 Staker (booked), 2 Rejected (turned away), 3 Refunded (withdrew after a cancel or a missed list). */
   status: number;
   attended: boolean;
-  /** With a Kleros case: whether it is ruled, and the ruling. */
-  challenge?: ChallengeInfo & { isRuled?: boolean; ruling?: number };
+  /** With a Kleros case: whether it is ruled, the ruling, and while not final the jurors' ruling and appeal window. */
+  challenge?: ChallengeInfo & { isRuled?: boolean; ruling?: number; appeal?: AppealInfo };
 }
 
 export interface OrganiserState {

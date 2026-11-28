@@ -67,7 +67,9 @@ export function useGuestMoney(
               : (data?.challenge.deposit ?? 0n)
             : action === "release" || action === "execute"
               ? depositAmount
-              : data && claimAmount(data.claimable, data.claimableEth, token);
+              : action === "settle"
+                ? (data?.sharePaid ?? 0n)
+                : data && claimAmount(data.claimable, data.claimableEth, token);
     if (!address || !client || amount === undefined) return;
     // challenge money is ETH even in a token event
     const unit =
@@ -79,11 +81,14 @@ export function useGuestMoney(
     const joins =
       action === "resolve" &&
       (data?.challenge.state === 1 || (data?.challenge.state === 2 && data.challenge.ruling === 1));
+    // "settle" targets another guest's ruled case, never the connected wallet's own
+    const staker = action === "settle" ? data?.ruledCase?.wallet : undefined;
+    if (action === "settle" && !staker) return;
     setSending({ account: address, action, amount, unit, joins, hash: undefined });
     send.mutate({
       expectedAccount: address,
       onSent: (hash) => setSending((s) => ({ ...s, hash })),
-      prepare: () => prepareGuestMoney(client, contract, address, action, amount, token),
+      prepare: () => prepareGuestMoney(client, contract, address, action, amount, token, staker),
     });
   };
   return {
@@ -101,5 +106,6 @@ export function useGuestMoney(
     resolve: () => run("resolve"),
     release: () => run("release"),
     execute: () => run("execute"),
+    settle: () => run("settle"),
   };
 }

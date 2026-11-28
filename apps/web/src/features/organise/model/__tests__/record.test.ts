@@ -166,10 +166,10 @@ describe("recordCsv", () => {
     );
     const lines = csv.trim().split("\n");
     expect(lines[0]).toBe(
-      "Name,Wallet,Status,Deposit,Deposit transaction,Put on the list transaction,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Kleros fee paid,Sent to Kleros transactions,Challenge money back,Challenge money transactions,Notes,Event transaction",
+      "Name,Wallet,Status,Deposit,Deposit transaction,Put on the list transaction,Refunded,Paid out,Payment transactions,Challenge fee paid,Challenge transaction,Answer,Answer transaction,Ruling,Settled transaction,Kleros fee paid,Sent to Kleros transactions,Challenge money back,Challenge money transactions,Notes,Event transaction",
     );
-    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,,0.02 ETH,t1 | t2,,,,,,,,,,,,`);
-    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,,,,t3");
+    expect(lines[1]).toBe(`"Ann, B",${A},Came,0.01 ETH,,,,0.02 ETH,t1 | t2,,,,,,,,,,,,`);
+    expect(lines[2]).toBe("Payouts released,,Each attendee's share: 0.02 ETH,,,,,,,,,,,,,,,,,,t3");
     // a wallet that sent a case to Kleros: its fee and transaction under their own headers, not the challenge's
     const matcher = recordCsv([{ wallet: B, klerosFee: "0.03 ETH", klerosTxs: "t4" }], [])
       .trim()

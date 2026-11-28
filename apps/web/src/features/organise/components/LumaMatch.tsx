@@ -11,19 +11,31 @@ import { forgetLuma, readExport, writeExport } from "../model/lumaBook";
 import { hasWalletColumn, matchLuma, type LumaMatchRow } from "../model/lumaMatch";
 import { shortHex, when } from "../model/view";
 
-const MATCH_TEXT = { deposit: "Deposit found", none: "No deposit", "no-wallet": "No wallet" } as const;
-const MATCH_TONE = { deposit: "ok", none: "err", "no-wallet": "end" } as const;
+const MATCH_TEXT = {
+  deposit: "Deposit found",
+  "turned-away": "Turned away · refunded",
+  refunded: "Deposit refunded",
+  none: "No deposit",
+  "no-wallet": "No wallet",
+} as const;
+const MATCH_TONE = { deposit: "ok", "turned-away": "end", refunded: "end", none: "err", "no-wallet": "end" } as const;
 
 /** Luma registrations next to the deposits: who to approve on Luma, by verified wallet. */
 export function LumaMatch({
   contract,
   booked,
+  statuses,
+  closed,
   onRows,
   ended = false,
 }: {
   /** The event: the last export loaded for it is kept in this browser. */
   contract?: string;
   booked: readonly string[];
+  /** Every guest who deposited, by lower-case wallet, with their status (1 deposited, 2 turned away, 3 refunded). */
+  statuses?: ReadonlyMap<string, number>;
+  /** Why the deposits were refunded, when they were: the event was cancelled or its deadline missed. */
+  closed?: "cancelled" | "missed";
   /** The event is over: the export only adds names to the guest list and the record, nothing is left to approve. */
   ended?: boolean;
   /** Called with the parsed rows, so names can be shown next to wallets on this device. */
@@ -43,23 +55,35 @@ export function LumaMatch({
     };
   }, [contract]);
   const [err, setErr] = useState<{ text: string; at: number } | null>(null);
-  const rows = useMemo(() => (csv ? matchLuma(csv.text, booked) : null), [csv, booked]);
+  const rows = useMemo(() => (csv ? matchLuma(csv.text, booked, statuses) : null), [csv, booked, statuses]);
   // without the verified wallet column nothing can be matched: never tell the organiser to decline everyone
   const noWalletCol = csv ? !hasWalletColumn(csv.text) : false;
   const found = rows?.filter((r) => r.match === "deposit" && !r.dupOf) ?? [];
   const toApprove = found.filter((r) => r.luma === "pending");
-  const toDecline = rows?.filter((r) => r.match !== "deposit" && r.luma === "pending") ?? [];
-  // approved on Luma, but no booked deposit (no wallet, never paid, or turned away and refunded): their Luma QR
-  // code still works
-  const wronglyIn = rows?.filter((r) => r.match !== "deposit" && r.luma === "approved") ?? [];
+  // no deposit at all (a turned-away guest has its own line: it can never deposit, so it is never asked to)
+  const noDeposit = (r: LumaMatchRow) => r.match === "none" || r.match === "no-wallet" || r.match === "refunded";
+  const toDecline = rows?.filter((r) => noDeposit(r) && r.luma === "pending") ?? [];
+  // approved on Luma, but no deposit (no wallet, or never deposited): their Luma registration still works
+  const wronglyIn = rows?.filter((r) => noDeposit(r) && r.luma === "approved") ?? [];
+  // turned away and refunded, with a request still open on Luma: decline it there
+  const awayOpen = rows?.filter((r) => r.match === "turned-away" && !r.dupOf && r.luma !== "declined") ?? [];
+  // after the event: everyone who deposited, also those since refunded or turned away
+  const had = rows?.filter((r) => r.match !== "none" && r.match !== "no-wallet" && !r.dupOf) ?? [];
+  const hadAway = had.filter((r) => r.match === "turned-away").length;
+  const hadBack = had.filter((r) => r.match === "refunded").length;
   // a second request on one wallet that is still open on Luma: decline it, so one deposit has one QR code
   const dups = rows?.filter((r) => r.dupOf && r.luma !== "declined") ?? [];
   const mails = (list: readonly LumaMatchRow[]) => list.map((r) => r.email).filter(Boolean);
   const count = (k: number) => `${k} ${k === 1 ? "email" : "emails"}`;
   const approveMails = mails(toApprove);
   const declineMails = mails(toDecline);
-  const wrongMails = mails([...new Set([...wronglyIn, ...dups])]);
+  const wrongMails = mails([...new Set([...wronglyIn, ...awayOpen, ...dups])]);
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
+  const hadNote = [
+    hadAway > 0 && `${hadAway} turned away and refunded`,
+    hadBack > 0 &&
+      `${hadBack} refunded${closed === "cancelled" ? " after the cancellation" : closed === "missed" ? " after the deadline was missed" : ""}`,
+  ].filter(Boolean);
   return (
     <section className="flex flex-col gap-3" data-testid="luma-match">
       <div className="flex flex-col gap-1">
@@ -77,7 +101,7 @@ export function LumaMatch({
         onFile={(name, text) => {
           let parsed: readonly LumaMatchRow[];
           try {
-            parsed = matchLuma(text, booked);
+            parsed = matchLuma(text, booked, statuses);
           } catch {
             setCsv(null);
             setErr({ text: CSV_ERROR, at: Date.now() });
@@ -119,7 +143,7 @@ export function LumaMatch({
         <div className="flex flex-col gap-3 border-t border-[var(--kb-hair)] pt-3">
           {ended ? (
             <p className="og-lede" data-testid="luma-summary">
-              {`${found.length} of ${rows.length} ${plural(rows.length, "request", "requests")} had a deposit. The event is over: nothing to approve or decline on Luma.`}
+              {`${had.length} of ${rows.length} ${plural(rows.length, "request", "requests")} had a deposit${hadNote.length ? ` (${hadNote.join(", ")})` : ""}. The event is over: nothing to approve or decline on Luma.`}
             </p>
           ) : (
             <>
@@ -132,8 +156,10 @@ export function LumaMatch({
                   `${toDecline.length} pending ${plural(toDecline.length, "request has", "requests have")} no deposit: decline ${plural(toDecline.length, "it", "them")}, or ask the ${plural(toDecline.length, "guest", "guests")} to deposit first. `}
                 {dups.length > 0 &&
                   `${dups.length} ${plural(dups.length, "request shares", "requests share")} a wallet with another request: decline ${plural(dups.length, "it", "them")} on Luma. `}
+                {awayOpen.length > 0 &&
+                  `${awayOpen.length} turned-away ${plural(awayOpen.length, "guest still has a request", "guests still have requests")} on Luma: decline ${plural(awayOpen.length, "it", "them")}. `}
                 {wronglyIn.length > 0 &&
-                  `${wronglyIn.length} approved ${plural(wronglyIn.length, "request has", "requests have")} no deposit (no wallet, never deposited, or turned away): decline ${plural(wronglyIn.length, "it", "them")} on Luma.`}
+                  `${wronglyIn.length} approved ${plural(wronglyIn.length, "request has", "requests have")} no deposit (no wallet or never deposited): decline ${plural(wronglyIn.length, "it", "them")} on Luma.`}
               </p>
               {approveMails.length + declineMails.length + wrongMails.length > 0 && (
                 <>

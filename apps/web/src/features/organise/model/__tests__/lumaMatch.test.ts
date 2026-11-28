@@ -21,6 +21,27 @@ describe("matchLuma", () => {
     ]);
   });
 
+  it("tells a turned-away or refunded wallet apart from one that never deposited", () => {
+    const C = "0x00000000000000000000000000000000000000cC";
+    const csv = [
+      "name,email,approval_status,eth_address",
+      `Bo,bo@x.io,pending_approval,${B}`,
+      `Cy,cy@x.io,approved,${C}`,
+      `Al,al@x.io,approved,${A}`,
+    ].join("\n");
+    const statuses = new Map([
+      [B.toLowerCase(), 2],
+      [C.toLowerCase(), 3],
+    ]);
+    expect(matchLuma(csv, [A], statuses).map((r) => [r.name, r.match])).toEqual([
+      ["Al", "deposit"],
+      ["Bo", "turned-away"],
+      ["Cy", "refunded"],
+    ]);
+    // the Attendance tab passes no statuses: those wallets are simply not booked
+    expect(matchLuma(csv, [A]).map((r) => r.match)).toEqual(["deposit", "none", "none"]);
+  });
+
   it("flags a second registration with the same wallet: one deposit, one ticket", () => {
     const csv = ["name,email,eth_address", `Al,al@x.io,${A}`, `Al again,al2@x.io,${A.toLowerCase()}`].join("\n");
     const rows = matchLuma(csv, [A]);
